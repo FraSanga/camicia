@@ -36,14 +36,18 @@ string int128ToString(int128 n) {
     return s;
 }
 
+struct GameResultInfo {
+    int128 index;
+    long long cards;
+    long long tricks;
+};
+
 struct WorkerState {
     int128 currentIndex;
     int128 startIndex;
     int128 endIndex;
-    long long maxCards;
-    long long maxTricks;
-    int128 bestIndexCards;
-    int128 bestIndexTricks;
+    GameResultInfo bestFinished;
+    std::vector<GameResultInfo> loops;
 };
 
 void do_checkpoint(WorkerState& state) {
@@ -51,12 +55,21 @@ void do_checkpoint(WorkerState& state) {
     boinc_resolve_filename_s(CHECKPOINT_FILE, resolved_name);
     FILE* f = boinc_fopen("temp", "w");
     if (!f) return;
+
     string cur = int128ToString(state.currentIndex);
     string start = int128ToString(state.startIndex);
     string end = int128ToString(state.endIndex);
-    string bestC = int128ToString(state.bestIndexCards);
-    string bestT = int128ToString(state.bestIndexTricks);
-    fprintf(f, "%s %s %s %lld %lld %s %s\n", cur.c_str(), start.c_str(), end.c_str(), state.maxCards, state.maxTricks, bestC.c_str(), bestT.c_str());
+    string bestIdx = int128ToString(state.bestFinished.index);
+    
+    fprintf(f, "%s %s %s %s %lld %lld %zu\n", 
+            cur.c_str(), start.c_str(), end.c_str(), 
+            bestIdx.c_str(), state.bestFinished.cards, state.bestFinished.tricks,
+            state.loops.size());
+            
+    for (const auto& l : state.loops) {
+        fprintf(f, "%s %lld %lld\n", int128ToString(l.index).c_str(), l.cards, l.tricks);
+    }
+    
     fclose(f);
     boinc_rename("temp", resolved_name.c_str());
     boinc_checkpoint_completed();
@@ -65,7 +78,7 @@ void do_checkpoint(WorkerState& state) {
 int main(int argc, char** argv) {
     boinc_init();
 
-    WorkerState state = {0, 0, 0, 0, 0, 0, 0};
+    WorkerState state = {0, 0, 0, {0, 0, 0}, {}};
     char input_path[512], chkpt_path[512], output_path[512];
     
     boinc_resolve_filename(INPUT_FILENAME, input_path, sizeof(input_path));
@@ -75,13 +88,24 @@ int main(int argc, char** argv) {
     FILE* chkpt = boinc_fopen(chkpt_path, "r");
     bool resumed = false;
     if (chkpt) {
-        char cur[128], start[128], end[128], bestC[128], bestT[128];
-        if (fscanf(chkpt, "%s %s %s %lld %lld %s %s", cur, start, end, &state.maxCards, &state.maxTricks, bestC, bestT) == 7) {
+        char cur[128], start[128], end[128], bestIdxStr[128];
+        size_t loopCount;
+        if (fscanf(chkpt, "%s %s %s %s %lld %lld %zu", 
+                   cur, start, end, bestIdxStr, 
+                   &state.bestFinished.cards, &state.bestFinished.tricks, 
+                   &loopCount) == 7) {
             state.currentIndex = stringTo128(cur);
             state.startIndex = stringTo128(start);
             state.endIndex = stringTo128(end);
-            state.bestIndexCards = stringTo128(bestC);
-            state.bestIndexTricks = stringTo128(bestT);
+            state.bestFinished.index = stringTo128(bestIdxStr);
+            
+            for (size_t i = 0; i < loopCount; ++i) {
+                char lIdxStr[128];
+                long long lCards, lTricks;
+                if (fscanf(chkpt, "%s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
+                    state.loops.push_back({stringTo128(lIdxStr), lCards, lTricks});
+                }
+            }
             resumed = true;
         }
         fclose(chkpt);
@@ -116,11 +140,13 @@ int main(int argc, char** argv) {
         GameResult res = game.simulate();
 
         if (res.status == "finished") {
-            if (res.cards > state.maxCards) {
-                state.maxCards = res.cards;
-                state.maxTricks = res.tricks;
-                state.bestIndexCards = state.currentIndex;
+            if (res.cards > state.bestFinished.cards) {
+                state.bestFinished.cards = res.cards;
+                state.bestFinished.tricks = res.tricks;
+                state.bestFinished.index = state.currentIndex;
             }
+        } else if (res.status == "loop") {
+            state.loops.push_back({state.currentIndex, res.cards, res.tricks});
         }
 
         if (boinc_time_to_checkpoint()) {
@@ -133,9 +159,15 @@ int main(int argc, char** argv) {
 
     FILE* out = boinc_fopen(output_path, "w");
     if (out) {
-        string bestC = int128ToString(state.bestIndexCards);
-        string bestT = int128ToString(state.bestIndexTricks);
-        fprintf(out, "%s,%lld,%lld\n", bestC.c_str(), state.maxCards, state.maxTricks);
+        if (state.bestFinished.cards > 0) {
+            fprintf(out, "finished,%s,%lld,%lld\n", 
+                    int128ToString(state.bestFinished.index).c_str(), 
+                    state.bestFinished.cards, state.bestFinished.tricks);
+        }
+        for (const auto& l : state.loops) {
+            fprintf(out, "loop,%s,%lld,%lld\n", 
+                    int128ToString(l.index).c_str(), l.cards, l.tricks);
+        }
         fclose(out);
     }
 

@@ -66,11 +66,9 @@ int assimilate_handler(
             FILE* f_in = fopen(fi.path.c_str(), "r");
             if (f_in) {
                 char line[256];
-                fprintf(f_out, "%s,", wu.name);
                 while (fgets(line, sizeof(line), f_in)) {
-                    fputs(line, f_out);
+                    fprintf(f_out, "%s,%s", wu.name, line);
                 }
-                fprintf(f_out, "\n");
                 fclose(f_in);
             } else {
                 fclose(f_out);
