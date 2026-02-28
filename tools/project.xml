@@ -1,0 +1,10 @@
+<boinc>
+    <platform>
+        <name>x86_64-pc-linux-gnu</name>
+        <user_friendly_name>Linux running on an AMD x86_64 or Intel EM64T CPU</user_friendly_name>
+    </platform>
+    <app>
+        <name>simulator</name>
+        <user_friendly_name>Simulation of the game called Camicia</user_friendly_name>
+    </app>
+</boinc>

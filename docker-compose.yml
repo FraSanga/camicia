@@ -1,0 +1,50 @@
+services:
+  server:
+    build:
+      context: ./images/server
+      dockerfile: Dockerfile
+      args:
+        - PROJECTS_USER=${PROJECTS_USER}
+        - SERVER_VOLUME_PROJECTS_DIR=${SERVER_VOLUME_PROJECTS_DIR}
+    container_name: ${SERVER_CONTAINER_NAME}
+    hostname: ${SERVER_HOSTNAME}
+    restart: unless-stopped
+    environment:
+      OPS_USER: ${OPS_USER}
+      OPS_PASS: ${OPS_PASS}
+      SERVER_VOLUME_PROJECTS_DIR: ${SERVER_VOLUME_PROJECTS_DIR}
+      PROJECTS_USER: ${PROJECTS_USER}
+      SERVER_HOSTNAME: ${SERVER_HOSTNAME}
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "${SERVER_PORTS}"
+    volumes:
+      - ${SERVER_VOLUME_PROJECTS}:${SERVER_VOLUME_PROJECTS_DIR}
+      - ${SERVER_VOLUME_KEYS}:${SERVER_VOLUME_KEYS_DIR}
+    networks:
+      - database_network
+    depends_on:
+      - database
+
+  database:
+    image: mariadb:11.8
+    container_name: ${DATABASE_CONTAINER_NAME}
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    volumes:
+      - database_volume:/var/lib/mysql
+    networks:
+      - database_network
+
+networks:
+  database_network:
+    name: ${DATABASE_NETWORK}
+    driver: bridge
+
+volumes:
+  database_volume:
+    name: ${DATABASE_VOLUME}
