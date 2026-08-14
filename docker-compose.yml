@@ -39,6 +39,14 @@ services:
     # 100MiB; revisit if real load ever approaches these.
     mem_limit: 2g
     pids_limit: 512
+    # Docker's own container logs (stdout/stderr of Apache/cron inside this
+    # container) are otherwise unbounded — cap them so they can't quietly
+    # fill the disk over months the way nothing else here would catch.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   database:
     image: mariadb:11.8
@@ -64,6 +72,17 @@ services:
     # leaving it unbounded.
     mem_limit: 2g
     pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # If the host itself comes under memory pressure (not just this
+    # container), make the kernel OOM killer sacrifice mariadbd last — this
+    # is the one thing on the box you'd least want killed. Range is -1000
+    # (never kill) to 1000 (kill first); -500 is a strong but not absolute
+    # preference to spare it.
+    oom_score_adj: -500
 
   # Cloudflare Tunnel: exposes the server service publicly without opening
   # any inbound port on the host/router (cloudflared only makes outbound

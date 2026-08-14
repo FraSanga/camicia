@@ -63,7 +63,18 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./db_backup.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/db_backup.sh"
-    
+    docker cp ./disk_space_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/disk_space_check.sh"
+    docker cp ./memory_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/memory_check.sh"
+    docker cp ./notify.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/notify.sh"
+
+    # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
+    # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
+    # repo (it's effectively a shared secret: anyone with it can post to or
+    # read the topic) the same way OPS_PASS/DB credentials are.
+    if [ -n "$NTFY_TOPIC" ]; then
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "echo '$NTFY_TOPIC' > $PROJECT_DIR/ntfy_topic"
+    fi
+
     echo "🧩 Preparing smart merge of config.xml..."
     docker cp ./config.xml "$SERVER_CONTAINER_NAME":/tmp/config_new.xml
     docker cp ./merge_config.py "$SERVER_CONTAINER_NAME":/tmp/merge_config.py
@@ -74,6 +85,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/notify.sh && chmod +x $PROJECT_DIR/bin/notify.sh"
+    if [ -n "$NTFY_TOPIC" ]; then
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/ntfy_topic && chmod 600 $PROJECT_DIR/ntfy_topic"
+    fi
 
     echo "⚙️ Compiling Assimilator..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
