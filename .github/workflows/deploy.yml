@@ -1,0 +1,31 @@
+name: deploy
+
+# Manual only, on purpose: this repo is public, and this workflow runs on a
+# self-hosted runner living on the actual production machine. It must never
+# be reachable via pull_request or any other event a stranger could trigger.
+# The `production` Environment additionally requires a manual approval click
+# before the job is allowed to start on the runner (Settings > Environments).
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, production]
+    environment: production
+    steps:
+      - name: Pull latest main and redeploy
+        run: |
+          cd ~/camicia
+          git fetch origin main
+          git reset --hard origin/main
+          bash tools/tools.sh
+
+      - name: Verify deployment health
+        run: |
+          cd ~/camicia
+          docker compose ps
+          echo "--- daemons ---"
+          docker exec --user boincadm boinc_server bash -c \
+            "ps aux | grep -E 'assimilator|work_generator|feeder|transitioner|validator' | grep -v grep"
+          echo "--- user site ---"
+          docker exec boinc_server curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost/camicia/
