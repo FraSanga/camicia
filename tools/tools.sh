@@ -62,6 +62,9 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./work_generator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
+    docker cp ./project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project.inc"
+    docker cp ./signup.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/signup.php"
+    docker cp ./terms_of_use.txt "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/terms_of_use.txt"
     docker cp ./db_backup.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/db_backup.sh"
     docker cp ./disk_space_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/disk_space_check.sh"
     docker cp ./memory_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/memory_check.sh"
@@ -83,7 +86,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/terms_of_use.txt 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"

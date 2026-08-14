@@ -1,0 +1,60 @@
+Camicia Terms of Use
+
+Last updated: 2026-08-14
+
+By creating an account on Camicia ("the Project"), you agree to the following terms.
+
+1. What this Project does
+
+Camicia is a volunteer distributed-computing project, built on BOINC, that exhaustively searches
+permutations of a 52-card deck to find games of Beggar-My-Neighbour (known in Italy as "Camicia," the
+game this Project is named after) that loop forever, or that run unusually long before eventually
+ending. When you attach a computer to this Project, it will download work units, run computations
+using your computer's processor and memory, and return the results.
+
+2. Participation is voluntary and unpaid
+
+You may attach or detach any computer from this Project at any time, for any reason, using the BOINC
+client. Participation earns no monetary compensation. Any "credit" shown on the Project's website is
+solely for tracking contribution within the BOINC ecosystem and has no monetary value.
+
+3. Resource usage
+
+The BOINC client uses your computer's processor, memory, disk space, and network bandwidth according
+to the preferences you set in the BOINC client. You are responsible for configuring those preferences
+(e.g. limiting CPU usage, restricting activity to when the computer is idle) to suit your own hardware
+and electricity costs. The Project is not responsible for wear, energy costs, or other effects of
+running its computations on your hardware.
+
+4. No warranty
+
+The Project's software (including the worker application distributed to your computer) is provided
+"as is," without warranty of any kind, express or implied. The Project does not guarantee that the
+software is free of defects, that it will not crash, or that it will not (rarely) produce incorrect
+results. You run this software at your own risk.
+
+5. Account information and privacy
+
+To create an account, we collect an email address and a password (stored as a salted hash, not in
+plain text). Optionally, you may provide a display name, country, and other profile information you
+choose to add. This information is used only to operate the Project (e.g. account recovery,
+occasional project-related communication) and is not sold or shared with third parties. You may
+request deletion of your account and associated data at any time via the Project's account deletion
+feature.
+
+6. Community conduct
+
+If the Project's message boards are enabled, you agree to participate respectfully: no harassment,
+no spam, no illegal content. The Project's administrators may remove content or restrict accounts
+that violate this.
+
+7. Changes to the Project
+
+This is a small, independently-run volunteer project. The Project's administrator(s) may modify,
+suspend, or discontinue the Project, its computations, or these terms at any time. Material changes
+to these terms will be reflected by updating the "Last updated" date above.
+
+8. Contact
+
+Questions about these terms or your account can be sent to the Project's administrator via the
+contact address listed on the Project's website.

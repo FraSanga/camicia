@@ -12,9 +12,9 @@
         <daily_result_quota>500</daily_result_quota>
         <disable_account_creation>0</disable_account_creation>
         <disable_account_creation_rpc>0</disable_account_creation_rpc>
-        <account_creation_rpc_require_consent>0</account_creation_rpc_require_consent>
+        <account_creation_rpc_require_consent>1</account_creation_rpc_require_consent>
         <disable_web_account_creation>0</disable_web_account_creation>
-        <enable_login_mustagree_termsofuse>0</enable_login_mustagree_termsofuse>
+        <enable_login_mustagree_termsofuse>1</enable_login_mustagree_termsofuse>
         <enable_privacy_by_default>0</enable_privacy_by_default>
         <show_results>1</show_results>
         <cache_md5_info>1</cache_md5_info>
@@ -24,7 +24,12 @@
         <send_result_abort>1</send_result_abort>
         <dont_generate_upload_certificates>1</dont_generate_upload_certificates>
         <ignore_upload_certificates>1</ignore_upload_certificates>
-        <enable_delete_account>0</enable_delete_account>
+        <!-- 2 = DELETE_ACCOUNT_METHOD_WIPE: fully deletes the account and all
+             related DB records. BOINC's own delete_account.inc comment says
+             "this is way too complex, just use the wipe option", so it is
+             deliberately not method 3: that would call project_delete_account()
+             in project.inc, which is an unimplemented stub that just die()s. -->
+        <enable_delete_account>2</enable_delete_account>
     </config>
     <tasks>
         <task>
