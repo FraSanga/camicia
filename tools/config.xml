@@ -3,6 +3,12 @@
     <config>
         <min_sendwork_interval>6</min_sendwork_interval>
         <max_wus_to_send>50</max_wus_to_send>
+        <!-- Per-CPU cap on in-progress workunits: a host can hold at most
+             max_wus_in_progress * (# of its CPUs) unfinished results at once.
+             min_sendwork_interval/max_wus_to_send only throttle a single
+             request; this bounds a host's total outstanding share of the
+             backlog across many requests. -->
+        <max_wus_in_progress>2</max_wus_in_progress>
         <daily_result_quota>500</daily_result_quota>
         <disable_account_creation>0</disable_account_creation>
         <disable_account_creation_rpc>0</disable_account_creation_rpc>
@@ -31,7 +37,13 @@
             <period>24 hours</period>
             <output>db_dump.out</output>
             <cmd>db_dump -d 2 --dump_spec ../db_dump_spec.xml</cmd>
-            <disabled>1</disabled>
+            <disabled>0</disabled>
+        </task>
+        <task>
+            <period>24 hours</period>
+            <output>db_backup.out</output>
+            <cmd>db_backup.sh</cmd>
+            <disabled>0</disabled>
         </task>
         <task>
             <period>1 days</period>
@@ -90,10 +102,13 @@
     </tasks>
     <daemons>
         <daemon>
-            <cmd>assimilator --app simulator --outdir [SERVER_VOLUME_PROJECTS_DIR]/camicia/results -d 3</cmd>
+            <cmd>assimilator --app simulator -d 3</cmd>
         </daemon>
         <daemon>
             <cmd>sample_bitwise_validator -app simulator -d 3</cmd>
+        </daemon>
+        <daemon>
+            <cmd>work_generator --app simulator --range_size 1000000000 --cushion 20 -d 3</cmd>
         </daemon>
         <daemon>
             <cmd>feeder -d 3 </cmd>

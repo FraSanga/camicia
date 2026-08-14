@@ -1,5 +1,8 @@
 #include "engine.hpp"
 #include <algorithm>
+#ifdef CAMICIA_TESTING
+#include <cassert>
+#endif
 
 CamiciaGame::CamiciaGame(const std::vector<std::string>& playerA, const std::vector<std::string>& playerB) {
     for (const auto& s : playerA) deckA.push_back(stringToCard(s));
@@ -34,6 +37,12 @@ GameResult CamiciaGame::simulate() {
     int lastPaymentPlayer = -1;
 
     while (true) {
+#ifdef CAMICIA_TESTING
+        // Only compiled into test builds (-DCAMICIA_TESTING) -- zero cost in
+        // the production worker binary. Every card must be in exactly one of
+        // the two decks or the pile at all times.
+        assert(deckA.size() + deckB.size() + pile.size() == 52);
+#endif
         if (penaltyRemaining == 0 && pile.empty()) {
             State currentState;
             currentState.turn = turn;

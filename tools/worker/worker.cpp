@@ -7,6 +7,7 @@
 #include "boinc_api.h"
 #include "engine.hpp"
 #include "permutation.hpp"
+#include "int128_io.hpp"
 #include "filesys.h"
 
 using namespace std;
@@ -14,27 +15,6 @@ using namespace std;
 #define CHECKPOINT_FILE "camicia_state"
 #define INPUT_FILENAME "in"
 #define OUTPUT_FILENAME "out"
-
-int128 stringTo128(string s) {
-    int128 res = 0;
-    for (char c : s) {
-        if (c >= '0' && c <= '9') {
-            res = res * 10 + (c - '0');
-        }
-    }
-    return res;
-}
-
-string int128ToString(int128 n) {
-    if (n == 0) return "0";
-    string s = "";
-    while (n > 0) {
-        s += (char)((n % 10) + '0');
-        n /= 10;
-    }
-    reverse(s.begin(), s.end());
-    return s;
-}
 
 struct GameResultInfo {
     int128 index;
@@ -56,7 +36,7 @@ void do_checkpoint(WorkerState& state) {
     FILE* f = boinc_fopen("temp", "w");
     if (!f) return;
 
-    string cur = int128ToString(state.currentIndex);
+    string cur = int128ToString(state.currentIndex + 1);
     string start = int128ToString(state.startIndex);
     string end = int128ToString(state.endIndex);
     string bestIdx = int128ToString(state.bestFinished.index);
@@ -90,9 +70,9 @@ int main(int argc, char** argv) {
     if (chkpt) {
         char cur[128], start[128], end[128], bestIdxStr[128];
         size_t loopCount;
-        if (fscanf(chkpt, "%s %s %s %s %lld %lld %zu", 
-                   cur, start, end, bestIdxStr, 
-                   &state.bestFinished.cards, &state.bestFinished.tricks, 
+        if (fscanf(chkpt, "%127s %127s %127s %127s %lld %lld %zu",
+                   cur, start, end, bestIdxStr,
+                   &state.bestFinished.cards, &state.bestFinished.tricks,
                    &loopCount) == 7) {
             state.currentIndex = stringTo128(cur);
             state.startIndex = stringTo128(start);
@@ -102,7 +82,7 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < loopCount; ++i) {
                 char lIdxStr[128];
                 long long lCards, lTricks;
-                if (fscanf(chkpt, "%s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
+                if (fscanf(chkpt, "%127s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
                     state.loops.push_back({stringTo128(lIdxStr), lCards, lTricks});
                 }
             }
@@ -118,7 +98,7 @@ int main(int argc, char** argv) {
             boinc_finish(1);
         }
         char startStr[128], endStr[128];
-        if (fscanf(in, "%s %s", startStr, endStr) != 2) {
+        if (fscanf(in, "%127s %127s", startStr, endStr) != 2) {
             fprintf(stderr, "Invalid input format\n");
             boinc_finish(1);
         }

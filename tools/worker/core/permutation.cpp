@@ -1,4 +1,5 @@
 #include "permutation.hpp"
+#include <cassert>
 #include <map>
 
 typedef __int128_t int128;
@@ -35,6 +36,13 @@ std::vector<std::string> getNthPermutation(int128 n) {
     init_table();
     int counts[5] = {4, 4, 4, 4, 36}; // A, K, Q, J, -
     const char symbols[] = {'A', 'K', 'Q', 'J', '-'};
+
+    {
+        int total_counts[5] = {4, 4, 4, 4, 36};
+        int128 total_permutations = fast_multinomial(total_counts);
+        assert(n >= 0 && n < total_permutations &&
+               "getNthPermutation: index out of range of the 52-card permutation space");
+    }
     std::vector<std::string> result;
     result.reserve(52);
     

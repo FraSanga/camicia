@@ -13,6 +13,19 @@ while ! bash -c 'echo > /dev/tcp/boinc_db/3306' 2>/dev/null; do
 done
 
 if [ -d "$PROJECT_DIR" ]; then
+    MISSING=""
+    for f in config.xml bin/start bin/stop html/ops keys/code_sign_private; do
+        [ -e "$PROJECT_DIR/$f" ] || MISSING="$MISSING $f"
+    done
+    if [ -n "$MISSING" ]; then
+        echo "❌ [BOOT] ERROR: $PROJECT_DIR exists but bootstrap looks INCOMPLETE."
+        echo "   Missing:$MISSING"
+        echo "   This usually means a previous 'make_project' run was interrupted."
+        echo "   Fix: remove $PROJECT_DIR and re-run make_project (README.md §2), then"
+        echo "   re-run tools/tools.sh before restarting this container."
+        exit 1
+    fi
+
     echo "🔐 www-data permissions..."
     usermod -a -G "${PROJECTS_USER}" www-data
     chown -R "${PROJECTS_USER}":"${PROJECTS_USER}" "$PROJECT_DIR"
@@ -26,6 +39,19 @@ if [ -d "$PROJECT_DIR" ]; then
     htpasswd -b -c "$PROJECT_DIR/html/ops/.htpasswd" "$USER" "$PASS"
     chown www-data:www-data "$PROJECT_DIR/html/ops/.htpasswd"
     chmod 640 "$PROJECT_DIR/html/ops/.htpasswd"
+
+    echo "🔐 Locking down code-signing/upload keys..."
+    # Private keys: only boincadm ever needs these (tools.sh signs as boincadm) -> owner-only.
+    chmod 600 "$PROJECT_DIR"/keys/*_private 2>/dev/null || true
+    # Public keys: the scheduler CGI (runs as www-data, in the boincadm group) reads these on
+    # every scheduler request to verify app signatures -> must stay group-readable, or every
+    # client request silently fails with "Server can't find key file" and 0 tasks are ever sent.
+    chmod 640 "$PROJECT_DIR"/keys/*_public 2>/dev/null || true
+
+    echo "🔐 Locking down config.xml (contains the DB root password)..."
+    # www-data needs group-read: the ops PHP pages parse config.xml directly.
+    chown "${PROJECTS_USER}":www-data "$PROJECT_DIR/config.xml" 2>/dev/null || true
+    chmod 640 "$PROJECT_DIR/config.xml" 2>/dev/null || true
 
     echo "🔧 Setting permissions for upload/download/logs/pid..."
     chown -R "${PROJECTS_USER}:www-data" "$PROJECT_DIR/upload"

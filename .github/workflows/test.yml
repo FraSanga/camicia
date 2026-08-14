@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  permutation-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run permutation tests
+        run: |
+          g++ -std=c++17 -O2 tests/test_permutation.cpp tools/worker/core/permutation.cpp \
+            -o /tmp/test_permutation -I tools/worker/core
+          /tmp/test_permutation
+      - name: Build and run engine tests
+        run: |
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_engine -I tools/worker/core
+          /tmp/test_engine

@@ -1,5 +1,6 @@
 #include <vector>
 #include <string>
+#include <cstdio>
 #include <cstdlib>
 
 #include "boinc_db.h"
@@ -15,8 +16,12 @@ using std::string;
 const char* outdir = "../results";
 
 int write_error(WORKUNIT &wu, char* p) {
+    char batch_dir[1024];
     char path[1024];
-    sprintf(path, "%s/%d/%s_error", outdir, wu.batch, wu.name);
+    sprintf(batch_dir, "%s/%d", outdir, wu.batch);
+    int retval = boinc_mkdir(batch_dir);
+    if (retval) return retval;
+    sprintf(path, "%s/%s_error", batch_dir, wu.name);
     FILE* f = fopen(path, "a");
     if (!f) return ERR_FOPEN;
     fprintf(f, "%s", p);
@@ -53,8 +58,12 @@ int assimilate_handler(
 
     if (wu.canonical_resultid) {
         vector<OUTPUT_FILE_INFO> output_files;
-        get_output_file_infos(canonical_result, output_files);
-        
+        retval = get_output_file_infos(canonical_result, output_files);
+        if (retval) {
+            sprintf(buf, "get_output_file_infos() failed: %d\n", retval);
+            return write_error(wu, buf);
+        }
+
         sprintf(buf, "%s/results.txt", outdir);
         FILE* f_out = fopen(buf, "a");
         if (!f_out) {
@@ -65,10 +74,17 @@ int assimilate_handler(
         for (const OUTPUT_FILE_INFO& fi: output_files) {
             FILE* f_in = fopen(fi.path.c_str(), "r");
             if (f_in) {
-                char line[256];
-                while (fgets(line, sizeof(line), f_in)) {
+                // getline grows its buffer as needed, so a line longer than
+                // any fixed-size stack buffer still comes back whole instead
+                // of being silently split across multiple prefixed rows.
+                char* line = nullptr;
+                size_t line_cap = 0;
+                ssize_t len;
+                while ((len = getline(&line, &line_cap, f_in)) != -1) {
                     fprintf(f_out, "%s,%s", wu.name, line);
+                    if (len == 0 || line[len - 1] != '\n') fprintf(f_out, "\n");
                 }
+                free(line);
                 fclose(f_in);
             } else {
                 fclose(f_out);
@@ -80,7 +96,7 @@ int assimilate_handler(
     } else {
         char buf_err[1024];
         sprintf(buf_err, "0x%x\n", wu.error_mask);
-        return write_error(wu, buf);
+        return write_error(wu, buf_err);
     }
     
     return 0;

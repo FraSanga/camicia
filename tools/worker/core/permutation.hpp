@@ -5,7 +5,7 @@
 #include <string>
 #include <map>
 
-typedef __int128_t int128;
+#include "int128_io.hpp"
 
 std::vector<std::string> getNthPermutation(int128 n);
 

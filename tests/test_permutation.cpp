@@ -7,29 +7,6 @@
 
 using namespace std;
 
-typedef __int128_t int128;
-
-static int128 stringTo128(string s) {
-    int128 res = 0;
-    for (char c : s) {
-        if (c >= '0' && c <= '9') {
-            res = res * 10 + (c - '0');
-        }
-    }
-    return res;
-}
-
-static string int128ToString(int128 n) {
-    if (n == 0) return "0";
-    string s = "";
-    while (n > 0) {
-        s += (char)((n % 10) + '0');
-        n /= 10;
-    }
-    reverse(s.begin(), s.end());
-    return s;
-}
-
 static string deckToString(const vector<string>& deck) {
     string res = "";
     for (const auto& s : deck) {

@@ -24,7 +24,21 @@ services:
     networks:
       - database_network
     depends_on:
-      - database
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    # Conservative starting points, not precisely tuned: bound a runaway
+    # process (e.g. from untrusted client-submitted result files, or a
+    # request flood) from exhausting the host, which would also affect the
+    # database container since they share it. Idle usage is well under
+    # 100MiB; revisit if real load ever approaches these.
+    mem_limit: 2g
+    pids_limit: 512
 
   database:
     image: mariadb:11.8
@@ -39,6 +53,37 @@ services:
       - database_volume:/var/lib/mysql
     networks:
       - database_network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Same rationale as server's limits above. If the workunit/result tables
+    # grow large enough for this to matter, raise it deliberately rather than
+    # leaving it unbounded.
+    mem_limit: 2g
+    pids_limit: 256
+
+  # Cloudflare Tunnel: exposes the server service publicly without opening
+  # any inbound port on the host/router (cloudflared only makes outbound
+  # connections to Cloudflare's edge). Disabled by default (profile-gated)
+  # until CLOUDFLARE_TUNNEL_TOKEN is set in .env — see DEPLOYMENT.md.
+  # Start with: docker compose --profile cloudflare up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ${SERVER_CONTAINER_NAME}_cloudflared
+    restart: unless-stopped
+    profiles:
+      - cloudflare
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - database_network
+    depends_on:
+      server:
+        condition: service_healthy
 
 networks:
   database_network:
