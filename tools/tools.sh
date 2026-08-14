@@ -38,6 +38,21 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     echo "✅ Project found! Starting deployment..."
     PROJECT_FOUND=1
 
+    # entrypoint.sh only runs this at container boot, and only if the project
+    # already existed at that exact moment -- but the documented bootstrap
+    # workflow runs make_project *after* the container is already up
+    # (README.md SS1-2), so on a fresh project entrypoint.sh's own call is a
+    # no-op and www-data never gets read access to html/. Running it here
+    # guarantees it happens on every deploy, including the very first one.
+    echo "🔐 Fixing project-wide permissions..."
+    docker exec \
+        -e SERVER_VOLUME_PROJECTS_DIR="$SERVER_VOLUME_PROJECTS_DIR" \
+        -e PROJECTS_USER="$PROJECTS_USER" \
+        -e OPS_USER="$OPS_USER" \
+        -e OPS_PASS="$OPS_PASS" \
+        -e SERVER_HOSTNAME="$SERVER_HOSTNAME" \
+        "$SERVER_CONTAINER_NAME" /usr/local/bin/fix_permissions.sh
+
     echo "🛑 Stopping BOINC project daemons..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/stop"
 

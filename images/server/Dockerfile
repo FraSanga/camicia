@@ -80,7 +80,8 @@ RUN a2dissite 000-default && a2ensite boinc
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
+COPY fix_permissions.sh /usr/local/bin/fix_permissions.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh /usr/local/bin/fix_permissions.sh
 
 ARG SERVER_VOLUME_PROJECTS_DIR
 WORKDIR ${SERVER_VOLUME_PROJECTS_DIR}
