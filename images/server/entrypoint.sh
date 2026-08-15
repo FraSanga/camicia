@@ -27,6 +27,19 @@ if [ -d "$PROJECT_DIR" ]; then
     fi
 
     /usr/local/bin/fix_permissions.sh
+
+    # make_project only writes camicia.cronjob to disk -- installing it into
+    # an actual crontab is a manual step in BOINC's own bootstrap docs
+    # ("Add to crontab (as boincadm): crontab -e ..."), easy to miss and
+    # silent when missed: cron itself starts fine below, it just never has
+    # anything to run, so every <task> in config.xml (db_backup.sh,
+    # disk_space_check.sh, memory_check.sh, rotate_results.sh, etc.) silently
+    # never fires. Install unconditionally and idempotently (crontab -u
+    # overwrites, not appends) so this self-heals on every container start,
+    # the same reasoning as fix_permissions.sh above.
+    if [ -f "$PROJECT_DIR/camicia.cronjob" ]; then
+        crontab -u "${PROJECTS_USER}" "$PROJECT_DIR/camicia.cronjob"
+    fi
 fi
 
 if [ -f "$PROJECT_DIR/bin/start" ]; then

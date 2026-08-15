@@ -69,6 +69,12 @@
             <disabled>0</disabled>
         </task>
         <task>
+            <period>24 hours</period>
+            <output>rotate_daemon_logs.out</output>
+            <cmd>rotate_daemon_logs.sh</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
             <period>1 days</period>
             <output>update_uotd.out</output>
             <cmd>run_in_ops ./update_uotd.php</cmd>

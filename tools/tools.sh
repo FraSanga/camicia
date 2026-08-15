@@ -53,6 +53,15 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
         -e SERVER_HOSTNAME="$SERVER_HOSTNAME" \
         "$SERVER_CONTAINER_NAME" /usr/local/bin/fix_permissions.sh
 
+    # Same reasoning/fix as entrypoint.sh: make_project only writes
+    # camicia.cronjob to disk, installing it into an actual crontab is a
+    # manual bootstrap step easy to miss -- redone here too so an image that
+    # predates this fix (running container, not yet recreated) self-heals on
+    # the very next deploy rather than needing a full container recreate.
+    if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -f '$PROJECT_DIR/camicia.cronjob' ]"; then
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "crontab -u '$PROJECTS_USER' '$PROJECT_DIR/camicia.cronjob'"
+    fi
+
     echo "🛑 Stopping BOINC project daemons..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/stop"
 
@@ -70,6 +79,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./memory_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/memory_check.sh"
     docker cp ./notify.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/notify.sh"
     docker cp ./rotate_results.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/rotate_results.sh"
+    docker cp ./rotate_daemon_logs.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/rotate_daemon_logs.sh"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
@@ -93,6 +103,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/notify.sh && chmod +x $PROJECT_DIR/bin/notify.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/rotate_results.sh && chmod +x $PROJECT_DIR/bin/rotate_results.sh"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/rotate_daemon_logs.sh && chmod +x $PROJECT_DIR/bin/rotate_daemon_logs.sh"
     if [ -n "$NTFY_TOPIC" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/ntfy_topic && chmod 600 $PROJECT_DIR/ntfy_topic"
     fi
