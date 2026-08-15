@@ -82,31 +82,31 @@ define('MAX_CPUS_PREF', false);
 
 //-------------- PHPMailer
 
-// If you use PHPMailer, uncomment the following
-// and complete the function definition based on your SMTP server
-// (not all fields may be needed)
-//
-if (0) {
-function make_php_mailer() {
-    $mail = new PHPMailer();
-    $mail->IsSMTP();
-    //$mail->Mailer = 'smtp';
-    $mail->SMTPAuth = true;
-    $mail->SMTPSecure = "tls";
-    $mail->Host = "smtp.gmail.com";
-    $mail->Port = 587;
-    $mail->Username = "john.doe@gmail.com";
-    $mail->Password = "xxx";
-        // Google's application-specific password,
-        // if you are using the 2-Step Verification: 16 characters, no spaces.
-        // OR: Put here the regular Gmail password if you are not using the
-        // 2-Step Verification with your Gmail account.
-        // See https://support.google.com/accounts/answer/185833?hl=en";
-    $mail->SetFrom('admin@boincproject.com', 'John Doe');
-    $mail->AddReplyTo("admin@boincproject.com", "John Doe");
-    $mail->From = "admin@boincproject.com";
-    return $mail;
-}
+// Real SMTP credentials are kept out of this (git-tracked) file. tools.sh
+// writes them into smtp_credentials.inc.php at the project root -- generated
+// from SMTP_* in .env, same pattern as ntfy_topic -- and vendors the
+// PHPMailer library itself (tools/phpmailer/) into html/inc/PHPMailer/. If
+// that credentials file isn't present (e.g. a dev/test deploy with no SMTP
+// configured), make_php_mailer() is deliberately left undefined so
+// send_email() (html/inc/email.inc) falls back to PHP's mail() -- which
+// silently no-ops here since there's no local MTA, same as before SMTP was
+// configured at all.
+$smtp_credentials_file = __DIR__ . "/../../smtp_credentials.inc.php";
+if (file_exists($smtp_credentials_file)) {
+    require_once($smtp_credentials_file);
+    function make_php_mailer() {
+        $mail = new \PHPMailer\PHPMailer\PHPMailer();
+        $mail->isSMTP();
+        $mail->SMTPAuth = true;
+        $mail->SMTPSecure = "tls";
+        $mail->Host = SMTP_HOST;
+        $mail->Port = SMTP_PORT;
+        $mail->Username = SMTP_USERNAME;
+        $mail->Password = SMTP_PASSWORD;
+        $mail->setFrom(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
+        $mail->addReplyTo(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
+        return $mail;
+    }
 }
 
 //-------------- Header and footer

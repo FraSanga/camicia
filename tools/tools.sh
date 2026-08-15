@@ -70,12 +70,33 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./memory_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/memory_check.sh"
     docker cp ./notify.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/notify.sh"
 
+    echo "📧 Vendoring PHPMailer..."
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$PROJECT_DIR/html/inc/PHPMailer'"
+    docker cp ./phpmailer/src "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/PHPMailer/src"
+
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
     # repo (it's effectively a shared secret: anyone with it can post to or
     # read the topic) the same way OPS_PASS/DB credentials are.
     if [ -n "$NTFY_TOPIC" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "echo '$NTFY_TOPIC' > $PROJECT_DIR/ntfy_topic"
+    fi
+
+    # SMTP credentials for make_php_mailer() (see project.inc) -- optional,
+    # only written if SMTP_HOST is set in .env. Kept out of the repo the same
+    # way NTFY_TOPIC/OPS_PASS are; piped over stdin (not passed as a docker
+    # exec argument) so the password doesn't appear in `docker top`/process
+    # listings while this runs.
+    if [ -n "$SMTP_HOST" ]; then
+        docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/smtp_credentials.inc.php" <<EOF
+<?php
+define('SMTP_HOST', '$SMTP_HOST');
+define('SMTP_PORT', $SMTP_PORT);
+define('SMTP_USERNAME', '$SMTP_USERNAME');
+define('SMTP_PASSWORD', '$SMTP_PASSWORD');
+define('SMTP_FROM_EMAIL', '$SMTP_FROM_EMAIL');
+define('SMTP_FROM_NAME', '$SMTP_FROM_NAME');
+EOF
     fi
 
     echo "🧩 Preparing smart merge of config.xml..."
@@ -86,13 +107,19 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/terms_of_use.txt 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/notify.sh && chmod +x $PROJECT_DIR/bin/notify.sh"
     if [ -n "$NTFY_TOPIC" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/ntfy_topic && chmod 600 $PROJECT_DIR/ntfy_topic"
+    fi
+    if [ -n "$SMTP_HOST" ]; then
+        # www-data needs group-read: project.inc's make_php_mailer() runs as
+        # www-data and require_once()s this file directly (same treatment as
+        # config.xml, for the same reason).
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/smtp_credentials.inc.php && chmod 640 $PROJECT_DIR/smtp_credentials.inc.php"
     fi
 
     echo "⚙️ Compiling Assimilator..."
