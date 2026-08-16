@@ -14,6 +14,14 @@ jobs:
     environment: production
     steps:
       - name: Pull latest main and redeploy
+        env:
+          # keys/code_sign_private is kept encrypted at rest on production;
+          # tools.sh decrypts it only for the brief window update_versions
+          # needs it, using this secret -- never written to production's
+          # .env, only present in this step's process environment for the
+          # duration of the run. See DEPLOYMENT.md for the one-time setup
+          # this depends on.
+          CODE_SIGN_KEY_PASSPHRASE: ${{ secrets.CODE_SIGN_KEY_PASSPHRASE }}
         run: |
           cd ~/camicia
           git fetch origin main
