@@ -137,6 +137,11 @@ int main(int argc, char** argv) {
         boinc_fraction_done(fraction);
     }
 
+    // Output order must stay deterministic (single-threaded, ascending
+    // currentIndex): sample_bitwise_validator hashes the whole output file
+    // byte-for-byte with no order-independence, so if this loop or the
+    // writes below are ever parallelized/reordered, replica outputs will
+    // silently stop matching and affected WUs will never reach quorum.
     FILE* out = boinc_fopen(output_path, "w");
     if (out) {
         if (state.bestFinished.cards > 0) {

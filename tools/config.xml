@@ -46,6 +46,23 @@
         </task>
         <task>
             <period>24 hours</period>
+            <output>db_purge.out</output>
+            <!-- --one_pass: run once and exit, matching this <task>'s cron-
+                 triggered invocation, instead of db_purge's default
+                 long-running sleep-300s-between-scans daemon behavior.
+                 --min_age_days 7: leave a debugging buffer between a WU
+                 becoming eligible (file_delete_state == FILE_DELETE_DONE)
+                 and actually purging its DB rows. --gzip: archive purged
+                 workunit/result rows to compressed XML under archives/
+                 before deleting, rather than --no_archive -- the game data
+                 itself is already preserved forever in results/results.txt
+                 via rotate_results.sh, but this keeps the DB-row metadata
+                 too, cheaply. -->
+            <cmd>db_purge -d 2 --one_pass --min_age_days 7 --gzip</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
+            <period>24 hours</period>
             <output>db_backup.out</output>
             <cmd>db_backup.sh</cmd>
             <disabled>0</disabled>

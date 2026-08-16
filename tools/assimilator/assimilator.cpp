@@ -64,6 +64,12 @@ int assimilate_handler(
             return write_error(wu, buf);
         }
 
+        // Safe only because config.xml runs a single, unsharded assimilator
+        // daemon -- writes are strictly sequential from one process. If a
+        // second --mod-sharded instance is ever added to relieve backlog,
+        // concurrent buffered fopen("a") writes from two processes can
+        // interleave mid-flush and corrupt results.txt; switch to raw
+        // O_APPEND writes or per-shard output files first.
         sprintf(buf, "%s/results.txt", outdir);
         FILE* f_out = fopen(buf, "a");
         if (!f_out) {
