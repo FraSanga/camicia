@@ -14,6 +14,7 @@
 set -e
 
 PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
+KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
 
 echo "🔐 www-data permissions..."
 usermod -a -G "${PROJECTS_USER}" www-data
@@ -30,12 +31,19 @@ chown www-data:www-data "$PROJECT_DIR/html/ops/.htpasswd"
 chmod 640 "$PROJECT_DIR/html/ops/.htpasswd"
 
 echo "🔐 Locking down code-signing/upload keys..."
+# Keys live on their own persistent bind mount (SERVER_VOLUME_KEYS), separate from
+# PROJECT_DIR, specifically so they survive a from-scratch wipe-and-rebootstrap of the
+# project tree -- see config.xml's <key_dir>, which every BOINC tool reads at runtime.
+chown -R "${PROJECTS_USER}":"${PROJECTS_USER}" "$KEY_DIR"
 # Private keys: only boincadm ever needs these (tools.sh signs as boincadm) -> owner-only.
-chmod 600 "$PROJECT_DIR"/keys/*_private 2>/dev/null || true
+chmod 600 "$KEY_DIR"/*_private 2>/dev/null || true
+# code_sign_private.gpg: encrypted at rest, but still locked to owner-only as defense in
+# depth (doesn't match the *_private glob above since it ends in .gpg, not _private).
+chmod 600 "$KEY_DIR"/*.gpg 2>/dev/null || true
 # Public keys: the scheduler CGI (runs as www-data, in the boincadm group) reads these on
 # every scheduler request to verify app signatures -> must stay group-readable, or every
 # client request silently fails with "Server can't find key file" and 0 tasks are ever sent.
-chmod 640 "$PROJECT_DIR"/keys/*_public 2>/dev/null || true
+chmod 640 "$KEY_DIR"/*_public 2>/dev/null || true
 
 echo "🔐 Locking down config.xml (contains the DB root password)..."
 # www-data needs group-read: the ops PHP pages parse config.xml directly.

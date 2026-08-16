@@ -2,6 +2,7 @@
 set -e
 
 PROJECT_DIR=${SERVER_VOLUME_PROJECTS_DIR}/camicia
+KEY_DIR=${SERVER_VOLUME_KEYS_DIR}
 export PYTHONPATH=$PYTHONPATH:/usr/local/src/boinc/py
 
 echo "🚀 [BOOT] Starting BOINC Server..."
@@ -14,9 +15,17 @@ done
 
 if [ -d "$PROJECT_DIR" ]; then
     MISSING=""
-    for f in config.xml bin/start bin/stop html/ops keys/code_sign_private; do
+    for f in config.xml bin/start bin/stop html/ops; do
         [ -e "$PROJECT_DIR/$f" ] || MISSING="$MISSING $f"
     done
+    # code_sign_public specifically, not code_sign_private: keys live on
+    # their own persistent mount (KEY_DIR, not PROJECT_DIR) since the
+    # persistent-keys migration, and code_sign_private is normally encrypted
+    # at rest / only briefly plaintext during a tools.sh deploy -- checking
+    # for it here would false-positive "incomplete bootstrap" on every
+    # ordinary container restart. code_sign_public is always plaintext
+    # (it's meant to be public) and equally good evidence keys exist.
+    [ -e "$KEY_DIR/code_sign_public" ] || MISSING="$MISSING $KEY_DIR/code_sign_public"
     if [ -n "$MISSING" ]; then
         echo "❌ [BOOT] ERROR: $PROJECT_DIR exists but bootstrap looks INCOMPLETE."
         echo "   Missing:$MISSING"

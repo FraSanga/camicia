@@ -12,6 +12,7 @@ else
 fi
 
 PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
+KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
 
 # If anything below fails after daemons are stopped, this leaves the project
 # running degraded (down) until camicia.cronjob's 5-minute "bin/start --cron"
@@ -25,7 +26,7 @@ recover_daemons_on_failure() {
     # ever ran, this guarantees the plaintext code-signing key can't survive
     # past this script's exit, even if `set -e` kills the script somewhere
     # between decrypting it and the normal cleanup step further down.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $PROJECT_DIR/keys/code_sign_private" 2>/dev/null || true
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private" 2>/dev/null || true
     if [ "$exit_code" -ne 0 ] && [ "$PROJECT_FOUND" -eq 1 ]; then
         echo "⚠️  Deploy failed (exit $exit_code) -- attempting to restart daemons so the project isn't left down..."
         if docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"; then
@@ -245,13 +246,15 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
 EOF"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER '$APP_DIR'"
 
-    # code_sign_private is kept encrypted at rest (keys/code_sign_private.gpg)
-    # per BOINC's own code-signing wiki guidance, decrypted only for the
-    # brief window update_versions actually needs it to sign. Passphrase
-    # comes from CODE_SIGN_KEY_PASSPHRASE -- on production this is injected
-    # by deploy.yml from a GitHub Actions Environment secret and never
-    # touches .env/disk there; locally it can be set in .env for convenience.
-    # If unset, this is skipped entirely and a plaintext key must already
+    # code_sign_private lives on its own persistent bind mount (KEY_DIR, not
+    # PROJECT_DIR -- see config.xml's <key_dir>) and is kept encrypted at
+    # rest (code_sign_private.gpg) per BOINC's own code-signing wiki
+    # guidance, decrypted only for the brief window update_versions
+    # actually needs it to sign. Passphrase comes from
+    # CODE_SIGN_KEY_PASSPHRASE -- on production this is injected by
+    # deploy.yml from a GitHub Actions Environment secret and never touches
+    # .env/disk there; locally it can be set in .env for convenience. If
+    # unset, this is skipped entirely and a plaintext key must already
     # exist, or update_versions below fails with BOINC's own clear
     # "no code signing private key" error rather than anything silent.
     # Passphrase piped over stdin, not a docker exec argument, so it doesn't
@@ -260,10 +263,10 @@ EOF"
     if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
         echo "🔓 Decrypting code-signing key for this deploy..."
         docker exec -i "$SERVER_CONTAINER_NAME" bash -c \
-            "gpg --batch --yes --passphrase-fd 0 -o $PROJECT_DIR/keys/code_sign_private --decrypt $PROJECT_DIR/keys/code_sign_private.gpg" \
+            "gpg --batch --yes --passphrase-fd 0 -o $KEY_DIR/code_sign_private --decrypt $KEY_DIR/code_sign_private.gpg" \
             <<< "$CODE_SIGN_KEY_PASSPHRASE"
         docker exec "$SERVER_CONTAINER_NAME" bash -c \
-            "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/keys/code_sign_private && chmod 600 $PROJECT_DIR/keys/code_sign_private"
+            "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/code_sign_private && chmod 600 $KEY_DIR/code_sign_private"
     fi
 
     echo "🔄 Registering new app version (update_versions)..."
@@ -272,7 +275,7 @@ EOF"
 
     if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
         echo "🔒 Re-hiding code-signing key..."
-        docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $PROJECT_DIR/keys/code_sign_private"
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
     fi
 
     echo "▶️ Restarting BOINC project..."

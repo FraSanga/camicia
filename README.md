@@ -22,6 +22,7 @@ docker exec -it -u <PROJECTS_USER> -e USER=<PROJECTS_USER> <SERVER_CONTAINER_NAM
 /usr/local/src/boinc/tools/make_project /
 --srcdir /usr/local/src/boinc /
 --project_root <SERVER_VOLUME_PROJECTS_DIR>/camicia /
+--key_dir <SERVER_VOLUME_KEYS_DIR> /
 --url_base http://<DOMAIN> /
 --delete_prev_inst /
 --drop_db_first /
@@ -31,6 +32,12 @@ docker exec -it -u <PROJECTS_USER> -e USER=<PROJECTS_USER> <SERVER_CONTAINER_NAM
 --db_name <MARIADB_DATABASE> /
 camicia
 ```
+
+`--key_dir` points at the dedicated, separate `SERVER_VOLUME_KEYS` bind mount rather than
+`make_project`'s own default (inside `--project_root`, i.e. inside `SERVER_VOLUME_PROJECTS`) --
+this is what makes the code-signing/upload keys survive a from-scratch wipe of `projects/`. If
+keys already exist there from a previous setup, `make_project` finds them and skips generating new
+ones entirely; if this is a genuinely first-ever setup, it generates them there.
 
 ### Post-Creation Steps
 
