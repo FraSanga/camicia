@@ -12,10 +12,11 @@
 # rows exist would mean a live-traffic schema migration instead.
 #
 # NOT run automatically by tools.sh (same convention as create_forums.php):
-# deploy by hand, then run by hand, once:
-#   docker cp ./migrate_widen_ids.sh boinc_server:/home/boincadm/projects/camicia/bin/
-#   docker exec boinc_server chown boincadm:boincadm /home/boincadm/projects/camicia/bin/migrate_widen_ids.sh
-#   docker exec boinc_server chmod +x /home/boincadm/projects/camicia/bin/migrate_widen_ids.sh
+# deploy by hand, then run by hand, once. See tools/migrations/README.md for
+# the full migrations convention/log.
+#   docker cp ./0001_widen_workunit_result_ids.sh boinc_server:/home/boincadm/projects/camicia/bin/
+#   docker exec boinc_server chown boincadm:boincadm /home/boincadm/projects/camicia/bin/0001_widen_workunit_result_ids.sh
+#   docker exec boinc_server chmod +x /home/boincadm/projects/camicia/bin/0001_widen_workunit_result_ids.sh
 #
 # Before running: take a fresh backup (bin/db_backup.sh) and stop the
 # daemons (bin/stop) so nothing races the ALTER TABLEs; bin/start after.
