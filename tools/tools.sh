@@ -93,6 +93,36 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./config.xml "$SERVER_CONTAINER_NAME":/tmp/config_new.xml
     docker cp ./merge_config.py "$SERVER_CONTAINER_NAME":/tmp/merge_config.py
 
+    # Akismet key for forum/PM/profile spam filtering -- optional, only
+    # injected if AKISMET_KEY is set in .env. Added to the staged
+    # /tmp/config_new.xml (not the committed tools/config.xml) so it flows
+    # through merge_config.py's existing per-child <config> merge unchanged,
+    # and passed over stdin rather than as a docker exec argument so it
+    # doesn't appear in `docker top`/process listings while this runs (same
+    # reasoning as the SMTP credentials heredoc below). Writes to a fresh
+    # temp file and mv's it over the target rather than opening the just-
+    # docker-cp'd file in place for write -- doing the latter directly hit a
+    # spurious PermissionError (even as root) on Docker Desktop's WSL2
+    # backend, most likely a propagation-timing quirk between docker cp's
+    # write and a docker exec'd process re-opening that same inode
+    # immediately after; rename-over sidesteps it.
+    if [ -n "$AKISMET_KEY" ]; then
+        echo "🔑 Injecting Akismet spam-filter key into config.xml..."
+        docker exec -i "$SERVER_CONTAINER_NAME" python3 -c "
+import sys, xml.etree.ElementTree as ET
+key = sys.stdin.read().strip()
+tree = ET.parse('/tmp/config_new.xml')
+root = tree.getroot()
+config = root.find('config')
+node = config.find('akismet_key')
+if node is None:
+    node = ET.SubElement(config, 'akismet_key')
+node.text = key
+tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
+" <<< "$AKISMET_KEY"
+        docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
+    fi
+
     echo "🐍 Running Python script to update XML nodes..."
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
