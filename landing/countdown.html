@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Camicia Countdown</title>
+<meta name="description" content="Counting down to launch, with the first infinite game of Camicia playing itself on a loop." />
+<style>
+  :root {
+    --felt: #0f1f1a;
+    --felt-2: #16302a;
+    --felt-line: #1d3a32;
+    --gold: #c9a227;
+    --gold-dim: #8c7a3e;
+    --cream: #ede3cb;
+    --cream-dim: #b7ae95;
+    --ruby: #a83349;
+    --tone-j: #cbb257;
+    --tone-q: #c9a227;
+    --tone-k: #b1841a;
+    --tone-a: #a83349;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: var(--felt);
+    color: var(--cream);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 6vh 1.5rem;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 34px),
+      repeating-linear-gradient(-45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 34px);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 0%, transparent 40%, var(--felt) 100%);
+    pointer-events: none;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 40rem;
+    text-align: center;
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+  }
+
+  h1 {
+    margin: 0.4rem 0 0;
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    font-weight: 400;
+    font-size: clamp(1.9rem, 6vw, 2.6rem);
+    color: var(--gold);
+    text-wrap: balance;
+  }
+
+  .countdown {
+    margin: 2.5rem auto 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 3.6rem;
+  }
+
+  .num {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(1.9rem, 7vw, 2.75rem);
+    color: var(--cream);
+    line-height: 1;
+  }
+
+  .unit-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+  }
+
+  .sep {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: clamp(1.5rem, 5vw, 2rem);
+    color: var(--felt-line);
+    transform: translateY(-0.6rem);
+  }
+
+  .rule {
+    width: 5rem;
+    height: 1px;
+    margin: 2.75rem auto;
+    background: var(--gold-dim);
+    border: none;
+  }
+
+  .demo h2 {
+    margin: 0.35rem 0 0;
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    font-weight: 400;
+    font-size: 1.5rem;
+    color: var(--gold);
+  }
+
+  .lede {
+    max-width: 30rem;
+    margin: 0.75rem auto 0;
+    font-size: 0.92rem;
+    line-height: 1.65;
+    color: var(--cream-dim);
+  }
+
+  .board {
+    margin-top: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.75rem, 4vw, 2.5rem);
+  }
+
+  .player {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    border-radius: 6px;
+    transition: box-shadow 0.3s ease;
+  }
+
+  .player.active {
+    box-shadow: inset 0 0 0 1px var(--gold-dim);
+  }
+
+  .stack {
+    position: relative;
+    width: 2.6rem;
+    height: 3.7rem;
+  }
+
+  .stack-card {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    background-color: var(--felt-2);
+    border: 1px solid var(--felt-line);
+    background-image:
+      repeating-linear-gradient(45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 8px),
+      repeating-linear-gradient(-45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 8px);
+  }
+
+  .stack-card:nth-child(1) { transform: translate(2px, 4px); }
+  .stack-card:nth-child(2) { transform: translate(1px, 2px); }
+  .stack-card:nth-child(3) { transform: translate(0, 0); border-color: var(--gold-dim); }
+
+  .player.active .stack-card:nth-child(3) {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+  }
+
+  .player-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    color: var(--gold-dim);
+  }
+
+  .player-count {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    color: var(--cream);
+  }
+
+  .pile-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 6.5rem;
+  }
+
+  .pile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.9rem;
+    min-width: 3.2rem;
+    transition: transform 0.45s ease, opacity 0.45s ease;
+  }
+
+  .pile.sweep-a { transform: translateX(-4.5rem) scale(0.4); opacity: 0; }
+  .pile.sweep-b { transform: translateX(4.5rem) scale(0.4); opacity: 0; }
+
+  .card {
+    --rot: 0deg;
+    width: 2.3rem;
+    height: 3.3rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-left: -1.9rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+    animation: deal 0.22s ease-out;
+    transform: rotate(var(--rot));
+  }
+
+  .card:first-child { margin-left: 0; }
+
+  @keyframes deal {
+    from { opacity: 0; transform: translateY(-16px) scale(0.8) rotate(var(--rot)); }
+    to { opacity: 1; transform: rotate(var(--rot)); }
+  }
+
+  .card.plain {
+    background: var(--felt-2);
+    border: 1px solid var(--felt-line);
+  }
+
+  .card.plain::after {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--gold-dim);
+  }
+
+  .card.tone-j { background: var(--tone-j); color: var(--felt); }
+  .card.tone-q { background: var(--tone-q); color: var(--felt); }
+  .card.tone-k { background: var(--tone-k); color: var(--felt); }
+  .card.tone-a { background: var(--tone-a); color: var(--cream); }
+
+  .pile-count {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+    color: var(--gold-dim);
+    min-height: 1em;
+  }
+
+  .toast {
+    position: absolute;
+    top: -1.6rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: var(--gold);
+    white-space: nowrap;
+    background: var(--felt);
+    border: 1px solid var(--felt-line);
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    animation: toast-in 0.6s ease-out forwards;
+    pointer-events: none;
+  }
+
+  @keyframes toast-in {
+    0% { opacity: 0; transform: translate(-50%, 4px); }
+    15% { opacity: 1; transform: translate(-50%, 0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -6px); }
+  }
+
+  .tallies {
+    margin-top: 1.75rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  .tally-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .tally-num {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.35rem;
+    color: var(--gold);
+  }
+
+  .tally-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+  }
+
+  footer {
+    margin-top: 3rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--gold-dim);
+    opacity: 0.8;
+  }
+
+  footer a {
+    color: inherit;
+    text-decoration-color: var(--felt-line);
+    text-underline-offset: 0.2em;
+  }
+
+  footer a:hover,
+  footer a:focus-visible {
+    color: var(--gold);
+    text-decoration-color: var(--gold);
+  }
+
+  footer a:focus-visible {
+    outline: 1px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .pile { transition: none; }
+    .player { transition: none; }
+    .toast { animation: none; opacity: 0.9; }
+  }
+
+  @media (max-width: 560px) {
+    body { padding: 8vh 1rem; }
+    .board { gap: 0.6rem; }
+    .stack { width: 2.1rem; height: 3rem; }
+    .card { width: 1.85rem; height: 2.65rem; font-size: 0.9rem; margin-left: -1.5rem; }
+    .countdown { gap: 0.35rem; }
+    .unit { min-width: 3rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Camicia</p>
+  <h1>Launching soon</h1>
+
+  <div class="countdown" aria-label="Countdown to launch">
+    <div class="unit"><span class="num" id="d">00</span><span class="unit-label">days</span></div>
+    <span class="sep" aria-hidden="true">:</span>
+    <div class="unit"><span class="num" id="h">00</span><span class="unit-label">hrs</span></div>
+    <span class="sep" aria-hidden="true">:</span>
+    <div class="unit"><span class="num" id="m">00</span><span class="unit-label">min</span></div>
+    <span class="sep" aria-hidden="true">:</span>
+    <div class="unit"><span class="num" id="s">00</span><span class="unit-label">sec</span></div>
+  </div>
+
+  <hr class="rule" />
+
+  <section class="demo">
+    <p class="eyebrow">Demo, documented by Casella, 2024</p>
+    <h2>The first infinite game</h2>
+    <p class="lede">
+      Every deal in the search space gets played out by these rules, one card at a time.
+      This one never ends, so once it loops we just let it keep going.
+    </p>
+
+    <div class="board" aria-hidden="true">
+      <div class="player" id="playerA">
+        <div class="stack"><div class="stack-card"></div><div class="stack-card"></div><div class="stack-card"></div></div>
+        <span class="player-label">A</span>
+        <span class="player-count" id="countA">26</span>
+      </div>
+
+      <div class="pile-wrap">
+        <div class="pile" id="pile"></div>
+        <span class="pile-count" id="pileCount"></span>
+      </div>
+
+      <div class="player" id="playerB">
+        <div class="stack"><div class="stack-card"></div><div class="stack-card"></div><div class="stack-card"></div></div>
+        <span class="player-label">B</span>
+        <span class="player-count" id="countB">26</span>
+      </div>
+    </div>
+
+    <div class="tallies">
+      <div class="tally-item">
+        <span class="tally-num" id="trickTally">0</span>
+        <span class="tally-label">Tricks</span>
+      </div>
+      <div class="tally-item">
+        <span class="tally-num" id="gameTally">1</span>
+        <span class="tally-label">Loops</span>
+      </div>
+      <div class="tally-item">
+        <span class="tally-num" id="cardsTally">0</span>
+        <span class="tally-label">Cards played</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>a <a href="https://boinc.berkeley.edu/">BOINC</a> project</footer>
+</main>
+
+<script>
+  // Placeholder target, replace with the real launch date once picked.
+  var LAUNCH_AT = new Date("2026-09-16T08:00:00+02:00");
+
+  (function () {
+    var els = { d: document.getElementById("d"), h: document.getElementById("h"), m: document.getElementById("m"), s: document.getElementById("s") };
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function tick() {
+      var diff = Math.max(0, LAUNCH_AT.getTime() - Date.now());
+      var s = Math.floor(diff / 1000);
+      var days = Math.floor(s / 86400); s -= days * 86400;
+      var hrs = Math.floor(s / 3600); s -= hrs * 3600;
+      var min = Math.floor(s / 60); s -= min * 60;
+      els.d.textContent = pad(days);
+      els.h.textContent = pad(hrs);
+      els.m.textContent = pad(min);
+      els.s.textContent = pad(s);
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+
+  (function () {
+    var HAND_A = "222K222Q2KQAJ22222AAJ22J22".split("");
+    var HAND_B = "2222222222Q2222KQ2J22222KA".split("");
+    var PENALTY = { A: 4, K: 3, Q: 2, J: 1 };
+    var NAME = { A: "Ace", K: "King", Q: "Queen", J: "Jack" };
+
+    function simulate(handA, handB) {
+      var deckA = handA.slice(), deckB = handB.slice(), pile = [];
+      var turn = 0, penaltyRemaining = 0, lastPaymentPlayer = -1;
+      var seen = new Map();
+      var checkpointEventIndex = [];
+      var events = [];
+      var cycle = null;
+
+      while (true) {
+        if (penaltyRemaining === 0 && pile.length === 0) {
+          var key = turn + "|" + deckA.join("") + "|" + deckB.join("");
+          if (seen.has(key)) {
+            cycle = {
+              startEventIndex: checkpointEventIndex[seen.get(key)],
+              countA: deckA.length,
+              countB: deckB.length,
+              turn: turn
+            };
+            break;
+          }
+          seen.set(key, checkpointEventIndex.length);
+          checkpointEventIndex.push(events.length);
+        }
+
+        var active = turn === 0 ? deckA : deckB;
+        var opp = turn === 0 ? deckB : deckA;
+
+        if (active.length === 0) {
+          if (pile.length === 0) break;
+          Array.prototype.push.apply(opp, pile);
+          var to = turn === 0 ? 1 : 0;
+          events.push({ t: "handover", to: to, size: pile.length, turnAfter: to });
+          pile = [];
+          if (opp.length === 52) break;
+          turn = to;
+          penaltyRemaining = 0;
+          lastPaymentPlayer = -1;
+          continue;
+        }
+
+        var card = active.shift();
+        pile.push(card);
+        var ev = { t: "play", by: turn, card: card };
+        var p = PENALTY[card] || 0;
+
+        if (p > 0) {
+          penaltyRemaining = p;
+          lastPaymentPlayer = turn;
+          turn = 1 - turn;
+          ev.penalty = p;
+        } else if (penaltyRemaining > 0) {
+          penaltyRemaining--;
+          if (penaltyRemaining === 0) {
+            var winner = lastPaymentPlayer === 0 ? deckA : deckB;
+            Array.prototype.push.apply(winner, pile);
+            ev.trickWonBy = lastPaymentPlayer;
+            ev.trickSize = pile.length;
+            pile = [];
+            turn = lastPaymentPlayer;
+            lastPaymentPlayer = -1;
+            ev.turnAfter = turn;
+            events.push(ev);
+            if (winner.length === 52) break;
+            continue;
+          }
+        } else {
+          turn = 1 - turn;
+        }
+        ev.turnAfter = turn;
+        events.push(ev);
+      }
+
+      return { events: events, cycle: cycle };
+    }
+
+    var result = simulate(HAND_A, HAND_B);
+
+    // Pacing: BASE is the gap between ordinary plays; REVEAL_PAUSE holds the
+    // final, penalty-resolving card on screen before the pile sweeps away
+    // (the sweep used to fire in the same frame as the card landing, so the
+    // card that actually loses the trick was never visible).
+    var BASE_DELAY = 320;
+    var PENALTY_EXTRA = 450;
+    var REVEAL_PAUSE = 750;
+    var SWEEP_DURATION = 450;
+    var SWEEP_BUFFER = 150;
+    var TALLY_LEAD = 120;
+
+    function formatInt(n) {
+      return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    }
+
+    // The tallies below aren't driven by this browser's own animation --
+    // they're the same for every visitor, computed from wall-clock time
+    // against the pacing above, so no backend or storage is needed to keep
+    // a shared count. One-time cost of walking the event list at load.
+    function eventDelay(ev) {
+      var d = BASE_DELAY;
+      if (ev.penalty) d += PENALTY_EXTRA;
+      if (ev.trickWonBy !== undefined || ev.t === "handover") d += REVEAL_PAUSE + SWEEP_DURATION + SWEEP_BUFFER;
+      return d;
+    }
+    var prefixEvents = result.events.slice(0, result.cycle.startEventIndex);
+    var cycleEvents = result.events.slice(result.cycle.startEventIndex);
+    function sumDelay(evs) { return evs.reduce(function (a, e) { return a + eventDelay(e); }, 0); }
+    function countCards(evs) { return evs.filter(function (e) { return e.t === "play"; }).length; }
+    function countTricks(evs) { return evs.filter(function (e) { return e.trickWonBy !== undefined || e.t === "handover"; }).length; }
+    var PREFIX_MS = sumDelay(prefixEvents), CYCLE_MS = sumDelay(cycleEvents);
+    var PREFIX_CARDS = countCards(prefixEvents), CYCLE_CARDS = countCards(cycleEvents);
+    var PREFIX_TRICKS = countTricks(prefixEvents), CYCLE_TRICKS = countTricks(cycleEvents);
+
+    // Fixed instant every visitor's elapsed-time math is measured against.
+    var TALLY_EPOCH = new Date("2026-08-17T00:00:00Z").getTime();
+
+    // Counts events[0..i) exactly, rather than assuming a uniform rate --
+    // events don't take equal time (a penalty chase or a trick sweep takes
+    // far longer than a plain play), so a time-fraction estimate drifts
+    // away from what the schedule-driven animation is actually showing.
+    function partialCounts(evs, i) {
+      var cards = 0, tricks = 0;
+      for (var k = 0; k < i; k++) {
+        if (evs[k].t === "play") cards++;
+        if (evs[k].trickWonBy !== undefined || evs[k].t === "handover") tricks++;
+      }
+      return { cards: cards, tricks: tricks };
+    }
+
+    function updateTallyDisplay() {
+      trickTallyEl.textContent = formatInt(tallyTricks);
+      gameTallyEl.textContent = formatInt(tallyGames);
+      cardsTallyEl.textContent = formatInt(tallyCards);
+    }
+
+    // The board itself is synced the same way, so every visitor looking at
+    // the page at the same moment sees the same cards in the same place --
+    // not an independent animation that just happens to start on load.
+    function scheduleFor(evs) {
+      var arr = [], sum = 0;
+      for (var k = 0; k < evs.length; k++) { sum += eventDelay(evs[k]); arr.push(sum); }
+      return arr;
+    }
+    var PREFIX_SCHEDULE = scheduleFor(prefixEvents);
+    var CYCLE_SCHEDULE = scheduleFor(cycleEvents);
+
+    // The tallies want "how many events are fully done" (PREFIX_SCHEDULE /
+    // CYCLE_SCHEDULE, each entry is when that event's whole window, reveal
+    // pause and sweep included, ends). The animation instead needs "which
+    // event's window are we currently in", i.e. the same values shifted by
+    // one -- event i starts exactly when event i-1 finished. Driving the
+    // animation off the *completion* schedule was the bug: it only fired
+    // an event after its own full duration had already notionally elapsed,
+    // so the reveal/sweep pause got spent once by the schedule and a
+    // second time by applyEvent's own timers, compounding every cycle.
+    function startScheduleFor(schedule) {
+      var arr = [0];
+      for (var k = 0; k < schedule.length - 1; k++) arr.push(schedule[k]);
+      return arr;
+    }
+    var PREFIX_START_SCHEDULE = startScheduleFor(PREFIX_SCHEDULE);
+    var CYCLE_START_SCHEDULE = startScheduleFor(CYCLE_SCHEDULE);
+
+    function completedCount(schedule, elapsedInSeg) {
+      var lo = 0, hi = schedule.length;
+      while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (schedule[mid] <= elapsedInSeg) lo = mid + 1; else hi = mid;
+      }
+      return lo;
+    }
+
+    function currentAnimTarget(now) {
+      var elapsed = Math.max(0, now - TALLY_EPOCH);
+      if (elapsed <= PREFIX_MS) {
+        return { mode: "prefix", cycleIndex: -1, i: completedCount(PREFIX_START_SCHEDULE, elapsed), segStart: TALLY_EPOCH };
+      }
+      var rem = elapsed - PREFIX_MS;
+      var cycleIndex = Math.floor(rem / CYCLE_MS);
+      var segElapsed = rem % CYCLE_MS;
+      return {
+        mode: "cycle",
+        cycleIndex: cycleIndex,
+        i: completedCount(CYCLE_START_SCHEDULE, segElapsed),
+        segStart: TALLY_EPOCH + PREFIX_MS + cycleIndex * CYCLE_MS
+      };
+    }
+
+    // Pure, DOM-free replay: given how many events into a segment we are,
+    // what's the board state? Used to snap straight to "now" without
+    // animating through everything that happened since the epoch.
+    function replaySegment(evs, targetIndex, startCountA, startCountB, startTurn) {
+      var countA = startCountA, countB = startCountB, turn = startTurn, pile = [];
+      for (var i = 0; i < targetIndex; i++) {
+        var ev = evs[i];
+        if (ev.t === "play") {
+          pile.push(ev.card);
+          if (ev.by === 0) countA--; else countB--;
+          if (ev.trickWonBy !== undefined) {
+            if (ev.trickWonBy === 0) countA += ev.trickSize; else countB += ev.trickSize;
+            pile = [];
+          }
+        } else if (ev.t === "handover") {
+          if (ev.to === 0) countA += ev.size; else countB += ev.size;
+          pile = [];
+        }
+        turn = ev.turnAfter;
+      }
+      return { countA: countA, countB: countB, turn: turn, pile: pile };
+    }
+
+    var pileEl = document.getElementById("pile");
+    var pileCountEl = document.getElementById("pileCount");
+    var countAEl = document.getElementById("countA");
+    var countBEl = document.getElementById("countB");
+    var playerAEl = document.getElementById("playerA");
+    var playerBEl = document.getElementById("playerB");
+    var trickTallyEl = document.getElementById("trickTally");
+    var gameTallyEl = document.getElementById("gameTally");
+    var cardsTallyEl = document.getElementById("cardsTally");
+
+    var countA = HAND_A.length, countB = HAND_B.length;
+    var curPos = null;
+    var tallyCards = 0, tallyTricks = 0, tallyGames = 1;
+    var driverTimer = null;
+    var pileNodes = [];
+    var hiddenPileCount = 0;
+    var ROT = [-6, 4, -3, 7, -8, 2, -5, 6, -2, 5];
+
+    function setActive(player) {
+      playerAEl.classList.toggle("active", player === 0);
+      playerBEl.classList.toggle("active", player === 1);
+    }
+
+    function updateCounts() {
+      countAEl.textContent = countA;
+      countBEl.textContent = countB;
+    }
+
+    function toneClass(card) {
+      return { A: "tone-a", K: "tone-k", Q: "tone-q", J: "tone-j" }[card] || "plain";
+    }
+
+    function playCard(by, card) {
+      setActive(by);
+      var el = document.createElement("div");
+      el.className = "card " + toneClass(card);
+      el.style.setProperty("--rot", ROT[pileNodes.length % ROT.length] + "deg");
+      if (card in NAME) el.textContent = card;
+      pileEl.appendChild(el);
+      pileNodes.push(el);
+      while (pileNodes.length > 10) {
+        pileEl.removeChild(pileNodes.shift());
+        hiddenPileCount++;
+      }
+      var total = pileNodes.length + hiddenPileCount;
+      pileCountEl.textContent = total > pileNodes.length ? total + " in pile" : "";
+      if (by === 0) countA--; else countB--;
+      updateCounts();
+    }
+
+    function showToast(card) {
+      var toast = document.createElement("div");
+      toast.className = "toast";
+      toast.textContent = NAME[card] + " → owes " + PENALTY[card];
+      document.getElementById("pile").parentElement.appendChild(toast);
+      setTimeout(function () { toast.remove(); }, 650);
+    }
+
+    function sweepPile(winner) {
+      pileEl.classList.add(winner === 0 ? "sweep-a" : "sweep-b");
+      setTimeout(function () {
+        pileEl.classList.remove("sweep-a", "sweep-b");
+        pileEl.innerHTML = "";
+        pileNodes = [];
+        hiddenPileCount = 0;
+        pileCountEl.textContent = "";
+      }, SWEEP_DURATION);
+    }
+
+    function applyEvent(ev) {
+      if (ev.t === "play") {
+        playCard(ev.by, ev.card);
+        if (ev.penalty) showToast(ev.card);
+        if (ev.trickWonBy !== undefined) {
+          // Hold the resolving card on screen for a beat before it sweeps
+          // away, so it's actually visible rather than vanishing instantly.
+          setTimeout(function () {
+            if (ev.trickWonBy === 0) countA += ev.trickSize; else countB += ev.trickSize;
+            updateCounts();
+            sweepPile(ev.trickWonBy);
+            // Tallies land just ahead of the sweep actually finishing --
+            // right as the cards are visibly arriving under the deck,
+            // rather than lagging a beat behind it.
+            setTimeout(function () {
+              tallyTricks++;
+              tallyCards += ev.trickSize;
+              updateTallyDisplay();
+            }, Math.max(0, SWEEP_DURATION - TALLY_LEAD));
+          }, REVEAL_PAUSE);
+        }
+      } else if (ev.t === "handover") {
+        setTimeout(function () {
+          if (ev.to === 0) countA += ev.size; else countB += ev.size;
+          updateCounts();
+          sweepPile(ev.to);
+          setActive(ev.to);
+          setTimeout(function () {
+            tallyTricks++;
+            tallyCards += ev.size;
+            updateTallyDisplay();
+          }, Math.max(0, SWEEP_DURATION - TALLY_LEAD));
+        }, REVEAL_PAUSE);
+      }
+    }
+
+    // Snaps straight to "now" with no per-card animation -- used on first
+    // load and whenever the driver finds itself more than a couple of
+    // cards behind schedule (e.g. the tab was backgrounded for a while).
+    function renderInstant(target) {
+      var evs = target.mode === "prefix" ? prefixEvents : cycleEvents;
+      var startA = target.mode === "prefix" ? HAND_A.length : result.cycle.countA;
+      var startB = target.mode === "prefix" ? HAND_B.length : result.cycle.countB;
+      var startTurn = target.mode === "prefix" ? 0 : result.cycle.turn;
+      var state = replaySegment(evs, target.i, startA, startB, startTurn);
+
+      countA = state.countA;
+      countB = state.countB;
+      updateCounts();
+      setActive(state.turn);
+
+      pileEl.classList.remove("sweep-a", "sweep-b");
+      pileEl.innerHTML = "";
+      pileNodes = [];
+      var shown = state.pile.slice(-10);
+      hiddenPileCount = state.pile.length - shown.length;
+      shown.forEach(function (card, i) {
+        var el = document.createElement("div");
+        el.className = "card " + toneClass(card);
+        el.style.setProperty("--rot", ROT[i % ROT.length] + "deg");
+        el.style.animation = "none";
+        if (card in NAME) el.textContent = card;
+        pileEl.appendChild(el);
+        pileNodes.push(el);
+      });
+      pileCountEl.textContent = hiddenPileCount > 0 ? state.pile.length + " in pile" : "";
+
+      var pc = partialCounts(evs, target.i);
+      if (target.mode === "prefix") {
+        tallyCards = pc.cards;
+        tallyTricks = pc.tricks;
+        tallyGames = 1;
+      } else {
+        tallyCards = PREFIX_CARDS + target.cycleIndex * CYCLE_CARDS + pc.cards;
+        tallyTricks = PREFIX_TRICKS + target.cycleIndex * CYCLE_TRICKS + pc.tricks;
+        tallyGames = 1 + target.cycleIndex;
+      }
+      updateTallyDisplay();
+
+      curPos = { mode: target.mode, cycleIndex: target.cycleIndex };
+    }
+
+    function driver() {
+      var target = currentAnimTarget(Date.now());
+      var evs = target.mode === "prefix" ? prefixEvents : cycleEvents;
+
+      if (!curPos || curPos.mode !== target.mode || curPos.cycleIndex !== target.cycleIndex) {
+        renderInstant(target);
+        curPos.i = target.i;
+      } else if (target.i > curPos.i) {
+        if (target.i - curPos.i > 3) {
+          renderInstant(target);
+          curPos.i = target.i;
+        } else {
+          applyEvent(evs[curPos.i]);
+          curPos.i++;
+        }
+      }
+
+      var startSchedule = target.mode === "prefix" ? PREFIX_START_SCHEDULE : CYCLE_START_SCHEDULE;
+      var nextAt = curPos.i < startSchedule.length ? target.segStart + startSchedule[curPos.i] : target.segStart + (target.mode === "prefix" ? PREFIX_MS : CYCLE_MS);
+      var delay = Math.max(60, nextAt - Date.now() + 20);
+      driverTimer = setTimeout(driver, delay);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        clearTimeout(driverTimer);
+        driver();
+      }
+    });
+
+    driver();
+  })();
+</script>
+</body>
+</html>
