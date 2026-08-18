@@ -58,6 +58,12 @@ define ("DISABLE_PROFILES", true);
     // https://github.com/BOINC/boinc/wiki/ProtectionFromSpam
 define("USE_STOPFORUMSPAM", true);
     // use http://www.stopforumspam.com to suppress spammer accounts
+define('VALIDATE_EMAIL_TO_POST', true);
+    // require a confirmed email address before a user can post to forums,
+    // reply, send private messages, or report posts (html/inc/util.inc's
+    // own default is false; this project.inc load happens early enough,
+    // via util.inc's own require_once of this file, that defining it here
+    // wins over that default -- verified against the include chain).
 define("RPC_DEBUG", false);
     // Enables PHP error messages in public Web RPCs
 define("TERMSOFUSE_FILE", "../../terms_of_use.txt");

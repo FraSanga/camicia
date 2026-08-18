@@ -136,6 +136,12 @@
         </task>
         <task>
             <period>24 hours</period>
+            <output>autolock.out</output>
+            <cmd>run_in_ops ./autolock.php --ndays 90</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
+            <period>24 hours</period>
             <output>delete_expired_tokens.out</output>
             <cmd>run_in_ops ./delete_expired_tokens.php</cmd>
             <disabled>0</disabled>
