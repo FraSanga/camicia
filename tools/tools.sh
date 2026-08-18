@@ -155,6 +155,36 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
         docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
     fi
 
+    # reCAPTCHA v2 keys (html/inc/recaptchalib.inc, wired into signup/team-
+    # create/profile/account-ownership via html/inc/util_basic.inc's
+    # project_config_val()) -- same injection pattern as the Akismet key
+    # above, for the same reasons. Gated on RECAPTCHA_SITE_KEY alone (not
+    # required separately per key) because setting only one half is a real
+    # footgun, not a valid partial config: the site key alone renders the
+    # checkbox widget but util_basic.inc's project_config_val() returns null
+    # for the missing private key, so user_util.inc's
+    # `if (recaptcha_private_key())` guard is skipped entirely and every
+    # submission is silently accepted unchecked -- decoration, not
+    # protection. Both keys are therefore only ever written as a pair.
+    if [ -n "$RECAPTCHA_SITE_KEY" ]; then
+        echo "🤖 Injecting reCAPTCHA keys into config.xml..."
+        docker exec -i "$SERVER_CONTAINER_NAME" python3 -c "
+import sys, xml.etree.ElementTree as ET
+site_key, secret_key = sys.stdin.read().split('\n', 1)
+tree = ET.parse('/tmp/config_new.xml')
+root = tree.getroot()
+config = root.find('config')
+for tag, value in [('recaptcha_public_key', site_key), ('recaptcha_private_key', secret_key.strip())]:
+    node = config.find(tag)
+    if node is None:
+        node = ET.SubElement(config, tag)
+    node.text = value
+tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
+" <<< "$RECAPTCHA_SITE_KEY
+$RECAPTCHA_SECRET_KEY"
+        docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
+    fi
+
     echo "🐍 Running Python script to update XML nodes..."
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
