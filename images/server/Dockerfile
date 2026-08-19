@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y \
     automake \
     libtool \
     make \
+    # --- Windows cross-compile toolchain (worker app only, see
+    # boinc-win build below) ---
+    mingw-w64 \
     # --- Boinc required libraries ---
     libssl-dev \
     libcurl4-openssl-dev \
@@ -75,6 +78,30 @@ RUN git init boinc && \
     git checkout FETCH_HEAD
 WORKDIR /usr/local/src/boinc
 RUN ./_autosetup && ./configure --disable-client --disable-manager && make
+
+# Second, fully independent copy of the same pinned BOINC source, built with
+# the mingw-w64 cross-compiler so the worker app can also ship for
+# windows_x86_64 (the largest platform by BOINC volunteer count, and the one
+# this project was missing entirely -- see tools.sh's "Compiling Worker
+# (Windows)" step for what actually links against this). A second clone
+# rather than an out-of-tree/VPATH build of the same tree: BOINC's autotools
+# setup isn't confirmed to support VPATH cleanly, and this keeps the Windows
+# build fully isolated from the native one above -- it cannot break the
+# existing, working Linux build regardless of anything that goes wrong here.
+# Only lib/ and api/ are needed (worker.cpp links libboinc.a + libboinc_api.a,
+# not libboinc_crypt.a), so client/manager/server all stay disabled here too.
+WORKDIR /usr/local/src
+RUN git init boinc-win && \
+    cd boinc-win && \
+    git remote add origin https://github.com/BOINC/boinc.git && \
+    git fetch --depth 1 origin ${BOINC_COMMIT} && \
+    git checkout FETCH_HEAD
+WORKDIR /usr/local/src/boinc-win
+RUN ./_autosetup && \
+    ./configure --host=x86_64-w64-mingw32 --disable-client --disable-manager --disable-server && \
+    make
+
+WORKDIR /usr/local/src/boinc
 COPY camicia.httpd.conf /etc/apache2/sites-available/boinc.conf
 RUN a2dissite 000-default && a2ensite boinc
 

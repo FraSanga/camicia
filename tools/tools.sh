@@ -240,6 +240,25 @@ $RECAPTCHA_SECRET_KEY"
     /usr/local/src/boinc/lib/libboinc.a \
     -pthread -ldl"
 
+    echo "⚙️ Compiling Worker (Windows)..."
+    # Cross-compiled with mingw-w64 against the separate boinc-win build
+    # (images/server/Dockerfile) so the worker also ships for windows_x86_64,
+    # the largest BOINC volunteer platform. No -ldl (no libdl on Windows) and
+    # the physical file must end in .exe for Windows to actually execute it
+    # once downloaded -- BOINC's own <main_program/> marker in version.xml
+    # doesn't care about the name, but the OS does.
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && x86_64-w64-mingw32-g++ -O3 -static \
+    $PROJECT_DIR/worker/worker.cpp \
+    $PROJECT_DIR/worker/core/*.cpp \
+    -o $PROJECT_DIR/worker/worker_app.exe \
+    -I/usr/local/src/boinc-win/api \
+    -I/usr/local/src/boinc-win/lib \
+    -I$PROJECT_DIR/worker \
+    -I$PROJECT_DIR/worker/core \
+    /usr/local/src/boinc-win/api/libboinc_api.a \
+    /usr/local/src/boinc-win/lib/libboinc.a \
+    -pthread"
+
     echo "⚙️ Compiling Work Generator..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
     $PROJECT_DIR/work_generator/work_generator.cpp \
@@ -266,7 +285,6 @@ $RECAPTCHA_SECRET_KEY"
 
     echo "🏷️ Determining next app version..."
     APP_NAME="simulator"
-    PLATFORM="x86_64-pc-linux-gnu"
     APP_DIR="$PROJECT_DIR/apps/$APP_NAME"
 
     LAST_VERSION=$(docker exec "$SERVER_CONTAINER_NAME" bash -c \
@@ -281,25 +299,34 @@ $RECAPTCHA_SECRET_KEY"
         if [ "$MINOR" -ge 100 ]; then MAJOR=$((MAJOR + 1)); MINOR=0; fi
         NEW_VERSION=$(printf "%d.%02d" "$MAJOR" "$MINOR")
     fi
+    echo "   -> New version: $NEW_VERSION"
 
-    VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
-    # BOINC treats download/<physical_name> as immutable once a client has
-    # fetched it: update_versions refuses to re-stage a same-named file whose
-    # bytes differ ("BOINC files are immutable"). Reusing a fixed physical
-    # name like "worker_app" across every version therefore silently breaks
-    # registration the moment worker.cpp's compiled output actually changes
-    # between deploys, which is the normal case, not an edge case. Version-
-    # qualify the physical name so every deploy gets a filename BOINC has
-    # never served before.
-    PHYSICAL_NAME="worker_app_$NEW_VERSION"
-    echo "   -> New version: $NEW_VERSION ($VERSION_DIR, $PHYSICAL_NAME)"
-
+    # Staged together, same version number, one update_versions call below
+    # registers both -- matches BOINC's own convention for shipping multiple
+    # platforms per version, and means the existing code-signing step (already
+    # unconditional) signs both files with no per-platform logic needed.
     echo "📦 Staging new app version..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$VERSION_DIR'"
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-        "cp '$PROJECT_DIR/worker/worker_app' '$VERSION_DIR/$PHYSICAL_NAME'"
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-        "cat > '$VERSION_DIR/version.xml' <<EOF
+    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe"; do
+        PLATFORM="${ENTRY%%:*}"
+        REST="${ENTRY#*:}"
+        SOURCE_BINARY="${REST%%:*}"
+        PHYSICAL_NAME="${REST#*:}"
+        VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
+        echo "   -> $PLATFORM: $VERSION_DIR/$PHYSICAL_NAME"
+
+        # BOINC treats download/<physical_name> as immutable once a client has
+        # fetched it: update_versions refuses to re-stage a same-named file
+        # whose bytes differ ("BOINC files are immutable"). Reusing a fixed
+        # physical name like "worker_app" across every version therefore
+        # silently breaks registration the moment worker.cpp's compiled output
+        # actually changes between deploys, which is the normal case, not an
+        # edge case. Version-qualify the physical name so every deploy gets a
+        # filename BOINC has never served before.
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$VERSION_DIR'"
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+            "cp '$PROJECT_DIR/worker/$SOURCE_BINARY' '$VERSION_DIR/$PHYSICAL_NAME'"
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+            "cat > '$VERSION_DIR/version.xml' <<EOF
 <version>
     <file>
         <physical_name>$PHYSICAL_NAME</physical_name>
@@ -307,6 +334,7 @@ $RECAPTCHA_SECRET_KEY"
     </file>
 </version>
 EOF"
+    done
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER '$APP_DIR'"
 
     # code_sign_private lives on its own persistent bind mount (KEY_DIR, not
