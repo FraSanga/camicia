@@ -28,10 +28,16 @@ define("LANGUAGE_FILE", "languages.txt");
 
 //-------------- contact info
 
-define("SYS_ADMIN_EMAIL", "admin@$master_url");
-define("UOTD_ADMIN_EMAIL", "admin@$master_url");
+// Real addresses, routed via Cloudflare Email Routing (camicia.dev's MX
+// records point at Cloudflare, which forwards to the project owner's real
+// inbox -- no mailbox hosted here). Previously these were built as
+// "admin@$master_url", which is a bug: $master_url is a full URL
+// (e.g. "https://staging.camicia.dev/camicia/"), not a bare domain, so the
+// result was never a valid, deliverable email address.
+define("SYS_ADMIN_EMAIL", "admin@camicia.dev");
+define("UOTD_ADMIN_EMAIL", "admin@camicia.dev");
     // who gets emails about user of the day pool running low?
-define("POST_REPORT_EMAILS", "moderator1@$master_url|moderator2@$master_url");
+define("POST_REPORT_EMAILS", "moderator@camicia.dev");
     // Email addresses separated by pipe ( | ) that will receive user reports
     // of offensive forum posts.
 
@@ -53,8 +59,11 @@ define('DARK_MODE', true);      // enable dark mode if selected by user
 define('UNIQUE_USER_NAME', true);
 define("FORUM_QA_MERGED_MODE", true);
     // Set to true to merge Message boards and Q&A section
-define ("DISABLE_PROFILES", true);
-    // enable profiles only after enabling reCAPTCHA
+define ("DISABLE_PROFILES", false);
+    // reCAPTCHA v2 is live and verified (see RECAPTCHA_SITE_KEY/SECRET_KEY
+    // injection in tools.sh) -- create_profile.php already gates on
+    // recaptcha_public_key()/recaptcha_private_key(), so this was the one
+    // remaining precondition from
     // https://github.com/BOINC/boinc/wiki/ProtectionFromSpam
 define("USE_STOPFORUMSPAM", true);
     // use http://www.stopforumspam.com to suppress spammer accounts
