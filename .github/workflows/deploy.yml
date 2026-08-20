@@ -48,8 +48,28 @@ jobs:
         run: |
           cd ~/camicia
           docker compose ps
+
+          # Each of config.xml's <daemons> by name, not a substring grep --
+          # the previous version of this check only printed whatever ps aux
+          # happened to match (and didn't even list file_deleter), with no
+          # assertion, so a real daemon outage (transitioner, 2026-08-20 --
+          # ~1 hour undetected) produced a green run anyway. Fail loudly
+          # instead: this run's own exit code is now the actual detector.
           echo "--- daemons ---"
-          docker exec --user boincadm boinc_server bash -c \
-            "ps aux | grep -E 'assimilator|work_generator|feeder|transitioner|validator' | grep -v grep"
+          MISSING=""
+          for d in assimilator sample_bitwise_validator work_generator feeder transitioner file_deleter; do
+            if docker exec --user boincadm boinc_server pgrep -f "^$d " > /dev/null; then
+              echo "OK: $d"
+            else
+              echo "MISSING: $d is not running"
+              MISSING="$MISSING $d"
+            fi
+          done
+
           echo "--- user site ---"
           docker exec boinc_server curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost/camicia/
+
+          if [ -n "$MISSING" ]; then
+            echo "Deploy health check FAILED, daemon(s) not running:$MISSING"
+            exit 1
+          fi
