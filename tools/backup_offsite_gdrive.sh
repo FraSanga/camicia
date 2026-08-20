@@ -1,0 +1,59 @@
+#!/bin/bash
+# Pushes keys/, db_backups/, and results/ to Google Drive via rclone -- genuine
+# offsite protection, unlike db_backups/ and results/ segments, which
+# otherwise only ever live on this one host's disk. Runs daily via
+# config.xml's <tasks>, same pattern as db_backup.sh/rotate_results.sh.
+#
+# No-ops cleanly if keys/rclone.conf or $RCLONE_CONFIG_PASS aren't present --
+# true on every local dev deploy, since there's no local-dev equivalent of
+# this backup (local gets torn down/rebuilt regularly, nothing there is
+# worth backing up offsite). $RCLONE_CONFIG_PASS itself is never written to
+# any .env, local or production -- injected only into deploy.yml's process
+# environment from a `production`-Environment GitHub Actions secret, same
+# mechanism as CODE_SIGN_KEY_PASSPHRASE.
+set -e
+cd "$(dirname "$0")/.."
+. ./bin/notify.sh
+
+# $HOME/keys, not a relative path off the project dir: keys/ is a separate
+# bind mount (SERVER_VOLUME_KEYS, independent of SERVER_VOLUME_PROJECTS) --
+# $HOME is the one thing cron reliably sets correctly for the user's own
+# jobs regardless of what environment variables cron itself does or doesn't
+# inherit, whereas SERVER_VOLUME_KEYS_DIR is a docker-compose-level env var
+# with no guarantee of surviving into cron's job environment.
+KEYS_DIR="$HOME/keys"
+RCLONE_CONF="$KEYS_DIR/rclone.conf"
+REMOTE="camicia-gdrive:camicia-backup"
+
+if [ ! -f "$RCLONE_CONF" ] || [ -z "$RCLONE_CONFIG_PASS" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP: rclone.conf or RCLONE_CONFIG_PASS not present (expected on local dev)"
+    exit 0
+fi
+export RCLONE_CONFIG_PASS
+
+fail() {
+    local msg="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED: $msg"
+    notify "Camicia: offsite backup failed" "$msg" high
+    exit 1
+}
+
+# keys/ is small and low-churn -- mirror it exactly. Exclude rclone.conf
+# itself: no reason to upload the credential to the same Drive account it
+# grants access to.
+rclone sync "$KEYS_DIR" "$REMOTE/keys" --config "$RCLONE_CONF" \
+    --exclude rclone.conf \
+    || fail "rclone sync of keys/ failed"
+
+# db_backups/ and results/ are additive (copy, not sync): db_backup.sh
+# already prunes db_backups/ to the newest 7 locally, and rotate_results.sh
+# never deletes results/ segments either -- Drive becomes the longer-term
+# archive, retaining whatever local has already rotated/pruned away rather
+# than mirroring local's own retention window.
+rclone copy ./db_backups "$REMOTE/db_backups" --config "$RCLONE_CONF" \
+    || fail "rclone copy of db_backups/ failed"
+
+rclone copy ./results "$REMOTE/results" --config "$RCLONE_CONF" \
+    || fail "rclone copy of results/ failed"
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') OK: offsite backup to Google Drive complete"

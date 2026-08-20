@@ -115,6 +115,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./notify.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/notify.sh"
     docker cp ./rotate_results.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/rotate_results.sh"
     docker cp ./rotate_daemon_logs.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/rotate_daemon_logs.sh"
+    docker cp ./backup_offsite_gdrive.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/backup_offsite_gdrive.sh"
 
     echo "📧 Vendoring PHPMailer..."
     docker exec "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$PROJECT_DIR/html/inc/PHPMailer'"
@@ -226,6 +227,7 @@ $RECAPTCHA_SECRET_KEY"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/notify.sh && chmod +x $PROJECT_DIR/bin/notify.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/rotate_results.sh && chmod +x $PROJECT_DIR/bin/rotate_results.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/rotate_daemon_logs.sh && chmod +x $PROJECT_DIR/bin/rotate_daemon_logs.sh"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/backup_offsite_gdrive.sh && chmod +x $PROJECT_DIR/bin/backup_offsite_gdrive.sh"
     if [ -n "$NTFY_TOPIC" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/ntfy_topic && chmod 600 $PROJECT_DIR/ntfy_topic"
     fi

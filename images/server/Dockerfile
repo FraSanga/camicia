@@ -55,6 +55,11 @@ RUN sed -i \
     -e 's/^ServerSignature .*/ServerSignature Off/' \
     /etc/apache2/conf-available/security.conf
 
+# rclone: offsite backup to Google Drive (tools/backup_offsite_gdrive.sh).
+# Official install script rather than Debian bookworm's apt package, which
+# lags upstream releases significantly.
+RUN curl -fsSL https://rclone.org/install.sh | bash
+
 ARG PROJECTS_USER
 # No sudo grant: nothing in the deploy/compile flow (tools.sh) or entrypoint.sh
 # ever invokes sudo as this user. It runs the compiled assimilator/worker/
