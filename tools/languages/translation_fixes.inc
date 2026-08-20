@@ -54,3 +54,9 @@ $language_lookup_array["it_IT"]["About %1"] = "Informazioni su %1";
 // literal "1" typo as above, this time sitting in front of %2 rather
 // than %1, in the BOINC-client-setup help text.
 $language_lookup_array["it_IT"]["\n    At this point BOINC should be installed and running on your computer;\n    the system tray should have an icon like this: %1\n    If not, %2get help here%3.\n    "] = "\n    Ora BOINC dovrebbe essere installato e operativo nel tuo computer;\n    l'icona nella system tray dovrebbe essere simile a: %1\n    Se no, %2ottieni aiuto qui%3.\n    ";
+
+// it_IT -- found 2026-08-20, confirmed against the live site: a different
+// flavor of the same typo class -- a stray space typo'd *inside* the
+// placeholder ("% 1" instead of "%1"), which also breaks strtr()'s exact
+// "%1" match, on the Community-menu teaser text.
+$language_lookup_array["it_IT"]["You can meet and communicate with other %1 participants\n        in a variety of ways - take a look under the Community\n        menu above."] = "Puoi incontrare e comunicare con gli altri %1 partecipanti\n        in diversi modi: dai un'occhiata menu\n        Community qui sopra.";
