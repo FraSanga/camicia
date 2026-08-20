@@ -23,6 +23,19 @@ chown -R "${PROJECTS_USER}":"${PROJECTS_USER}" "$PROJECT_DIR"
 find "$PROJECT_DIR/html" -type d -exec chmod 775 {} +
 find "$PROJECT_DIR/html" -type f -exec chmod 664 {} +
 
+# bin/run_in_ops executes ops/*.php scripts directly (`./script.php`, relying
+# on their own #!/usr/bin/env php shebang) rather than invoking `php
+# script.php` -- so they need the execute bit the blanket chmod 664 above
+# just stripped. Found via a full task-log audit: 8 tasks (autolock,
+# badge_assign, delete_expired_tokens, delete_expired_users_and_hosts,
+# notify, update_forum_activities, update_profile_pages, update_uotd) were
+# silently failing with "Permission denied" on every single run since the
+# crontab fix made tasks actually execute. create_forums.php (deployed by
+# tools.sh, which chmod +x's it explicitly after this script runs) never hit
+# this; every *other* ops/*.php script -- generated once by make_project and
+# never touched again -- did.
+chmod +x "$PROJECT_DIR"/html/ops/*.php
+
 echo "🔐 _ops access configuration..."
 OPS_USER_EFFECTIVE=${OPS_USER:-admin}
 OPS_PASS_EFFECTIVE=${OPS_PASS:-admin}
