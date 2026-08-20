@@ -13,6 +13,7 @@
 using namespace std;
 
 #define CHECKPOINT_FILE "camicia_state"
+#define LOOPS_FILE "camicia_loops"
 #define INPUT_FILENAME "in"
 #define OUTPUT_FILENAME "out"
 
@@ -30,7 +31,40 @@ struct WorkerState {
     std::vector<GameResultInfo> loops;
 };
 
-void do_checkpoint(WorkerState& state) {
+// loopsAppended tracks how many of state.loops are already durably written
+// to LOOPS_FILE (from earlier in this same run, or reloaded from a resume --
+// see main()). Checkpointing used to rewrite every already-recorded loop's
+// text on every single call (O(total loops so far) per checkpoint, not
+// O(new loops)); a loop-dense workunit could mean rewriting hundreds of
+// thousands of lines repeatedly throughout a run. Now only the delta since
+// the last checkpoint gets appended.
+//
+// Ordering matters for crash-safety: the loops-file append happens BEFORE
+// the header's currentIndex is atomically advanced past those indices, so a
+// crash between the two never lets the header claim an index is "done" when
+// its loop result isn't durably on disk yet. That ordering alone would still
+// risk a duplicate on resume (reprocessing an index whose loop already made
+// it to LOOPS_FILE before the crash, appending it a second time) -- what
+// actually prevents that is the dedup guard in main()'s loop, which only
+// push_back()s a loop if its index is past the highest one already known
+// (freshly found or reloaded from LOOPS_FILE at resume). That guard is what
+// makes this whole scheme safe regardless of exactly when a crash lands
+// relative to the append/header-write boundary, not the ordering by itself.
+void do_checkpoint(WorkerState& state, size_t& loopsAppended) {
+    if (state.loops.size() > loopsAppended) {
+        string loops_resolved;
+        boinc_resolve_filename_s(LOOPS_FILE, loops_resolved);
+        FILE* lf = boinc_fopen(loops_resolved.c_str(), "a");
+        if (lf) {
+            for (size_t i = loopsAppended; i < state.loops.size(); ++i) {
+                const auto& l = state.loops[i];
+                fprintf(lf, "%s %lld %lld\n", int128ToString(l.index).c_str(), l.cards, l.tricks);
+            }
+            fclose(lf);
+            loopsAppended = state.loops.size();
+        }
+    }
+
     string resolved_name;
     boinc_resolve_filename_s(CHECKPOINT_FILE, resolved_name);
     FILE* f = boinc_fopen("temp", "w");
@@ -40,16 +74,11 @@ void do_checkpoint(WorkerState& state) {
     string start = int128ToString(state.startIndex);
     string end = int128ToString(state.endIndex);
     string bestIdx = int128ToString(state.bestFinished.index);
-    
-    fprintf(f, "%s %s %s %s %lld %lld %zu\n", 
-            cur.c_str(), start.c_str(), end.c_str(), 
-            bestIdx.c_str(), state.bestFinished.cards, state.bestFinished.tricks,
-            state.loops.size());
-            
-    for (const auto& l : state.loops) {
-        fprintf(f, "%s %lld %lld\n", int128ToString(l.index).c_str(), l.cards, l.tricks);
-    }
-    
+
+    fprintf(f, "%s %s %s %s %lld %lld\n",
+            cur.c_str(), start.c_str(), end.c_str(),
+            bestIdx.c_str(), state.bestFinished.cards, state.bestFinished.tricks);
+
     fclose(f);
     boinc_rename("temp", resolved_name.c_str());
     boinc_checkpoint_completed();
@@ -69,26 +98,41 @@ int main(int argc, char** argv) {
     bool resumed = false;
     if (chkpt) {
         char cur[128], start[128], end[128], bestIdxStr[128];
-        size_t loopCount;
-        if (fscanf(chkpt, "%127s %127s %127s %127s %lld %lld %zu",
+        if (fscanf(chkpt, "%127s %127s %127s %127s %lld %lld",
                    cur, start, end, bestIdxStr,
-                   &state.bestFinished.cards, &state.bestFinished.tricks,
-                   &loopCount) == 7) {
+                   &state.bestFinished.cards, &state.bestFinished.tricks) == 6) {
             state.currentIndex = stringTo128(cur);
             state.startIndex = stringTo128(start);
             state.endIndex = stringTo128(end);
             state.bestFinished.index = stringTo128(bestIdxStr);
-            
-            for (size_t i = 0; i < loopCount; ++i) {
-                char lIdxStr[128];
-                long long lCards, lTricks;
-                if (fscanf(chkpt, "%127s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
-                    state.loops.push_back({stringTo128(lIdxStr), lCards, lTricks});
-                }
-            }
             resumed = true;
         }
         fclose(chkpt);
+    }
+
+    // LOOPS_FILE is independently authoritative for which loops have
+    // already been durably recorded -- read whatever complete lines
+    // currently exist in it, regardless of exactly when the last
+    // checkpoint's header write landed relative to the last loops-file
+    // append (see do_checkpoint()'s own comment on why that ordering alone
+    // isn't what guarantees no duplicates). A malformed/partial trailing
+    // line, from a crash mid-append, is silently skipped by fscanf's own
+    // failure check -- the same behavior the original single-file format
+    // already relied on for a truncated final entry.
+    size_t loopsAppended = 0;
+    if (resumed) {
+        string loops_resolved;
+        boinc_resolve_filename_s(LOOPS_FILE, loops_resolved);
+        FILE* lf = boinc_fopen(loops_resolved.c_str(), "r");
+        if (lf) {
+            char lIdxStr[128];
+            long long lCards, lTricks;
+            while (fscanf(lf, "%127s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
+                state.loops.push_back({stringTo128(lIdxStr), lCards, lTricks});
+            }
+            fclose(lf);
+        }
+        loopsAppended = state.loops.size();
     }
 
     if (!resumed) {
@@ -126,11 +170,21 @@ int main(int argc, char** argv) {
                 state.bestFinished.index = state.currentIndex;
             }
         } else if (res.status == "loop") {
-            state.loops.push_back({state.currentIndex, res.cards, res.tricks});
+            // Dedup guard: after a resume that reloaded already-durable
+            // loops from LOOPS_FILE, reprocessing can land on an index
+            // whose loop is already known (see the comments on
+            // do_checkpoint()/the resume-read above for why that can
+            // happen even with the append-before-header-update ordering).
+            // Indices only ever increase, and loops are recorded in that
+            // same increasing order, so comparing against the last known
+            // entry is sufficient -- no need to search the whole vector.
+            if (state.loops.empty() || state.currentIndex > state.loops.back().index) {
+                state.loops.push_back({state.currentIndex, res.cards, res.tricks});
+            }
         }
 
         if (boinc_time_to_checkpoint()) {
-            do_checkpoint(state);
+            do_checkpoint(state, loopsAppended);
         }
         
         double fraction = (double)(state.currentIndex - state.startIndex) / (double)totalToProcess;

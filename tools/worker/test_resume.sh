@@ -1,8 +1,13 @@
 #!/bin/bash
-# Regression test for worker.cpp's checkpoint/resume semantics (BUGS.md #1:
-# a checkpoint that records the wrong "next index to process" causes the
-# index being processed at checkpoint time to be silently reprocessed and
-# duplicated into `out` on resume).
+# Regression test for worker.cpp's checkpoint/resume semantics.
+#
+# Checkpointing is split across two files: camicia_state (a small header,
+# rewritten atomically via temp+rename on every checkpoint) and
+# camicia_loops (append-only, one line per loop found -- only the delta
+# since the last checkpoint gets appended, instead of the whole list being
+# re-serialized every time). See worker.cpp's own comments on do_checkpoint()
+# for the full crash-safety reasoning; this test exercises it end to end
+# against the real compiled binary.
 #
 # Runs against the actual compiled, BOINC-linked worker_app binary, so unlike
 # tests/test_permutation.cpp and tests/test_engine.cpp this must run inside
@@ -43,29 +48,36 @@ echo "$START $END" > in
 "$WORKER"
 straight_loop_count=$(count_loop_lines_for_mid out)
 echo "loop entries for MID in straight-through run: $straight_loop_count"
-rm -f in out camicia_state
+rm -f in out camicia_state camicia_loops
 
 echo
 echo "=== Resume from a CORRECT checkpoint (cur = MID+1, i.e. 'next index to process') ==="
 cat > camicia_state <<EOF
-$NEXT $START $END 0 0 0 1
+$NEXT $START $END 0 0 0
+EOF
+cat > camicia_loops <<EOF
 $MID 474 66
 EOF
 "$WORKER"
 correct_loop_count=$(count_loop_lines_for_mid out)
 echo "loop entries for MID after correct-checkpoint resume: $correct_loop_count"
-rm -f out camicia_state
+rm -f out camicia_state camicia_loops
 
 echo
-echo "=== Resume from the OLD BUGGY checkpoint semantics (cur = MID, i.e. 'last index processed') ==="
+echo "=== Resume simulating a crash between the loops-file append and the header update ==="
+echo "    (header still at cur = MID, i.e. 'last index processed' -- either the pre-fix"
+echo "     off-by-one bug, or a real crash landing between do_checkpoint()'s two writes --"
+echo "     but camicia_loops already durably has MID's result from before the crash.)"
 cat > camicia_state <<EOF
-$MID $START $END 0 0 0 1
+$MID $START $END 0 0 0
+EOF
+cat > camicia_loops <<EOF
 $MID 474 66
 EOF
 "$WORKER"
-buggy_loop_count=$(count_loop_lines_for_mid out)
-echo "loop entries for MID after buggy-checkpoint resume: $buggy_loop_count"
-rm -f in out camicia_state
+crash_window_loop_count=$(count_loop_lines_for_mid out)
+echo "loop entries for MID after crash-window resume: $crash_window_loop_count"
+rm -f in out camicia_state camicia_loops
 
 echo
 pass=1
@@ -77,13 +89,19 @@ if [ "$correct_loop_count" != "1" ]; then
     echo "❌ FAIL: correct-checkpoint resume should find exactly 1 loop entry for MID, got $correct_loop_count"
     pass=0
 fi
-if [ "$buggy_loop_count" != "2" ]; then
-    echo "❌ FAIL: buggy-checkpoint resume was expected to demonstrate the duplicate (2 entries), got $buggy_loop_count -- either the bug is back, or this test no longer has power to catch it"
+if [ "$crash_window_loop_count" != "1" ]; then
+    echo "❌ FAIL: crash-window resume should still find exactly 1 loop entry for MID (the dedup"
+    echo "   guard in main()'s loop should skip re-adding an index already loaded from"
+    echo "   camicia_loops) -- got $crash_window_loop_count. If this is 2, the dedup guard"
+    echo "   regressed and MID got recorded twice; if this is 0, the guard is over-matching"
+    echo "   and silently dropping a real result."
     pass=0
 fi
 
 if [ "$pass" = "1" ]; then
-    echo "✅ PASS: current checkpoint semantics produce no duplicate, and the test correctly demonstrates the old bug's symptom under buggy semantics"
+    echo "✅ PASS: current checkpoint semantics produce no duplicate under a normal resume,"
+    echo "   and the dedup guard correctly prevents a duplicate even when camicia_state and"
+    echo "   camicia_loops are left inconsistent by a simulated crash between the two writes."
     exit 0
 else
     exit 1
