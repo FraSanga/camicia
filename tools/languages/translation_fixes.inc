@@ -60,3 +60,10 @@ $language_lookup_array["it_IT"]["\n    At this point BOINC should be installed a
 // placeholder ("% 1" instead of "%1"), which also breaks strtr()'s exact
 // "%1" match, on the Community-menu teaser text.
 $language_lookup_array["it_IT"]["You can meet and communicate with other %1 participants\n        in a variety of ways - take a look under the Community\n        menu above."] = "Puoi incontrare e comunicare con gli altri %1 partecipanti\n        in diversi modi: dai un'occhiata menu\n        Community qui sopra.";
+
+// it_IT -- found 2026-08-20, confirmed against the live site: two plain
+// translator typos (not placeholder-related this time) -- the English
+// word "go" left in place of "vai", and a missing "s" in "scaricarlo"
+// ("dscaricarlo" isn't a word).
+$language_lookup_array["it_IT"]["Your computer hasn't completed any tasks yet.  If you need help, %1go here%2."] = "Il tuo computer non ha ancora completato nessuna attività.  Se ti serve aiuto, %1vai qui%2.";
+$language_lookup_array["it_IT"]["If BOINC is not installed on this computer, %1download it%2."] = "Se BOINC non è installato su questo computer puoi %1scaricarlo da qui%2.";
