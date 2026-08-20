@@ -4,13 +4,18 @@
 # otherwise only ever live on this one host's disk. Runs daily via
 # config.xml's <tasks>, same pattern as db_backup.sh/rotate_results.sh.
 #
-# No-ops cleanly if keys/rclone.conf or $RCLONE_CONFIG_PASS aren't present --
-# true on every local dev deploy, since there's no local-dev equivalent of
-# this backup (local gets torn down/rebuilt regularly, nothing there is
-# worth backing up offsite). $RCLONE_CONFIG_PASS itself is never written to
-# any .env, local or production -- injected only into deploy.yml's process
-# environment from a `production`-Environment GitHub Actions secret, same
-# mechanism as CODE_SIGN_KEY_PASSPHRASE.
+# No-ops cleanly if keys/rclone.conf or keys/rclone_config_pass aren't
+# present -- true on every local dev deploy, since there's no local-dev
+# equivalent of this backup (local gets torn down/rebuilt regularly,
+# nothing there is worth backing up offsite).
+#
+# Unlike CODE_SIGN_KEY_PASSPHRASE (only ever needed transiently, during a
+# deploy.yml run, for update_versions), this script runs independently every
+# day via bin/start --cron, long after any deploy.yml process has exited --
+# so tools.sh writes the passphrase to keys/rclone_config_pass (from the
+# `production`-Environment GitHub Actions secret RCLONE_CONFIG_PASS, never
+# to any .env) rather than relying on an env var that cron has no way to
+# still have set days later.
 set -e
 cd "$(dirname "$0")/.."
 . ./bin/notify.sh
@@ -23,12 +28,14 @@ cd "$(dirname "$0")/.."
 # with no guarantee of surviving into cron's job environment.
 KEYS_DIR="$HOME/keys"
 RCLONE_CONF="$KEYS_DIR/rclone.conf"
+PASS_FILE="$KEYS_DIR/rclone_config_pass"
 REMOTE="camicia-gdrive:camicia-backup"
 
-if [ ! -f "$RCLONE_CONF" ] || [ -z "$RCLONE_CONFIG_PASS" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP: rclone.conf or RCLONE_CONFIG_PASS not present (expected on local dev)"
+if [ ! -f "$RCLONE_CONF" ] || [ ! -f "$PASS_FILE" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP: rclone.conf or rclone_config_pass not present (expected on local dev)"
     exit 0
 fi
+RCLONE_CONFIG_PASS="$(<"$PASS_FILE")"
 export RCLONE_CONFIG_PASS
 
 fail() {
@@ -39,10 +46,11 @@ fail() {
 }
 
 # keys/ is small and low-churn -- mirror it exactly. Exclude rclone.conf
-# itself: no reason to upload the credential to the same Drive account it
-# grants access to.
+# AND rclone_config_pass: no reason to upload the credential (or the
+# plaintext passphrase that decrypts it) to the same Drive account they
+# grant access to.
 rclone sync "$KEYS_DIR" "$REMOTE/keys" --config "$RCLONE_CONF" \
-    --exclude rclone.conf \
+    --exclude rclone.conf --exclude rclone_config_pass \
     || fail "rclone sync of keys/ failed"
 
 # db_backups/ and results/ are additive (copy, not sync): db_backup.sh

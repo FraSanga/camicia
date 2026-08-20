@@ -134,6 +134,20 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "echo '$NTFY_TOPIC' > $PROJECT_DIR/ntfy_topic"
     fi
 
+    # RCLONE_CONFIG_PASS for backup_offsite_gdrive.sh's daily cron run --
+    # unlike CODE_SIGN_KEY_PASSPHRASE (only ever needed transiently, during
+    # this very deploy run, for update_versions), the offsite backup runs
+    # independently every day via bin/start --cron, long after this
+    # deploy.yml process has exited -- so the passphrase has to be written
+    # somewhere the cron job can read it later, not just left in this
+    # script's own process environment. Written to KEY_DIR (not PROJECT_DIR)
+    # so it lives alongside rclone.conf in the same persistent volume that
+    # survives a project reset. Piped over stdin, not a docker exec
+    # argument, so it doesn't appear in `docker top`/process listings.
+    if [ -n "$RCLONE_CONFIG_PASS" ]; then
+        docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $KEY_DIR/rclone_config_pass" <<< "$RCLONE_CONFIG_PASS"
+    fi
+
     # SMTP credentials for make_php_mailer() (see project.inc) -- optional,
     # only written if SMTP_HOST is set in .env. Kept out of the repo the same
     # way NTFY_TOPIC/OPS_PASS are; piped over stdin (not passed as a docker
@@ -230,6 +244,9 @@ $RECAPTCHA_SECRET_KEY"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/backup_offsite_gdrive.sh && chmod +x $PROJECT_DIR/bin/backup_offsite_gdrive.sh"
     if [ -n "$NTFY_TOPIC" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/ntfy_topic && chmod 600 $PROJECT_DIR/ntfy_topic"
+    fi
+    if [ -n "$RCLONE_CONFIG_PASS" ]; then
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/rclone_config_pass && chmod 600 $KEY_DIR/rclone_config_pass"
     fi
     if [ -n "$SMTP_HOST" ]; then
         # www-data needs group-read: project.inc's make_php_mailer() runs as
