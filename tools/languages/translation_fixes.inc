@@ -49,3 +49,8 @@ $language_lookup_array["it_IT"]["%1 is developed and run by %2."] = "%1 è svilu
 //   so a literal "%s" never gets replaced and shows through as-is.
 $language_lookup_array["it_IT"]["Already joined? %1Log in%2."] = "Già effettuato l'accesso? %1Accedi%2.";
 $language_lookup_array["it_IT"]["About %1"] = "Informazioni su %1";
+
+// it_IT -- found 2026-08-20, confirmed against the live site: same stray
+// literal "1" typo as above, this time sitting in front of %2 rather
+// than %1, in the BOINC-client-setup help text.
+$language_lookup_array["it_IT"]["\n    At this point BOINC should be installed and running on your computer;\n    the system tray should have an icon like this: %1\n    If not, %2get help here%3.\n    "] = "\n    Ora BOINC dovrebbe essere installato e operativo nel tuo computer;\n    l'icona nella system tray dovrebbe essere simile a: %1\n    Se no, %2ottieni aiuto qui%3.\n    ";
