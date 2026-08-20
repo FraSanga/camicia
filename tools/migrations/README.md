@@ -7,7 +7,7 @@ etc.) gets redeployed on every `tools.sh` run; these do not, because they're
 not idempotent app/config pushes -- they're one-time structural changes to
 data that already exists.
 
-This is a distinct category from `tools/create_forums.php`, which is also a
+This is a distinct category from `tools/html/ops/create_forums.php`, which is also a
 manually-run, not-auto-deployed script, but seeds *new* rows (forum
 categories) rather than altering the shape of existing tables. Both share
 the same "deploy by hand, then run by hand, once" convention documented in

@@ -77,34 +77,38 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./work_generator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
-    docker cp ./project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project.inc"
-    docker cp ./project_description.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_description.php"
-    docker cp ./project_specific_prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_specific_prefs.inc"
-    docker cp ./about.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/about.php"
+    # Everything under tools/html/ mirrors its real html/ destination path
+    # exactly (tools/html/user/about.php -> html/user/about.php, etc.), so
+    # the source path here doubles as the deploy-target documentation --
+    # no need to cross-reference this list to know where a given file lands.
+    docker cp ./html/project/project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project.inc"
+    docker cp ./html/project/project_description.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_description.php"
+    docker cp ./html/project/project_specific_prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_specific_prefs.inc"
+    docker cp ./html/user/about.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/about.php"
     # All four below are byte-identical copies of BOINC's own files, each
     # with the same one-line-becomes-two-lines fix: get_cached_data() can
     # return null on a cold/expired cache, and passing null to
     # unserialize() is a deprecation notice as of PHP 8.1 -- found on
     # server_status.php's live output, then found to be the same latent
     # bug in these other three (not yet triggered there, same root cause).
-    docker cp ./server_status.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/server_status.php"
-    docker cp ./download_network.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/download_network.php"
-    docker cp ./get_project_config.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/get_project_config.php"
-    docker cp ./team_members.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_members.php"
+    docker cp ./html/user/server_status.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/server_status.php"
+    docker cp ./html/user/download_network.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/download_network.php"
+    docker cp ./html/user/get_project_config.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/get_project_config.php"
+    docker cp ./html/user/team_members.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_members.php"
     # Same PHP 8.1 deprecation class, this time xml_parse(null,...) instead
     # of unserialize(null) -- $prefs_xml is null for a user who's never
     # saved custom prefs. Found live on prefs.php.
-    docker cp ./prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
-    docker cp ./prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
-    docker cp ./signup.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/signup.php"
+    docker cp ./html/inc/prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
+    docker cp ./html/inc/prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
+    docker cp ./html/user/signup.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/signup.php"
     docker cp ./terms_of_use.txt "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/terms_of_use.txt"
     # translation.inc is a byte-identical copy of BOINC's own file plus one
-    # hook (see tools/languages/translation.inc's own header) that loads
+    # hook (see tools/html/inc/translation.inc's own header) that loads
     # translation_fixes.inc after every per-request compiled language file,
     # so specific broken upstream strings can be corrected without ever
     # touching/tracking whole language files -- see that file for why.
-    docker cp ./languages/translation.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/translation.inc"
-    docker cp ./languages/translation_fixes.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/languages/compiled/translation_fixes.inc"
+    docker cp ./html/inc/translation.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/translation.inc"
+    docker cp ./html/languages/compiled/translation_fixes.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/languages/compiled/translation_fixes.inc"
     docker cp ./db_backup.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/db_backup.sh"
     docker cp ./disk_space_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/disk_space_check.sh"
     docker cp ./memory_check.sh "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/bin/memory_check.sh"
@@ -114,12 +118,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
 
     echo "📧 Vendoring PHPMailer..."
     docker exec "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$PROJECT_DIR/html/inc/PHPMailer'"
-    docker cp ./phpmailer/src "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/PHPMailer/src"
+    docker cp ./html/inc/PHPMailer/src "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/PHPMailer/src"
 
     # Deployed to html/ops/ (not bin/), matching upstream's own placement of
     # create_forums.php -- its require_once("../inc/forum_db.inc") is a
     # relative path that only resolves correctly one level under html/.
-    docker cp ./create_forums.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/create_forums.php"
+    docker cp ./html/ops/create_forums.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/create_forums.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
