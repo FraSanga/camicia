@@ -48,9 +48,13 @@ fail() {
 # keys/ is small and low-churn -- mirror it exactly. Exclude rclone.conf
 # AND rclone_config_pass: no reason to upload the credential (or the
 # plaintext passphrase that decrypts it) to the same Drive account they
-# grant access to.
+# grant access to. Also exclude the plaintext "upload_private" specifically:
+# unlike code_sign_private, it has to stay decrypted on disk continuously
+# (transitioner reads it unconditionally at startup -- see tools.sh's own
+# comment), so only its encrypted upload_private.gpg counterpart should ever
+# leave the host; the live plaintext copy is local-only, by design.
 rclone sync "$KEYS_DIR" "$REMOTE/keys" --config "$RCLONE_CONF" \
-    --exclude rclone.conf --exclude rclone_config_pass \
+    --exclude rclone.conf --exclude rclone_config_pass --exclude upload_private \
     || fail "rclone sync of keys/ failed"
 
 # db_backups/ and results/ are additive (copy, not sync): db_backup.sh

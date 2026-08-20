@@ -442,6 +442,31 @@ EOF"
         docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
     fi
 
+    # upload_private, unlike code_sign_private, must stay plaintext
+    # continuously -- confirmed the hard way 2026-08-20: sched/transitioner.cpp
+    # (a daemon meant to run indefinitely) reads it unconditionally at
+    # startup regardless of dont_generate_upload_certificates/
+    # ignore_upload_certificates, and crash-loops with "can't read key" if
+    # it's missing. (get_file.cpp/file_upload_handler, the actual client
+    # upload path, DOES check that flag first and correctly never needs this
+    # file on this project -- only transitioner is unconditional.) So this is
+    # a self-healing *restore*, not a decrypt-use-re-hide cycle: only runs if
+    # the plaintext doesn't already exist, using the encrypted upload_private.gpg
+    # backup + UPLOAD_KEY_PASSPHRASE (same GitHub Actions Environment secret
+    # injection pattern as CODE_SIGN_KEY_PASSPHRASE). fix_permissions.sh's
+    # existing "$KEY_DIR"/*_private glob already locks down the resulting
+    # file to 600 on this same deploy, no extra chmod needed here.
+    if [ -n "$UPLOAD_KEY_PASSPHRASE" ]; then
+        if ! docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -f $KEY_DIR/upload_private ]"; then
+            echo "🔓 Restoring missing upload_private from encrypted backup..."
+            docker exec -i "$SERVER_CONTAINER_NAME" bash -c \
+                "gpg --batch --yes --passphrase-fd 0 -o $KEY_DIR/upload_private --decrypt $KEY_DIR/upload_private.gpg" \
+                <<< "$UPLOAD_KEY_PASSPHRASE"
+            docker exec "$SERVER_CONTAINER_NAME" bash -c \
+                "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/upload_private && chmod 600 $KEY_DIR/upload_private"
+        fi
+    fi
+
     echo "▶️ Restarting BOINC project..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"
 

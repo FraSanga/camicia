@@ -30,6 +30,14 @@ jobs:
           # backup to protect, so local runs simply have this unset and the
           # backup script no-ops.
           RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
+          # keys/upload_private.gpg is the encrypted backup of a key that,
+          # unlike code_sign_private, must actually stay plaintext on disk
+          # continuously -- sched/transitioner.cpp reads it unconditionally
+          # at daemon startup (confirmed 2026-08-20 after encrypting it broke
+          # transitioner in production for about an hour). tools.sh only uses
+          # this to self-heal the plaintext file back if it's ever missing,
+          # not a decrypt-use-re-hide cycle -- see tools.sh's own comment.
+          UPLOAD_KEY_PASSPHRASE: ${{ secrets.UPLOAD_KEY_PASSPHRASE }}
         run: |
           cd ~/camicia
           git fetch origin main
