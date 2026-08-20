@@ -22,6 +22,14 @@ jobs:
           # duration of the run. See DEPLOYMENT.md for the one-time setup
           # this depends on.
           CODE_SIGN_KEY_PASSPHRASE: ${{ secrets.CODE_SIGN_KEY_PASSPHRASE }}
+          # keys/rclone.conf (the offsite-backup Google Drive remote) is also
+          # encrypted at rest on production, same reasoning as above -- never
+          # written to production's .env, only present in this step's process
+          # environment for the duration of the run. No local-.env equivalent
+          # exists on purpose: unlike code-signing, there's no local-dev
+          # backup to protect, so local runs simply have this unset and the
+          # backup script no-ops.
+          RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
         run: |
           cd ~/camicia
           git fetch origin main
