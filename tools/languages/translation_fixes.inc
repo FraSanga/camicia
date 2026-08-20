@@ -29,6 +29,15 @@
 // tools/project_description.php's homepage blurb.
 $language_lookup_array["it_IT"]["Camicia is a distributed-computing project that exhaustively searches every distinct deal of a 52-card deck, looking for games of Beggar-My-Neighbour (known in Italy as Camicia) that loop forever, or that take unusually long to end. Every volunteer's computer tests a different slice of the deck, so together we cover every possible deal exactly once."] = "Camicia è un progetto di calcolo distribuito che analizza in modo esaustivo ogni possibile smazzata di un mazzo di 52 carte, alla ricerca di partite a Beggar-My-Neighbour (il gioco della Camicia) che non finiscono mai o che durano insolitamente a lungo. Il computer di ogni volontario analizza una porzione diversa del mazzo, così da coprire ogni smazzata possibile esattamente una volta.";
 
+// tools/about.php
+$language_lookup_array["it_IT"]["%1 is a %2BOINC%3 distributed-computing project. It exhaustively searches every distinct deal of a 52-card deck, looking for games of Beggar-My-Neighbour, known in Italy as %1, that loop forever, or that take unusually long to end."] = "%1 è un progetto di calcolo distribuito %2BOINC%3. Analizza in modo esaustivo ogni possibile smazzata di un mazzo di 52 carte, alla ricerca di partite a Beggar-My-Neighbour, conosciuto in Italia come %1, che non finiscono mai o che durano insolitamente a lungo.";
+$language_lookup_array["it_IT"]["Why search for this?"] = "Perché cercare questo?";
+$language_lookup_array["it_IT"]["Beggar-My-Neighbour looks like a simple children's game, but whether every possible deal is guaranteed to eventually end is an open question in mathematics. %1 checks every distinct deal exactly once, distributing the work across volunteers' computers, to help find out."] = "Beggar-My-Neighbour sembra un semplice gioco per bambini, ma se ogni possibile smazzata sia garantita a finire prima o poi è una domanda ancora aperta in matematica. %1 analizza ogni smazzata possibile esattamente una volta, distribuendo il lavoro tra i computer dei volontari, per aiutare a scoprirlo.";
+$language_lookup_array["it_IT"]["What we've found so far"] = "Cosa abbiamo scoperto finora";
+$language_lookup_array["it_IT"]["Most deals finish, some taking thousands of tricks. In 2024, %1 found the first confirmed game that loops forever: a deal that returns to an identical board state after 474 cards played, meaning it can never end."] = "La maggior parte delle smazzate finisce, alcune dopo migliaia di prese. Nel 2024, %1 ha trovato la prima partita confermata che non finisce mai: una smazzata che torna a uno stato identico dopo 474 carte giocate, il che significa che non può mai terminare.";
+$language_lookup_array["it_IT"]["Who runs %1?"] = "Chi gestisce %1?";
+$language_lookup_array["it_IT"]["%1 is developed and run by %2."] = "%1 è sviluppato e gestito da %2.";
+
 //-------------- Corrections to strings shipped broken upstream
 
 // it_IT -- found 2026-08-20, confirmed against the live site:
