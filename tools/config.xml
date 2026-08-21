@@ -1,6 +1,16 @@
 <?xml version="1.0" ?>
 <boinc>
     <config>
+        <!-- make_project's own bootstrap set this to the lowercase project
+             identifier ("camicia", from the make_project ... camicia
+             invocation) and it was never overridden since. It's not just
+             cosmetic: config.long_name is embedded directly in every
+             scheduler reply (sched_types.cpp's project_name element,
+             which BOINC Manager reads) and in client-facing help text
+             (sched_locality.cpp's "To get more %s work..." message), so
+             every attached client was seeing "camicia" lowercase in real
+             UI text while the rest of the site says "Camicia". -->
+        <long_name>Camicia</long_name>
         <min_sendwork_interval>6</min_sendwork_interval>
         <max_wus_to_send>50</max_wus_to_send>
         <!-- Per-CPU cap on in-progress workunits: a host can hold at most
