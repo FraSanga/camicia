@@ -36,12 +36,15 @@ fail() {
 # not a longer-term archive, so there's no reason to keep stale data around
 # once the primary copy has rotated/pruned it away.
 mkdir -p "$DEST/keys" "$DEST/db_backups" "$DEST/results"
-# Exclude rclone.conf and rclone_config_pass, same reasoning as
-# backup_offsite_gdrive.sh's own exclude list: keeping the encrypted
-# Google Drive credential and its plaintext decryption passphrase off of
-# every secondary copy means a single stolen backup (this drive, or the
-# Drive account itself) never hands over a ready-to-use pair on its own.
-rsync -a --delete --exclude rclone.conf --exclude rclone_config_pass \
+# Exclude rclone.conf, rclone_config_pass, AND the plaintext upload_private
+# -- same reasoning as backup_offsite_gdrive.sh's own exclude list, and it
+# applies just as much to a physically separate, removable drive as it does
+# to a remote one: keeping these off of every secondary copy means a single
+# stolen backup (this drive, the Drive account, whichever) never hands over
+# a ready-to-use credential or plaintext key on its own. upload_private.gpg
+# (the encrypted counterpart) is still included -- only the live plaintext
+# copy is excluded.
+rsync -a --delete --exclude rclone.conf --exclude rclone_config_pass --exclude upload_private \
     "$KEYS_DIR/" "$DEST/keys/" || fail "rsync of keys/ failed"
 rsync -a --delete ./db_backups/ "$DEST/db_backups/" || fail "rsync of db_backups/ failed"
 rsync -a --delete ./results/ "$DEST/results/" || fail "rsync of results/ failed"
