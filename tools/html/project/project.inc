@@ -132,7 +132,7 @@ if (file_exists($smtp_credentials_file)) {
 //
 function project_banner($title, $prefix, $is_main) {
     if ($is_main) {
-        echo '<img class="img-responsive" style="width:100%" src="img/water.jpg">';
+        echo '<img class="img-responsive" style="width:100%" src="img/camicia_banner.svg" alt="Camicia">';
     }
     sample_navbar(secure_url_base(), get_logged_in_user(false), false);
     if ($title) {

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 175" width="1200" height="175" role="img" aria-label="Camicia">
+  <defs>
+    <linearGradient id="felt" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0f1f1a"/>
+      <stop offset="55%" stop-color="#16302a"/>
+      <stop offset="100%" stop-color="#0f1f1a"/>
+    </linearGradient>
+
+    <!-- same diamond lattice as landing/index.html's body::before, just as an SVG pattern -->
+    <pattern id="lattice" width="48" height="48" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="48" stroke="#1d3a32" stroke-width="1"/>
+    </pattern>
+    <pattern id="lattice2" width="48" height="48" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+      <line x1="0" y1="0" x2="0" y2="48" stroke="#1d3a32" stroke-width="1"/>
+    </pattern>
+
+    <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
+      <stop offset="40%" stop-color="#0f1f1a" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0f1f1a" stop-opacity="0.9"/>
+    </radialGradient>
+
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+
+    <g id="card">
+      <rect x="0" y="0" width="92" height="128" rx="6" fill="#ede3cb" stroke="#8c7a3e" stroke-width="1.5"/>
+      <rect x="6" y="6" width="80" height="116" rx="3" fill="none" stroke="#8c7a3e" stroke-width="0.75" opacity="0.5"/>
+    </g>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="175" fill="url(#felt)"/>
+  <rect x="0" y="0" width="1200" height="175" fill="url(#lattice)" opacity="0.7"/>
+  <rect x="0" y="0" width="1200" height="175" fill="url(#lattice2)" opacity="0.7"/>
+  <rect x="0" y="0" width="1200" height="175" fill="url(#vignette)"/>
+
+  <!-- thin gold frame, echoing the landing page's .frame border -->
+  <rect x="10" y="10" width="1180" height="155" fill="none" stroke="#8c7a3e" stroke-width="1"/>
+
+  <text x="60" y="98" font-family="Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif"
+        font-size="52" fill="#c9a227" letter-spacing="0.5">Camicia</text>
+  <text x="63" y="126" font-family="Georgia, serif" font-style="italic" font-size="17" fill="#b7ae95">
+    Beggar-My-Neighbour, dealt every possible way</text>
+
+  <!-- suits, as a centered decorative mark in the middle gap between title and cards -->
+  <g font-family="Georgia, serif" font-size="30" letter-spacing="20" transform="translate(560,97)">
+    <text x="0" y="0" fill="#ede3cb">&#9824;</text>
+    <text x="36" y="0" fill="#a83349">&#9829;</text>
+    <text x="72" y="0" fill="#a83349">&#9830;</text>
+    <text x="108" y="0" fill="#ede3cb">&#9827;</text>
+  </g>
+
+  <!-- fanned cards, right side: A K Q J -->
+  <g transform="translate(945,22)">
+    <g transform="translate(0,8) rotate(-21 46 64)" filter="url(#soft-shadow)">
+      <use href="#card"/>
+      <text x="14" y="34" font-family="Georgia, serif" font-size="26" fill="#16302a">A</text>
+      <text x="14" y="60" font-family="Georgia, serif" font-size="24" fill="#a83349">&#9829;</text>
+    </g>
+    <g transform="translate(30,-2) rotate(-7 46 64)" filter="url(#soft-shadow)">
+      <use href="#card"/>
+      <text x="14" y="34" font-family="Georgia, serif" font-size="26" fill="#16302a">K</text>
+      <text x="14" y="60" font-family="Georgia, serif" font-size="24" fill="#16302a">&#9824;</text>
+    </g>
+    <g transform="translate(60,-2) rotate(7 46 64)" filter="url(#soft-shadow)">
+      <use href="#card"/>
+      <text x="14" y="34" font-family="Georgia, serif" font-size="26" fill="#16302a">Q</text>
+      <text x="14" y="60" font-family="Georgia, serif" font-size="24" fill="#a83349">&#9830;</text>
+    </g>
+    <g transform="translate(90,8) rotate(21 46 64)" filter="url(#soft-shadow)">
+      <use href="#card"/>
+      <text x="14" y="34" font-family="Georgia, serif" font-size="26" fill="#16302a">J</text>
+      <text x="14" y="60" font-family="Georgia, serif" font-size="24" fill="#16302a">&#9827;</text>
+    </g>
+  </g>
+</svg>
