@@ -22,7 +22,7 @@ echo "
 <p>".tra("Beggar-My-Neighbour looks like a simple children's game, but whether every possible deal is guaranteed to eventually end is an open question in mathematics. %1 checks every distinct deal exactly once, distributing the work across volunteers' computers, to help find out.", PROJECT)."
 
 <h3>".tra("What we've found so far")."</h3>
-<p>".tra("Most deals finish, some taking thousands of tricks. In 2024, %1 found the first confirmed game that loops forever: a deal that returns to an identical board state after 474 cards played, meaning it can never end.", PROJECT)."
+<p>".tra("Most deals finish, some taking thousands of tricks. Whether any deal loops forever at all was confirmed for the first time in 2024, when a deal that returns to an identical board state after 474 cards played was documented elsewhere -- proof that some games truly never end. %1 uses that exact deal to verify its own simulation engine is correct, and is now searching the rest of the deck for its own first discovery.", PROJECT)."
 
 <h3>".tra("Who runs %1?", PROJECT)."</h3>
 <p>".tra("%1 is developed and run by %2.", PROJECT, COPYRIGHT_HOLDER)."
