@@ -14,6 +14,7 @@ services:
       OPS_PASS: ${OPS_PASS}
       SERVER_VOLUME_PROJECTS_DIR: ${SERVER_VOLUME_PROJECTS_DIR}
       SERVER_VOLUME_KEYS_DIR: ${SERVER_VOLUME_KEYS_DIR}
+      BACKUP_DRIVE_DIR: ${BACKUP_DRIVE_DIR:-/mnt/backup1tb}
       PROJECTS_USER: ${PROJECTS_USER}
       SERVER_HOSTNAME: ${SERVER_HOSTNAME}
       DOMAIN: ${DOMAIN}
@@ -22,6 +23,13 @@ services:
     volumes:
       - ${SERVER_VOLUME_PROJECTS}:${SERVER_VOLUME_PROJECTS_DIR}
       - ${SERVER_VOLUME_KEYS}:${SERVER_VOLUME_KEYS_DIR}
+      # Second local backup copy (tools/backup_usb.sh) -- optional, only real
+      # on production. BACKUP_DRIVE defaults to a throwaway /tmp path so
+      # local dev (which never has this drive) doesn't need to set anything;
+      # rsync-ing local dev's own test data into a scratch dir on the same
+      # machine is harmless, so the script itself doesn't need to detect
+      # "is this the real drive" either.
+      - ${BACKUP_DRIVE:-/tmp/camicia_backup_drive_stub}:${BACKUP_DRIVE_DIR:-/mnt/backup1tb}
     networks:
       - database_network
     depends_on:

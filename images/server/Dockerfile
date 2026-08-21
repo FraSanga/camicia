@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     cron \
     unzip \
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 RUN a2enmod cgi rewrite headers expires
