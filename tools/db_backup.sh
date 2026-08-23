@@ -4,7 +4,9 @@
 # project's own config.xml (populated by make_project) rather than requiring
 # separate credentials to be threaded into the container's environment.
 set -e
+set -o pipefail
 cd "$(dirname "$0")/.."
+. ./bin/notify.sh
 
 RETAIN=7
 BACKUP_DIR="./db_backups"
@@ -31,13 +33,27 @@ trap 'rm -f "$CREDS_FILE"' EXIT
 chmod 600 "$CREDS_FILE"
 printf '[client]\nuser=%s\npassword=%s\n' "$DB_USER" "$DB_PASSWD" > "$CREDS_FILE"
 
+fail() {
+    local msg="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') FAILED: $msg"
+    notify "Camicia: DB backup failed" "$msg" high
+    exit 1
+}
+
 # --single-transaction: a consistent InnoDB snapshot via transaction
 # isolation, taken without blocking the live daemons' reads/writes for the
 # dump's duration -- the default (LOCK TABLES per table) would otherwise
 # stall feeder/transitioner/assimilator while this runs.
-mysqldump --defaults-extra-file="$CREDS_FILE" --single-transaction -h "$DB_HOST" "$DB_NAME" | gzip > "$OUT"
+#
+# pipefail (set above) makes this `||` fire if mysqldump fails even though
+# gzip (the pipeline's last command) would otherwise still exit 0 on the
+# truncated/empty stream -- without it a failed dump would silently "succeed"
+# with a corrupt .sql.gz and no alert. On failure, remove the partial output
+# so the retention pass below never counts or keeps it.
+mysqldump --defaults-extra-file="$CREDS_FILE" --single-transaction -h "$DB_HOST" "$DB_NAME" | gzip > "$OUT" \
+    || { rm -f "$OUT"; fail "mysqldump/gzip of $DB_NAME failed"; }
 
 # retention: keep the newest $RETAIN dumps
 ls -1t "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | tail -n +$((RETAIN + 1)) | xargs -r rm -f
 
-echo "Backed up $DB_NAME to $OUT"
+echo "$(date '+%Y-%m-%d %H:%M:%S') OK: Backed up $DB_NAME to $OUT"
