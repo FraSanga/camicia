@@ -60,8 +60,13 @@ echo "⏰ [CRON] Starting Cron..."
 service cron start
 
 echo "⚙️ [HTTPD] Configuring Apache VirtualHost with secure variables..."
-sed -i "s|\${SERVER_VOLUME_PROJECTS_DIR}|${SERVER_VOLUME_PROJECTS_DIR}|g" /etc/apache2/sites-available/boinc.conf
-sed -i "s|\${DOMAIN}|${DOMAIN}|g" /etc/apache2/sites-available/boinc.conf
+# Regenerated fresh from the pristine template on every start, not sed -i on
+# the live file -- otherwise the first substitution consumes the placeholders
+# and a later change to DOMAIN/SERVER_VOLUME_PROJECTS_DIR in .env would never
+# take effect on a plain container restart, only on a full recreate.
+sed -e "s|\${SERVER_VOLUME_PROJECTS_DIR}|${SERVER_VOLUME_PROJECTS_DIR}|g" \
+    -e "s|\${DOMAIN}|${DOMAIN}|g" \
+    /etc/apache2/sites-available/boinc.conf.template > /etc/apache2/sites-available/boinc.conf
 
 echo "🌐 [HTTPD] Starting Apache..."
 rm -f /var/run/apache2/apache2.pid

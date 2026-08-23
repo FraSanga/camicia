@@ -108,8 +108,16 @@ RUN ./_autosetup && \
     make
 
 WORKDIR /usr/local/src/boinc
-COPY camicia.httpd.conf /etc/apache2/sites-available/boinc.conf
-RUN a2dissite 000-default && a2ensite boinc
+# Kept as a separate, never-mutated template: entrypoint.sh regenerates
+# sites-available/boinc.conf from this on every container start, not just
+# once. sed -i'ing the live file directly (the previous approach) consumes
+# the ${DOMAIN}/${SERVER_VOLUME_PROJECTS_DIR} placeholders on the first
+# substitution -- since that file lives in the container's writable layer
+# and survives a plain restart, a later .env change would silently never
+# take effect until the container was recreated from the image.
+COPY camicia.httpd.conf /etc/apache2/sites-available/boinc.conf.template
+RUN cp /etc/apache2/sites-available/boinc.conf.template /etc/apache2/sites-available/boinc.conf && \
+    a2dissite 000-default && a2ensite boinc
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
