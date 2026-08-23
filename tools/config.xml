@@ -32,8 +32,22 @@
         <fuh_debug_level>3</fuh_debug_level>
         <one_result_per_user_per_wu>0</one_result_per_user_per_wu>
         <send_result_abort>1</send_result_abort>
-        <dont_generate_upload_certificates>1</dont_generate_upload_certificates>
-        <ignore_upload_certificates>1</ignore_upload_certificates>
+        <!-- Upload authenticity: with both at 0 (BOINC's own default),
+             transitioner signs each result's upload target with
+             keys/upload_private (already read unconditionally at
+             transitioner startup; see file_upload_handler.cpp/
+             process_result_template.cpp for the full mechanism), and
+             file_upload_handler.cpp requires and verifies that signature
+             plus enforces the signed max_nbytes before accepting an
+             upload. Previously both were set to 1, disabling all of that
+             with no recorded justification: any anonymous HTTP client
+             could upload a file claiming to be the result for any
+             workunit, with no proof it was the host actually assigned
+             that work, and no enforced size limit. keys/upload_public is
+             already permissioned for this (fix_permissions.sh's existing
+             `*_public` chmod), so no other file needs to change. -->
+        <dont_generate_upload_certificates>0</dont_generate_upload_certificates>
+        <ignore_upload_certificates>0</ignore_upload_certificates>
         <!-- antique_file_deleter (sched/antique_file_deleter.cpp) reads this
              to find the upload-directory files' expected owner UID; it
              defaults to "apache" when unset, which doesn't exist on this
