@@ -75,12 +75,6 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./assimilator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./worker "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./work_generator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
-    # Minimally-patched copy of BOINC's own sched/antique_file_deleter.cpp --
-    # see the file's own header comment for the upstream errno/readdir bug
-    # this fixes. Compiled below, overwriting make_project's original stale
-    # bin/antique_file_deleter on every deploy, same pattern as worker/
-    # assimilator/work_generator.
-    docker cp ./antique_file_deleter.cpp "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/antique_file_deleter.cpp"
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     # Everything under tools/html/ mirrors its real html/ destination path
@@ -244,7 +238,7 @@ $RECAPTCHA_SECRET_KEY"
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/antique_file_deleter.cpp $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
@@ -340,9 +334,16 @@ $RECAPTCHA_SECRET_KEY"
     /usr/local/src/boinc/lib/libboinc.a \
     -lmysqlclient -lcrypto -lssl -pthread -ldl"
 
-    echo "⚙️ Compiling patched antique_file_deleter..."
+    echo "⚙️ Compiling antique_file_deleter..."
+    # Stock BOINC source (see images/server/Dockerfile's BOINC_COMMIT) --
+    # upstream fixed the errno/readdir bug we used to carry as a local
+    # patch (tools/antique_file_deleter.cpp, removed), so this now just
+    # rebuilds and redeploys the real thing on every deploy, same pattern
+    # as worker/assimilator/work_generator, keeping it in sync with
+    # whatever BOINC_COMMIT is pinned instead of the local patch drifting
+    # from upstream.
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
-    $PROJECT_DIR/antique_file_deleter.cpp \
+    /usr/local/src/boinc/sched/antique_file_deleter.cpp \
     -o $PROJECT_DIR/bin/antique_file_deleter \
     -I/usr/local/src/boinc \
     -I/usr/local/src/boinc/api \
