@@ -7,11 +7,9 @@
 // under html/), but NOT run automatically on every deploy: verified against
 // a real local deploy that category/forum DO have unique keys (`cat1` on
 // (name, is_helpdesk); `pct` on (parent_type, category, title)) despite
-// db/schema.sql showing none -- but modern PHP/mysqli throws on a failed
-// query by default, so create_category()'s/create_forum()'s "look up the
-// existing row on insert failure" fallback below never actually runs; a
-// second invocation crashes with an uncaught mysqli_sql_exception instead
-// of quietly reusing the existing rows. Run this by hand, once:
+// db/schema.sql showing none. Run this by hand, once (a second run is safe:
+// create_category()/create_forum() catch the duplicate-key failure and
+// reuse the existing row instead of erroring):
 //   docker exec --user boincadm boinc_server bash -c \
 //     'cd ~/projects/camicia/html/ops && php create_forums.php'
 // RUN AS A CLI SCRIPT, NOT VIA A BROWSER (matches upstream BOINC's own
@@ -25,12 +23,22 @@ function create_category($orderID, $name, $is_helpdesk) {
     $db = BoincDB::get();
     $name_escaped = BoincDb::escape_string($name);
     $q = "(orderID, lang, name, is_helpdesk) values ($orderID, 1, '$name_escaped', $is_helpdesk)";
-    $result = $db->insert("category", $q);
+    // Modern PHP/mysqli throws mysqli_sql_exception on a failed query by
+    // default instead of returning false, so a duplicate-key failure (a
+    // second run of this script) has to be caught here or the fallback
+    // lookup below is unreachable dead code and the script just crashes.
+    $result = false;
+    $insert_error = "";
+    try {
+        $result = $db->insert("category", $q);
+    } catch (\mysqli_sql_exception $e) {
+        $insert_error = $e->getMessage();
+    }
     if (!$result) {
         $cat = BoincCategory::lookup("name='$name_escaped' and is_helpdesk=$is_helpdesk");
         if ($cat) return $cat->id;
         echo "can't create category\n";
-        echo $db->base_error();
+        echo $insert_error ?: $db->base_error();
         exit();
     }
     return $db->insert_id();
@@ -48,12 +56,20 @@ function create_forum($category, $orderID, $title, $description, $is_dev_blog=0,
     $description_escaped = BoincDb::escape_string($description);
     $q = "(category, orderID, title, description, is_dev_blog, post_min_total_credit) " .
         "values ($category, $orderID, '$title_escaped', '$description_escaped', $is_dev_blog, $post_min_total_credit)";
-    $result = $db->insert("forum", $q);
+    // See create_category()'s comment: modern PHP/mysqli throws on a failed
+    // query by default, so the duplicate-key case has to be caught here too.
+    $result = false;
+    $insert_error = "";
+    try {
+        $result = $db->insert("forum", $q);
+    } catch (\mysqli_sql_exception $e) {
+        $insert_error = $e->getMessage();
+    }
     if (!$result) {
         $forum = BoincForum::lookup("category=$category and title='$title_escaped'");
         if ($forum) return $forum->id;
         echo "can't create forum\n";
-        echo $db->base_error();
+        echo $insert_error ?: $db->base_error();
         exit();
     }
     return $db->insert_id();
