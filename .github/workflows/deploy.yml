@@ -7,6 +7,11 @@ name: deploy
 # before the job is allowed to start on the runner (Settings > Environments).
 on:
   workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: "Build/test worker binaries only -- skip the actual production deploy (leaves the self-hosted deploy job skipped, not queued)"
+        type: boolean
+        default: false
 
 jobs:
   # Ephemeral, GitHub-hosted -- runs on real Apple hardware (Apple SDK EULA's
@@ -63,6 +68,7 @@ jobs:
 
   deploy:
     needs: build-macos
+    if: ${{ !inputs.skip_deploy }}
     runs-on: [self-hosted, production]
     environment: production
     steps:
