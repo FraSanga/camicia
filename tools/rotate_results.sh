@@ -19,6 +19,26 @@ ROTATE_THRESHOLD_BYTES=$((100 * 1024 * 1024))
 RESULTS_FILE="results/results.txt"
 ALERT_LOG="./results_rotate_alerts.log"
 
+# Retry any segment left uncompressed by a previous run's failed gzip (see
+# below) -- nothing else here ever revisits an already-rotated segment, so
+# without this it would sit uncompressed forever instead of self-healing
+# on the next daily run. Glob only matches rotated segments (results_<ts>.txt),
+# never the live RESULTS_FILE itself (no underscore in "results.txt").
+shopt -s nullglob
+for LEFTOVER in results/results_*.txt; do
+    if gzip "$LEFTOVER"; then
+        MSG="OK: retry-gzip'd leftover $LEFTOVER from a previous failed rotation"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $MSG"
+        logger -t camicia_rotate_results "$MSG" 2>/dev/null || true
+    else
+        MSG="CRITICAL: retry-gzip of leftover $LEFTOVER is still failing"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $MSG" | tee -a "$ALERT_LOG"
+        logger -t camicia_rotate_results "$MSG" 2>/dev/null || true
+        notify "Camicia: results rotation failed" "$MSG" "high"
+    fi
+done
+shopt -u nullglob
+
 if [ ! -f "$RESULTS_FILE" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') OK: no $RESULTS_FILE yet, nothing to rotate"
     exit 0
@@ -42,7 +62,7 @@ if ! mv "$RESULTS_FILE" "$ROTATED"; then
 fi
 
 if ! gzip "$ROTATED"; then
-    MSG="CRITICAL: rotated $RESULTS_FILE to $ROTATED but gzip failed -- uncompressed segment left in place"
+    MSG="CRITICAL: rotated $RESULTS_FILE to $ROTATED but gzip failed -- uncompressed segment left in place, will retry on the next run"
     echo "$(date '+%Y-%m-%d %H:%M:%S') $MSG" | tee -a "$ALERT_LOG"
     logger -t camicia_rotate_results "$MSG" 2>/dev/null || true
     notify "Camicia: results rotation failed" "$MSG" "high"
