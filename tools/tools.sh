@@ -313,6 +313,24 @@ $RECAPTCHA_SECRET_KEY"
     /usr/local/src/boinc-win/lib/libboinc.a \
     -pthread"
 
+    echo "⚙️ Compiling Worker (Linux ARM64)..."
+    # Cross-compiled with gcc-aarch64-linux-gnu against the separate
+    # boinc-arm64 build (images/server/Dockerfile) so the worker also ships
+    # for aarch64-unknown-linux-gnu. Named worker_app_arm64 (not worker_app)
+    # since both land in the same $PROJECT_DIR/worker/ directory as the
+    # native x86_64 build.
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && aarch64-linux-gnu-g++ -O3 -static \
+    $PROJECT_DIR/worker/worker.cpp \
+    $PROJECT_DIR/worker/core/*.cpp \
+    -o $PROJECT_DIR/worker/worker_app_arm64 \
+    -I/usr/local/src/boinc-arm64/api \
+    -I/usr/local/src/boinc-arm64/lib \
+    -I$PROJECT_DIR/worker \
+    -I$PROJECT_DIR/worker/core \
+    /usr/local/src/boinc-arm64/api/libboinc_api.a \
+    /usr/local/src/boinc-arm64/lib/libboinc.a \
+    -pthread -ldl"
+
     echo "⚙️ Compiling Work Generator..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
     $PROJECT_DIR/work_generator/work_generator.cpp \
@@ -386,7 +404,7 @@ $RECAPTCHA_SECRET_KEY"
     # platforms per version, and means the existing code-signing step (already
     # unconditional) signs both files with no per-platform logic needed.
     echo "📦 Staging new app version..."
-    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe"; do
+    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION"; do
         PLATFORM="${ENTRY%%:*}"
         REST="${ENTRY#*:}"
         SOURCE_BINARY="${REST%%:*}"

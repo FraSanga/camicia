@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y \
     # --- Windows cross-compile toolchain (worker app only, see
     # boinc-win build below) ---
     mingw-w64 \
+    # --- Linux ARM64 cross-compile toolchain (worker app only, see
+    # boinc-arm64 build below) ---
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
     # --- Boinc required libraries ---
     libssl-dev \
     libcurl4-openssl-dev \
@@ -105,6 +109,21 @@ RUN git init boinc-win && \
 WORKDIR /usr/local/src/boinc-win
 RUN ./_autosetup && \
     ./configure --host=x86_64-w64-mingw32 --disable-client --disable-manager --disable-server && \
+    make
+
+# Third, fully independent copy of the same pinned BOINC source, cross-
+# compiled for aarch64-unknown-linux-gnu so the worker app also ships for
+# Linux ARM64 -- same reasoning as the boinc-win clone above (isolated tree,
+# only lib/+api/ needed, client/manager/server all disabled).
+WORKDIR /usr/local/src
+RUN git init boinc-arm64 && \
+    cd boinc-arm64 && \
+    git remote add origin https://github.com/BOINC/boinc.git && \
+    git fetch --depth 1 origin ${BOINC_COMMIT} && \
+    git checkout FETCH_HEAD
+WORKDIR /usr/local/src/boinc-arm64
+RUN ./_autosetup && \
+    ./configure --host=aarch64-linux-gnu --disable-client --disable-manager --disable-server && \
     make
 
 WORKDIR /usr/local/src/boinc
