@@ -404,7 +404,7 @@ $RECAPTCHA_SECRET_KEY"
     # platforms per version, and means the existing code-signing step (already
     # unconditional) signs both files with no per-platform logic needed.
     echo "📦 Staging new app version..."
-    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION"; do
+    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION"; do
         PLATFORM="${ENTRY%%:*}"
         REST="${ENTRY#*:}"
         SOURCE_BINARY="${REST%%:*}"

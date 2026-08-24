@@ -11,6 +11,10 @@
         <name>aarch64-unknown-linux-gnu</name>
         <user_friendly_name>Linux ARM64 (aarch64)</user_friendly_name>
     </platform>
+    <platform>
+        <name>arm64-apple-darwin</name>
+        <user_friendly_name>macOS Apple Silicon (arm64)</user_friendly_name>
+    </platform>
     <app>
         <name>simulator</name>
         <user_friendly_name>Simulation of the game called Camicia</user_friendly_name>

@@ -1,3 +1,9 @@
 keys/*
 .env
 projects/*
+# Downloaded from the build-macos GitHub Actions job onto the production
+# runner's checkout before tools.sh's docker cp -- unlike worker_app/
+# worker_app.exe/worker_app_arm64 (compiled only inside the container,
+# never on the host), this one transiently lands in the tracked working
+# tree first.
+tools/worker/worker_app_macos

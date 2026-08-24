@@ -9,10 +9,68 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Ephemeral, GitHub-hosted -- runs on real Apple hardware (Apple SDK EULA's
+  # "Apple-branded hardware only" clause), unlike the Windows/Linux ARM64
+  # workers which are cross-compiled straight inside the production
+  # container. macOS can't be reliably cross-compiled without an Apple SDK,
+  # so this builds the worker binary elsewhere and hands it to the deploy
+  # job below as an artifact. Doesn't touch prod, so no `environment:` gate.
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install autotools (not preinstalled on macos-14 runners)
+        run: |
+          brew install autoconf automake libtool pkg-config
+          # BOINC's _autosetup expects GNU-named libtool/libtoolize, but
+          # Homebrew installs them as glibtool/glibtoolize to avoid
+          # clobbering Apple's own bundled libtool -- prepend the gnubin
+          # shim dir so the unprefixed names resolve.
+          echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Build BOINC lib/api (macOS arm64, native)
+        run: |
+          BOINC_COMMIT=$(grep -oE 'ARG BOINC_COMMIT=[0-9a-f]+' images/server/Dockerfile | cut -d= -f2)
+          git init boinc-macos
+          cd boinc-macos
+          git remote add origin https://github.com/BOINC/boinc.git
+          git fetch --depth 1 origin "$BOINC_COMMIT"
+          git checkout FETCH_HEAD
+          ./_autosetup
+          ./configure --disable-client --disable-manager --disable-server
+          make
+
+      - name: Compile Worker (macOS arm64)
+        run: |
+          # No -static: Apple doesn't support fully static executables
+          # (no crt0.o to link against libSystem statically). No -ldl:
+          # dlopen/dlsym are part of libSystem on macOS, no separate libdl
+          # to link (same reason the Windows build already omits it).
+          clang++ -O3 \
+            tools/worker/worker.cpp tools/worker/core/*.cpp \
+            -o worker_app_macos \
+            -I boinc-macos/api -I boinc-macos/lib \
+            -I tools/worker -I tools/worker/core \
+            boinc-macos/api/libboinc_api.a boinc-macos/lib/libboinc.a \
+            -pthread
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worker_app_macos
+          path: worker_app_macos
+          retention-days: 1
+
   deploy:
+    needs: build-macos
     runs-on: [self-hosted, production]
     environment: production
     steps:
+      - name: Download macOS worker artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: worker_app_macos
+
       - name: Pull latest main and redeploy
         env:
           # keys/code_sign_private is kept encrypted at rest on production;
@@ -42,6 +100,14 @@ jobs:
           cd ~/camicia
           git fetch origin main
           git reset --hard origin/main
+          # Placed here, before tools.sh runs its own `docker cp ./worker ...`
+          # (which copies the whole tools/worker/ directory into the
+          # container as-is): this way the mac binary rides along
+          # automatically, no new docker cp needed. chmod +x explicitly --
+          # the executable bit isn't guaranteed to survive the
+          # upload-artifact/download-artifact zip transfer across runner OSes.
+          cp "$GITHUB_WORKSPACE/worker_app_macos" tools/worker/worker_app_macos
+          chmod +x tools/worker/worker_app_macos
           bash tools/tools.sh
 
       - name: Verify deployment health
