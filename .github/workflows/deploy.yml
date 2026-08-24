@@ -25,7 +25,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # BOINC's own lib/api rarely changes (only when BOINC_COMMIT is
+      # deliberately bumped in images/server/Dockerfile), unlike worker.cpp
+      # which can change on every deploy -- rebuilding it from source is
+      # ~2 minutes of this job's ~2.5, so it's cached separately, keyed on
+      # that commit, from the actual worker compile below (a few seconds).
+      - name: Get pinned BOINC commit
+        id: boinc_commit
+        run: |
+          echo "commit=$(grep -oE 'ARG BOINC_COMMIT=[0-9a-f]+' images/server/Dockerfile | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache BOINC lib/api (macOS arm64)
+        id: cache-boinc-macos
+        uses: actions/cache@v4
+        with:
+          path: boinc-macos
+          key: boinc-macos-arm64-${{ steps.boinc_commit.outputs.commit }}
+
       - name: Install autotools (not preinstalled on macos-14 runners)
+        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
         run: |
           brew install autoconf automake libtool pkg-config
           # BOINC's _autosetup expects GNU-named libtool/libtoolize, but
@@ -35,12 +53,12 @@ jobs:
           echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Build BOINC lib/api (macOS arm64, native)
+        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
         run: |
-          BOINC_COMMIT=$(grep -oE 'ARG BOINC_COMMIT=[0-9a-f]+' images/server/Dockerfile | cut -d= -f2)
           git init boinc-macos
           cd boinc-macos
           git remote add origin https://github.com/BOINC/boinc.git
-          git fetch --depth 1 origin "$BOINC_COMMIT"
+          git fetch --depth 1 origin "${{ steps.boinc_commit.outputs.commit }}"
           git checkout FETCH_HEAD
           ./_autosetup
           ./configure --disable-client --disable-manager --disable-server
