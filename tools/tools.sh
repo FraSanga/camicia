@@ -89,6 +89,11 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # stock placeholder (img/water.jpg, never deployed/tracked by us) with an
     # SVG matching landing/index.html's own felt/gold/cream card-table palette.
     docker cp ./html/user/img/camicia_banner.svg "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/camicia_banner.svg"
+    # Browser tab icon (SHORTCUT_ICON in project.inc) -- same felt/gold/cream
+    # palette as the banner above: a shirt collar (the literal meaning of
+    # "camicia") with a diamond pip nested in the neckline and two buttons
+    # down the front.
+    docker cp ./html/user/img/favicon.svg "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/favicon.svg"
     # All four below are byte-identical copies of BOINC's own files, each
     # with the same one-line-becomes-two-lines fix: get_cached_data() can
     # return null on a cold/expired cache, and passing null to
@@ -104,6 +109,11 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # saved custom prefs. Found live on prefs.php.
     docker cp ./html/inc/prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
     docker cp ./html/inc/prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
+    # Byte-identical copy of BOINC's own file, with a targeted fix to the
+    # SHORTCUT_ICON block (see util.inc's own comment): prepends $url_base
+    # like STYLESHEET/STYLESHEET2 already do, and emits the real MIME type
+    # instead of always claiming image/x-icon.
+    docker cp ./html/inc/util.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/util.inc"
     docker cp ./html/user/signup.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/signup.php"
     docker cp ./terms_of_use.txt "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/terms_of_use.txt"
     # translation.inc is a byte-identical copy of BOINC's own file plus one
@@ -238,7 +248,7 @@ $RECAPTCHA_SECRET_KEY"
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"

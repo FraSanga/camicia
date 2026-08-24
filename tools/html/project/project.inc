@@ -51,7 +51,12 @@ display_errors();
 // add your own stylesheets (included after bootstrap)
 //define("STYLESHEET", "aaa.css");
 //define("STYLESHEET2", "bbb.css");
-//define("SHORTCUT_ICON", "f.gif");     // browser tab icon
+// Relative to $url_base's root (html/user/), same convention as
+// STYLESHEET/STYLESHEET2 above -- html/inc/util.inc (Camicia override)
+// prepends $url_base at emission time so this resolves correctly from
+// every directory depth (html/ops/, html/admin/, forum pages, ...), not
+// just the one this happens to be tested from.
+define("SHORTCUT_ICON", "img/favicon.svg");     // browser tab icon
 define('DARK_MODE', true);      // enable dark mode if selected by user
 
 //-------------- enable/disable web features
