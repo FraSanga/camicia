@@ -77,6 +77,19 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./work_generator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
+    # Tells bin/db_dump (config.xml's already-enabled 24h task) which tables
+    # to export and where -- tracked here instead of relying on whatever
+    # make_project may or may not have written once, directly, into the
+    # live container.
+    docker cp ./db_dump_spec.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/db_dump_spec.xml"
+    # html/stats/ (db_dump's final_output_dir) sits outside html/user/, the
+    # only directory Apache actually serves (camicia.httpd.conf) -- this
+    # symlink is what makes the exported *.gz files reachable at
+    # <master_url>/stats/ at all. FollowSymLinks is already on for
+    # html/user/, so no Apache config change needed. -sfn: safe to rerun
+    # every deploy, never fails on an already-existing link/directory.
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+        "mkdir -p '$PROJECT_DIR/html/stats' && ln -sfn ../stats '$PROJECT_DIR/html/user/stats'"
     # Everything under tools/html/ mirrors its real html/ destination path
     # exactly (tools/html/user/about.php -> html/user/about.php, etc.), so
     # the source path here doubles as the deploy-target documentation --
