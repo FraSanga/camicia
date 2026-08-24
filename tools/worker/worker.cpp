@@ -133,6 +133,19 @@ int main(int argc, char** argv) {
             fclose(lf);
         }
         loopsAppended = state.loops.size();
+    } else {
+        // Not resuming (first run, or CHECKPOINT_FILE missing/unreadable
+        // e.g. a crash or full disk mid-write) -- any LOOPS_FILE content
+        // from an earlier attempt is now orphaned: we're about to
+        // reprocess this range from scratch (state.startIndex), which
+        // would re-find the same loops and, since do_checkpoint() only
+        // ever appends, duplicate them alongside the stale entries.
+        // Truncate so this run starts from a clean file, matching
+        // loopsAppended staying 0 here.
+        string loops_resolved;
+        boinc_resolve_filename_s(LOOPS_FILE, loops_resolved);
+        FILE* lf = boinc_fopen(loops_resolved.c_str(), "w");
+        if (lf) fclose(lf);
     }
 
     if (!resumed) {
