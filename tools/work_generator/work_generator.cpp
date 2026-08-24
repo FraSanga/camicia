@@ -39,6 +39,30 @@ static const char* MAX_INDEX_STR = "653534134886878244999";
     // quorum actually cross-checks results instead of trusting a single
     // client's output
 
+// Cost per deal, in the same fpops units BOINC's own DEFAULT_RSC_FPOPS_EST/
+// BOUND use -- make_job() was leaving those at BOINC's generic placeholder
+// defaults (3.6e12 / 8.64e13 total, regardless of range_size), which claim
+// an 1e9-deal WU takes ~11 minutes. Measured against the real engine
+// (engine.cpp/permutation.cpp, -O3, sequential indices exactly as
+// worker.cpp iterates them, same as this project's own client benchmark
+// calibration): 250 randomly-chosen blocks across the whole index space
+// (two independent runs, 100 and 150 blocks, ~6.5M deals total) average
+// ~149,000 fpops/deal against this host's measured p_fpops (BOINC's own
+// client/whetstone.cpp benchmark, 8 runs, ~5.33e9 FLOPS) -- i.e. an
+// 1e9-deal WU actually takes 6-9 hours, not 11 minutes. The client aborts
+// a task once elapsed_time > rsc_fpops_bound/(avg_ncpus*p_fpops)
+// (client/app.cpp), with no correction for this gap, so the old constants
+// meant most WUs across the space would hit that wall and get killed
+// mid-run. FPOPS_PER_DEAL matches the measured average closely enough
+// that legitimately faster regions of the space just finish early (BOINC
+// already handles that fine); the slowest block seen across both sampling
+// runs was ~1.5x the average, well inside FPOPS_BOUND_FACTOR's margin.
+#define FPOPS_PER_DEAL 1.5e5
+#define FPOPS_BOUND_FACTOR 10
+    // Bound stays well under DEFAULT_DELAY_BOUND (7 days) even for the
+    // slowest observed region, so a WU that's genuinely stuck (not just
+    // slow) still gets caught instead of the bound becoming meaningless.
+
 const char* app_name = "simulator";
 const char* in_template_file = "simulator_in.xml";
 const char* out_template_file = "simulator_out.xml";
@@ -157,11 +181,20 @@ static int make_job(int128 start, int128 end) {
     fprintf(f, "%s %s\n", int128ToString(start).c_str(), int128ToString(end).c_str());
     fclose(f);
 
+    // end - start + 1, not range_size: the last WU in the space is
+    // truncated to max_index (see main_loop() below) and is genuinely
+    // shorter, so this keeps its declared cost accurate too instead of
+    // overclaiming it the way a fixed range_size-based constant would.
+    // The difference is at most range_size (1e9 by default), well within
+    // double's exact-integer range, so this int128->double conversion
+    // never loses precision here.
+    double ndeals = (double)(end - start + 1);
+
     wu.clear();
     wu.appid = app.id;
     safe_strcpy(wu.name, name);
-    wu.rsc_fpops_est = DEFAULT_RSC_FPOPS_EST;
-    wu.rsc_fpops_bound = DEFAULT_RSC_FPOPS_BOUND;
+    wu.rsc_fpops_est = ndeals * FPOPS_PER_DEAL;
+    wu.rsc_fpops_bound = wu.rsc_fpops_est * FPOPS_BOUND_FACTOR;
     wu.rsc_memory_bound = DEFAULT_RSC_MEMORY_BOUND;
     wu.rsc_disk_bound = DEFAULT_RSC_DISK_BOUND;
     wu.delay_bound = DEFAULT_DELAY_BOUND;
