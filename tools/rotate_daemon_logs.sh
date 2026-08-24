@@ -56,7 +56,13 @@ for LOGFILE in "$LOG_DIR"/*.log; do
         continue
     fi
     : > "$LOGFILE"
-    gzip "$ROTATED"
+    if ! gzip "$ROTATED"; then
+        MSG="CRITICAL: rotated $LOGFILE to $ROTATED but gzip failed -- uncompressed segment left in place"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $MSG" | tee -a "$ALERT_LOG"
+        logger -t camicia_rotate_daemon_logs "$MSG" 2>/dev/null || true
+        notify "Camicia: daemon log rotation failed" "$MSG" "high"
+        continue
+    fi
 
     ROTATED_ANY=1
     MSG="rotated $LOGFILE (${SIZE} bytes) to ${ROTATED}.gz"
