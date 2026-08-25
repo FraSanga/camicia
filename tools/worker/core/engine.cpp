@@ -27,8 +27,31 @@ int CamiciaGame::getPenalty(Card card) {
     }
 }
 
+// FNV-1a 64-bit, computed twice with different seeds over the same byte
+// sequence (turn, then every card of deckA, a separator, then every card
+// of deckB) to produce two independent 64-bit words -- see the State
+// comment in engine.hpp for why a hash instead of exact bit-packing.
+CamiciaGame::State CamiciaGame::fingerprintState(
+    int turn, const std::deque<Card>& a, const std::deque<Card>& b
+) {
+    static constexpr uint64_t FNV_PRIME = 1099511628211ULL;
+    static constexpr uint64_t SEED_HI = 0xcbf29ce484222325ULL; // FNV-1a 64-bit offset basis
+    static constexpr uint64_t SEED_LO = 0x9E3779B97F4A7C15ULL; // distinct odd constant (2^64/phi)
+
+    uint64_t hi = SEED_HI, lo = SEED_LO;
+    auto mix = [&](uint64_t byte) {
+        hi = (hi ^ byte) * FNV_PRIME;
+        lo = (lo ^ byte) * FNV_PRIME;
+    };
+    mix(static_cast<uint64_t>(turn));
+    for (Card c : a) mix(static_cast<uint64_t>(c));
+    mix(0xFFu); // separator: guarantees distinct (a, b) splits can't collide by shifting cards across it
+    for (Card c : b) mix(static_cast<uint64_t>(c));
+    return {hi, lo};
+}
+
 GameResult CamiciaGame::simulate() {
-    std::set<State> seenStates;
+    std::unordered_set<State, StateHash> seenStates;
     long long totalCardsPlayed = 0;
     long long totalTricks = 0;
     
@@ -44,18 +67,15 @@ GameResult CamiciaGame::simulate() {
         assert(deckA.size() + deckB.size() + pile.size() == 52);
 #endif
         if (penaltyRemaining == 0 && pile.empty()) {
-            State currentState;
-            currentState.turn = turn;
             // The rule "not counting number cards" is interpreted here as:
             // The position of number cards matters, but their specific value doesn't.
-            // So we store the full sequence but with all 2-10 mapped to NUMBER.
-            for (Card c : deckA) currentState.a.push_back(c);
-            for (Card c : deckB) currentState.b.push_back(c);
-            
-            if (seenStates.count(currentState)) {
+            // deckA/deckB already store all 2-10 as the single NUMBER value,
+            // so the fingerprint below reflects that automatically.
+            State currentState = fingerprintState(turn, deckA, deckB);
+
+            if (!seenStates.insert(currentState).second) {
                 return {"loop", totalCardsPlayed, totalTricks};
             }
-            seenStates.insert(currentState);
         }
 
         std::deque<Card>& activeDeck = (turn == 0) ? deckA : deckB;

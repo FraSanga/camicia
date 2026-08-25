@@ -20,3 +20,15 @@ jobs:
             tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
             -o /tmp/test_engine -I tools/worker/core
           /tmp/test_engine
+      - name: Build and run engine property tests
+        run: |
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine_properties.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_engine_properties -I tools/worker/core
+          /tmp/test_engine_properties
+      - name: Build and run engine small-deck test
+        run: |
+          g++ -std=c++17 -O2 tests/test_engine_small_deck.cpp \
+            tools/worker/core/engine.cpp \
+            -o /tmp/test_engine_small_deck -I tools/worker/core
+          /tmp/test_engine_small_deck

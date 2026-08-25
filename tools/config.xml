@@ -207,6 +207,16 @@
             <cmd>run_in_ops ./delete_expired_users_and_hosts.php</cmd>
             <disabled>0</disabled>
         </task>
+        <task>
+            <!-- Catches a daemon dying between deploys (deploy.yml only
+                 health-checks once, right after a deploy). Tries bin/start
+                 to bring it back, notifies either way; see
+                 daemon_health_check.sh's own header comment. -->
+            <period>1 hour</period>
+            <output>daemon_health_check.out</output>
+            <cmd>daemon_health_check.sh</cmd>
+            <disabled>0</disabled>
+        </task>
     </tasks>
     <daemons>
         <daemon>

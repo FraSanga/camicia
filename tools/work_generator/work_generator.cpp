@@ -57,6 +57,16 @@ static const char* MAX_INDEX_STR = "653534134886878244999";
 // that legitimately faster regions of the space just finish early (BOINC
 // already handles that fine); the slowest block seen across both sampling
 // runs was ~1.5x the average, well inside FPOPS_BOUND_FACTOR's margin.
+//
+// TODO(re-measure): CamiciaGame::simulate()'s seenStates was switched from
+// a std::set<vector<Card>> to a hashed std::unordered_set (engine.hpp/
+// engine.cpp), measured ~3.4x faster on a 20,000-deal sample on this
+// sandbox's hardware -- the exact real-world speedup on production
+// hardware, and therefore what FPOPS_PER_DEAL should now be, needs
+// re-measuring the same way (250+ random blocks against real p_fpops) on
+// an actual server/client host, not guessed from this sandbox's numbers.
+// Until re-measured, this constant is a deliberate overestimate (WUs will
+// simply finish early), not a wrong/dangerous one.
 #define FPOPS_PER_DEAL 1.5e5
 #define FPOPS_BOUND_FACTOR 10
     // Bound stays well under DEFAULT_DELAY_BOUND (7 days) even for the
