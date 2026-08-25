@@ -485,6 +485,24 @@ EOF"
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
         "cd $PROJECT_DIR && ./bin/update_versions --noconfirm"
 
+    echo "🧹 Pruning old app staging directories (apps/$APP_NAME)..."
+    # Safe: update_versions above already copied this run's files into
+    # download_dir -- nothing in BOINC's runtime path (scheduler, resend,
+    # file server) ever reads apps/<app>/<version>/ again afterward, only
+    # download/ (which this never touches). Keeps the RETAIN_APP_VERSIONS
+    # most recent version directories (including the one just staged)
+    # purely as a manual-inspection safety margin, not because anything
+    # still needs them.
+    RETAIN_APP_VERSIONS=3
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "
+        cd '$APP_DIR' 2>/dev/null || exit 0
+        ls -1 | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | \
+            head -n -$RETAIN_APP_VERSIONS | while read -r OLD_VERSION; do
+                echo \"   -> removing apps/$APP_NAME/\$OLD_VERSION\"
+                rm -rf \"\$OLD_VERSION\"
+            done
+    "
+
     if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
         echo "🔒 Re-hiding code-signing key..."
         docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
