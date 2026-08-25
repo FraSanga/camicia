@@ -178,6 +178,18 @@
             <disabled>0</disabled>
         </task>
         <task>
+            <!-- Feeds html/user/progress_stats.json for the public
+                 progress page (html/user/progress.php). 15 min: frequent
+                 enough to feel alive, rare enough to keep the aggregate
+                 queries it runs trivial; see that script's own header
+                 comment for the full design rationale (no per-visitor DB
+                 query, no real-time infra). -->
+            <period>15 min</period>
+            <output>generate_progress_stats.out</output>
+            <cmd>run_in_ops ./generate_progress_stats.php</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
             <period>24 hours</period>
             <output>autolock.out</output>
             <cmd>run_in_ops ./autolock.php --ndays 90</cmd>

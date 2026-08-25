@@ -2,6 +2,8 @@
 #include <string>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <ctime>
 
 #include "boinc_db.h"
 #include "error_numbers.h"
@@ -14,6 +16,64 @@ using std::vector;
 using std::string;
 
 const char* outdir = "../results";
+
+// records_longest.txt / records_loops.txt: tiny plain-text side files
+// tracking the project's two headline findings (longest finished game,
+// every loop found), updated right here as each result line is already
+// being read -- not by periodically rescanning results.txt, which is kept
+// forever and only grows. Deliberately plain space-separated fields, not
+// JSON: a deal index exceeds 64 bits (MAX_INDEX is ~6.5e20), so it can
+// only ever be carried as a string, and nothing here needs to parse it
+// back as a number -- keeping this dependency-free (no JSON library) and
+// cheap. html/ops/generate_progress_stats.php and html/user/progress.php
+// are what turn these into what the progress page actually shows.
+void maybe_update_longest_record(
+    const char* wu_name, long long cards, long long tricks, const char* deal_index
+) {
+    const char* path = "../records_longest.txt";
+    long long best_cards = -1;
+    FILE* f = fopen(path, "r");
+    if (f) {
+        if (fscanf(f, "%lld", &best_cards) != 1) best_cards = -1;
+        fclose(f);
+    }
+    if (cards <= best_cards) return;
+
+    char tmp_path[256];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    FILE* tmp = fopen(tmp_path, "w");
+    if (!tmp) return;
+    fprintf(tmp, "%lld %lld %s %s %ld\n", cards, tricks, deal_index, wu_name, (long)time(0));
+    fclose(tmp);
+    rename(tmp_path, path);
+}
+
+void record_loop_found(const char* wu_name, const char* deal_index) {
+    FILE* f = fopen("../records_loops.txt", "a");
+    if (!f) return;
+    fprintf(f, "%s %s %ld\n", deal_index, wu_name, (long)time(0));
+    fclose(f);
+}
+
+// Parses one already-read results.txt line (before the wu.name prefix is
+// added below) and updates the record files above when it's a new
+// longest finished game or any loop at all.
+void track_result_line(const char* wu_name, const char* line) {
+    char status[16];
+    if (sscanf(line, "%15[^,],", status) != 1) return;
+
+    char deal_index[64];
+    long long cards, tricks;
+    if (!strcmp(status, "finished")) {
+        if (sscanf(line, "finished,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3) {
+            maybe_update_longest_record(wu_name, cards, tricks, deal_index);
+        }
+    } else if (!strcmp(status, "loop")) {
+        if (sscanf(line, "loop,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3) {
+            record_loop_found(wu_name, deal_index);
+        }
+    }
+}
 
 int write_error(WORKUNIT &wu, char* p) {
     char batch_dir[1024];
@@ -87,6 +147,7 @@ int assimilate_handler(
                 size_t line_cap = 0;
                 ssize_t len;
                 while ((len = getline(&line, &line_cap, f_in)) != -1) {
+                    track_result_line(wu.name, line);
                     fprintf(f_out, "%s,%s", wu.name, line);
                     if (len == 0 || line[len - 1] != '\n') fprintf(f_out, "\n");
                 }
