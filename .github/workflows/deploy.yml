@@ -13,6 +13,11 @@ on:
         type: boolean
         default: false
 
+# Least privilege: this workflow builds/deploys the project but never
+# writes to the repo, a PR, or anything else on GitHub itself.
+permissions:
+  contents: read
+
 jobs:
   # Ephemeral, GitHub-hosted -- runs on real Apple hardware (Apple SDK EULA's
   # "Apple-branded hardware only" clause), unlike the Windows/Linux ARM64
