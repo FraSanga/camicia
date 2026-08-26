@@ -206,6 +206,11 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # a deploy published a broken app version and needs to stop it being
     # served.
     docker cp ./html/ops/deprecate_app_version.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/deprecate_app_version.php"
+    # Same html/ops/ placement/reason again -- byte-identical stock file plus
+    # a one-line PHP 8.1 strlen(null) deprecation-notice fix (same class of
+    # fix as html/user/get_project_config.php etc.), found live on
+    # camicia_ops/login_form.php.
+    docker cp ./html/ops/login_form.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/login_form.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
@@ -316,7 +321,7 @@ $RECAPTCHA_SECRET_KEY"
 
     CURRENT_STAGE="fixing file permissions"
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
