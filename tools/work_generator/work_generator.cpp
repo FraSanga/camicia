@@ -40,34 +40,33 @@ static const char* MAX_INDEX_STR = "653534134886878244999";
     // client's output
 
 // Cost per deal, in the same fpops units BOINC's own DEFAULT_RSC_FPOPS_EST/
-// BOUND use -- make_job() was leaving those at BOINC's generic placeholder
-// defaults (3.6e12 / 8.64e13 total, regardless of range_size), which claim
-// an 1e9-deal WU takes ~11 minutes. Measured against the real engine
-// (engine.cpp/permutation.cpp, -O3, sequential indices exactly as
-// worker.cpp iterates them, same as this project's own client benchmark
-// calibration): 250 randomly-chosen blocks across the whole index space
-// (two independent runs, 100 and 150 blocks, ~6.5M deals total) average
-// ~149,000 fpops/deal against this host's measured p_fpops (BOINC's own
-// client/whetstone.cpp benchmark, 8 runs, ~5.33e9 FLOPS) -- i.e. an
-// 1e9-deal WU actually takes 6-9 hours, not 11 minutes. The client aborts
-// a task once elapsed_time > rsc_fpops_bound/(avg_ncpus*p_fpops)
-// (client/app.cpp), with no correction for this gap, so the old constants
-// meant most WUs across the space would hit that wall and get killed
-// mid-run. FPOPS_PER_DEAL matches the measured average closely enough
-// that legitimately faster regions of the space just finish early (BOINC
-// already handles that fine); the slowest block seen across both sampling
-// runs was ~1.5x the average, well inside FPOPS_BOUND_FACTOR's margin.
+// BOUND use. The client aborts a task once elapsed_time exceeds
+// rsc_fpops_bound/(avg_ncpus*p_fpops) (client/app.cpp), so this needs to
+// track the engine's real measured cost, not a guess -- see the original
+// calibration in commit 598063a for why (BOINC's own generic placeholder
+// defaults claimed an 1e9-deal WU takes ~11 minutes; it actually took
+// hours, which was killing most WUs mid-run).
 //
-// TODO(re-measure): CamiciaGame::simulate()'s seenStates was switched from
-// a std::set<vector<Card>> to a hashed std::unordered_set (engine.hpp/
-// engine.cpp), measured ~3.4x faster on a 20,000-deal sample on this
-// sandbox's hardware -- the exact real-world speedup on production
-// hardware, and therefore what FPOPS_PER_DEAL should now be, needs
-// re-measuring the same way (250+ random blocks against real p_fpops) on
-// an actual server/client host, not guessed from this sandbox's numbers.
-// Until re-measured, this constant is a deliberate overestimate (WUs will
-// simply finish early), not a wrong/dangerous one.
-#define FPOPS_PER_DEAL 1.5e5
+// Re-measured 2026-08-26 on production hardware itself (not a dev sandbox),
+// after CamiciaGame::simulate()'s seenStates moved from a
+// std::set<vector<Card>> to a hashed std::unordered_set (commit 34a23ba)
+// made the engine meaningfully faster: two independent runs of the same
+// methodology as 598063a (100 and 150 random blocks across the whole index
+// space, 26,000 deals each, ~6.5M deals total, engine.cpp/permutation.cpp
+// -O3, sequential indices exactly as worker.cpp iterates them) measured
+// ~70,080 deals/sec, closely agreed between both runs (70,068 vs 70,089/sec)
+// and matching real production p_fpops (BOINC's own client/whetstone.cpp
+// benchmark code, run standalone via the same whetstone()/cpu_benchmark.h
+// entry point a real client uses, 8 runs, ~4.528e9 FLOPS, also tightly
+// consistent run to run). That gives ~64,600 fpops/deal -- about 2.3x lower
+// than the pre-speedup 1.5e5 figure, i.e. a real, not guessed, confirmation
+// that the engine got faster (not the ~3.4x sandbox estimate 34a23ba's own
+// TODO flagged as unverified, since this run used different, real
+// hardware for both halves of the ratio). The slowest block seen across
+// both runs was only ~1.29x the average -- comfortably inside
+// FPOPS_BOUND_FACTOR's existing margin, so that factor didn't need
+// changing.
+#define FPOPS_PER_DEAL 6.5e4
 #define FPOPS_BOUND_FACTOR 10
     // Bound stays well under DEFAULT_DELAY_BOUND (7 days) even for the
     // slowest observed region, so a WU that's genuinely stuck (not just
