@@ -172,6 +172,14 @@ jobs:
       # the exact same restore path tools.sh's own trap uses.
       - name: Roll back on health check failure
         if: failure()
+        env:
+          # Needed here too, not just the main deploy step above: if the
+          # failed run had already published a broken app version,
+          # deploy_rollback.sh's --restore republishes the previous
+          # known-good code as a replacement (tools/publish_version.sh),
+          # which needs this to sign it -- same secret, same brief
+          # decrypt-use-re-hide window, just reached from a different step.
+          CODE_SIGN_KEY_PASSPHRASE: ${{ secrets.CODE_SIGN_KEY_PASSPHRASE }}
         run: |
           cd ~/camicia
           bash tools/tools.sh --restore

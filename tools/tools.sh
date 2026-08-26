@@ -20,6 +20,8 @@ else
     exit 1
 fi
 
+. ./notify.sh
+
 PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
 KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
 
@@ -34,6 +36,12 @@ PROJECT_FOUND=0
 # point there's nothing to roll back to yet, so a failure still falls back
 # to the plain daemon-restart this always did.
 BACKUP_TAKEN=0
+# Updated before each major stage -- included in the failure notification
+# below (and passed through to deploy_rollback.sh --restore) so an alert
+# says what actually broke, not just "deploy failed". Cosmetic only: never
+# read to make a recovery decision, that's what published_version (see
+# publish_version.sh) is for.
+CURRENT_STAGE="starting deploy"
 recover_daemons_on_failure() {
     local exit_code=$?
     # Unconditional, regardless of success/failure: if the decrypt step below
@@ -43,15 +51,17 @@ recover_daemons_on_failure() {
     docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private" 2>/dev/null || true
     if [ "$exit_code" -ne 0 ] && [ "$PROJECT_FOUND" -eq 1 ]; then
         if [ "$BACKUP_TAKEN" -eq 1 ]; then
-            echo "⚠️  Deploy failed (exit $exit_code) -- rolling back to the pre-deploy state..."
-            bash ./deploy_rollback.sh --restore || true
+            echo "⚠️  Deploy failed during '$CURRENT_STAGE' (exit $exit_code) -- rolling back to the pre-deploy state..."
+            CURRENT_STAGE="$CURRENT_STAGE" bash ./deploy_rollback.sh --restore || true
         else
-            echo "⚠️  Deploy failed (exit $exit_code) -- attempting to restart daemons so the project isn't left down..."
+            echo "⚠️  Deploy failed during '$CURRENT_STAGE' (exit $exit_code) -- attempting to restart daemons so the project isn't left down..."
             if docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"; then
                 echo "   -> Daemons restarted. The deploy itself still failed -- see the error above."
+                notify "Camicia: deploy FAILED" "Failed during '$CURRENT_STAGE' (exit $exit_code), before any file backup was taken -- daemons restarted on the pre-existing state, nothing was changed" "high"
             else
                 echo "   -> Could not restart daemons automatically. Run this manually:"
                 echo "      docker exec --user $PROJECTS_USER $SERVER_CONTAINER_NAME bash -c 'cd $PROJECT_DIR && ./bin/start'"
+                notify "Camicia: deploy FAILED, daemons DOWN" "Failed during '$CURRENT_STAGE' (exit $exit_code), before any file backup was taken, and daemons did not restart -- needs manual intervention" "high"
             fi
         fi
     fi
@@ -69,6 +79,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # (README.md SS1-2), so on a fresh project entrypoint.sh's own call is a
     # no-op and www-data never gets read access to html/. Running it here
     # guarantees it happens on every deploy, including the very first one.
+    CURRENT_STAGE="fixing permissions"
     echo "🔐 Fixing project-wide permissions..."
     docker exec \
         -e SERVER_VOLUME_PROJECTS_DIR="$SERVER_VOLUME_PROJECTS_DIR" \
@@ -87,13 +98,16 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "crontab -u '$PROJECTS_USER' '$PROJECT_DIR/camicia.cronjob'"
     fi
 
+    CURRENT_STAGE="stopping daemons"
     echo "🛑 Stopping BOINC project daemons..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/stop"
 
+    CURRENT_STAGE="backing up pre-deploy state"
     echo "💾 Backing up pre-deploy state..."
     bash ./deploy_rollback.sh --backup
     BACKUP_TAKEN=1
 
+    CURRENT_STAGE="copying files into the container"
     echo "📂 Copying files and folders to the container..."
     docker cp ./assimilator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./worker "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
@@ -185,6 +199,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # (config.xml) only resolves its require_once("../inc/util_ops.inc") one
     # level under html/.
     docker cp ./html/ops/generate_progress_stats.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/generate_progress_stats.php"
+    # Same html/ops/ placement/reason again -- called by
+    # deploy_rollback.sh's --restore path (docker exec, not run_in_ops:
+    # it needs a real exit code, not run_in_ops's own error handling) when
+    # a deploy published a broken app version and needs to stop it being
+    # served.
+    docker cp ./html/ops/deprecate_app_version.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/deprecate_app_version.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
@@ -289,13 +309,16 @@ $RECAPTCHA_SECRET_KEY"
         docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
     fi
 
+    CURRENT_STAGE="merging config.xml"
     echo "🐍 Running Python script to update XML nodes..."
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
 
+    CURRENT_STAGE="fixing file permissions"
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
@@ -318,229 +341,8 @@ $RECAPTCHA_SECRET_KEY"
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/smtp_credentials.inc.php && chmod 640 $PROJECT_DIR/smtp_credentials.inc.php"
     fi
 
-    echo "⚙️ Compiling Assimilator..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
-    $PROJECT_DIR/assimilator/assimilator.cpp \
-    /usr/local/src/boinc/sched/validate_util.cpp \
-    /usr/local/src/boinc/sched/assimilator.cpp \
-    -o $PROJECT_DIR/bin/assimilator \
-    -I/usr/local/src/boinc \
-    -I/usr/local/src/boinc/api \
-    -I/usr/local/src/boinc/lib \
-    -I/usr/local/src/boinc/sched \
-    -I/usr/local/src/boinc/db \
-    -I/usr/include/mysql \
-    -I/usr/include/mariadb \
-    -L/usr/local/src/boinc/lib \
-    -L/usr/local/src/boinc/sched \
-    /usr/local/src/boinc/sched/libsched.a \
-    /usr/local/src/boinc/api/libboinc_api.a \
-    /usr/local/src/boinc/lib/libboinc.a \
-    -lmysqlclient -pthread -ldl"
-
-    echo "⚙️ Compiling Worker..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && g++ -O3 -static \
-    $PROJECT_DIR/worker/worker.cpp \
-    $PROJECT_DIR/worker/core/*.cpp \
-    -o $PROJECT_DIR/worker/worker_app \
-    -I/usr/local/src/boinc/api \
-    -I/usr/local/src/boinc/lib \
-    -I$PROJECT_DIR/worker \
-    -I$PROJECT_DIR/worker/core \
-    /usr/local/src/boinc/api/libboinc_api.a \
-    /usr/local/src/boinc/lib/libboinc.a \
-    -pthread -ldl"
-
-    echo "⚙️ Compiling Worker (Windows)..."
-    # Cross-compiled with mingw-w64 against the separate boinc-win build
-    # (images/server/Dockerfile) so the worker also ships for windows_x86_64,
-    # the largest BOINC volunteer platform. No -ldl (no libdl on Windows) and
-    # the physical file must end in .exe for Windows to actually execute it
-    # once downloaded -- BOINC's own <main_program/> marker in version.xml
-    # doesn't care about the name, but the OS does.
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && x86_64-w64-mingw32-g++ -O3 -static \
-    $PROJECT_DIR/worker/worker.cpp \
-    $PROJECT_DIR/worker/core/*.cpp \
-    -o $PROJECT_DIR/worker/worker_app.exe \
-    -I/usr/local/src/boinc-win/api \
-    -I/usr/local/src/boinc-win/lib \
-    -I$PROJECT_DIR/worker \
-    -I$PROJECT_DIR/worker/core \
-    /usr/local/src/boinc-win/api/libboinc_api.a \
-    /usr/local/src/boinc-win/lib/libboinc.a \
-    -pthread"
-
-    echo "⚙️ Compiling Worker (Linux ARM64)..."
-    # Cross-compiled with gcc-aarch64-linux-gnu against the separate
-    # boinc-arm64 build (images/server/Dockerfile) so the worker also ships
-    # for aarch64-unknown-linux-gnu. Named worker_app_arm64 (not worker_app)
-    # since both land in the same $PROJECT_DIR/worker/ directory as the
-    # native x86_64 build.
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && aarch64-linux-gnu-g++ -O3 -static \
-    $PROJECT_DIR/worker/worker.cpp \
-    $PROJECT_DIR/worker/core/*.cpp \
-    -o $PROJECT_DIR/worker/worker_app_arm64 \
-    -I/usr/local/src/boinc-arm64/api \
-    -I/usr/local/src/boinc-arm64/lib \
-    -I$PROJECT_DIR/worker \
-    -I$PROJECT_DIR/worker/core \
-    /usr/local/src/boinc-arm64/api/libboinc_api.a \
-    /usr/local/src/boinc-arm64/lib/libboinc.a \
-    -pthread -ldl"
-
-    echo "⚙️ Compiling Work Generator..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
-    $PROJECT_DIR/work_generator/work_generator.cpp \
-    -o $PROJECT_DIR/bin/work_generator \
-    -I/usr/local/src/boinc \
-    -I/usr/local/src/boinc/api \
-    -I/usr/local/src/boinc/lib \
-    -I/usr/local/src/boinc/sched \
-    -I/usr/local/src/boinc/db \
-    -I/usr/local/src/boinc/tools \
-    -I/usr/include/mysql \
-    -I/usr/include/mariadb \
-    -I$PROJECT_DIR/worker/core \
-    -L/usr/local/src/boinc/lib \
-    -L/usr/local/src/boinc/sched \
-    /usr/local/src/boinc/sched/libsched.a \
-    /usr/local/src/boinc/lib/libboinc_crypt.a \
-    /usr/local/src/boinc/api/libboinc_api.a \
-    /usr/local/src/boinc/lib/libboinc.a \
-    -lmysqlclient -lcrypto -lssl -pthread -ldl"
-
-    echo "⚙️ Compiling antique_file_deleter..."
-    # Stock BOINC source (see images/server/Dockerfile's BOINC_COMMIT) --
-    # upstream fixed the errno/readdir bug we used to carry as a local
-    # patch (tools/antique_file_deleter.cpp, removed), so this now just
-    # rebuilds and redeploys the real thing on every deploy, same pattern
-    # as worker/assimilator/work_generator, keeping it in sync with
-    # whatever BOINC_COMMIT is pinned instead of the local patch drifting
-    # from upstream.
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
-    /usr/local/src/boinc/sched/antique_file_deleter.cpp \
-    -o $PROJECT_DIR/bin/antique_file_deleter \
-    -I/usr/local/src/boinc \
-    -I/usr/local/src/boinc/api \
-    -I/usr/local/src/boinc/lib \
-    -I/usr/local/src/boinc/sched \
-    -I/usr/local/src/boinc/db \
-    -I/usr/include/mysql \
-    -I/usr/include/mariadb \
-    -L/usr/local/src/boinc/lib \
-    -L/usr/local/src/boinc/sched \
-    /usr/local/src/boinc/sched/libsched.a \
-    /usr/local/src/boinc/lib/libboinc_crypt.a \
-    /usr/local/src/boinc/api/libboinc_api.a \
-    /usr/local/src/boinc/lib/libboinc.a \
-    -lmysqlclient -lcrypto -lssl -pthread -ldl"
-
-    echo "🔄 Applying configuration changes (xadd)..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/xadd"
-
-    echo "🏷️ Determining next app version..."
-    APP_NAME="simulator"
-    APP_DIR="$PROJECT_DIR/apps/$APP_NAME"
-
-    LAST_VERSION=$(docker exec "$SERVER_CONTAINER_NAME" bash -c \
-        "ls -1 '$APP_DIR' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | tail -1")
-
-    if [ -z "$LAST_VERSION" ]; then
-        NEW_VERSION="1.00"
-    else
-        MAJOR="${LAST_VERSION%.*}"
-        MINOR="${LAST_VERSION#*.}"
-        MINOR=$((10#$MINOR + 1))
-        if [ "$MINOR" -ge 100 ]; then MAJOR=$((MAJOR + 1)); MINOR=0; fi
-        NEW_VERSION=$(printf "%d.%02d" "$MAJOR" "$MINOR")
-    fi
-    echo "   -> New version: $NEW_VERSION"
-
-    # Staged together, same version number, one update_versions call below
-    # registers both -- matches BOINC's own convention for shipping multiple
-    # platforms per version, and means the existing code-signing step (already
-    # unconditional) signs both files with no per-platform logic needed.
-    echo "📦 Staging new app version..."
-    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION"; do
-        PLATFORM="${ENTRY%%:*}"
-        REST="${ENTRY#*:}"
-        SOURCE_BINARY="${REST%%:*}"
-        PHYSICAL_NAME="${REST#*:}"
-        VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
-        echo "   -> $PLATFORM: $VERSION_DIR/$PHYSICAL_NAME"
-
-        # BOINC treats download/<physical_name> as immutable once a client has
-        # fetched it: update_versions refuses to re-stage a same-named file
-        # whose bytes differ ("BOINC files are immutable"). Reusing a fixed
-        # physical name like "worker_app" across every version therefore
-        # silently breaks registration the moment worker.cpp's compiled output
-        # actually changes between deploys, which is the normal case, not an
-        # edge case. Version-qualify the physical name so every deploy gets a
-        # filename BOINC has never served before.
-        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$VERSION_DIR'"
-        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-            "cp '$PROJECT_DIR/worker/$SOURCE_BINARY' '$VERSION_DIR/$PHYSICAL_NAME'"
-        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-            "cat > '$VERSION_DIR/version.xml' <<EOF
-<version>
-    <file>
-        <physical_name>$PHYSICAL_NAME</physical_name>
-        <main_program/>
-    </file>
-</version>
-EOF"
-    done
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER '$APP_DIR'"
-
-    # code_sign_private lives on its own persistent bind mount (KEY_DIR, not
-    # PROJECT_DIR -- see config.xml's <key_dir>) and is kept encrypted at
-    # rest (code_sign_private.gpg) per BOINC's own code-signing wiki
-    # guidance, decrypted only for the brief window update_versions
-    # actually needs it to sign. Passphrase comes from
-    # CODE_SIGN_KEY_PASSPHRASE -- on production this is injected by
-    # deploy.yml from a GitHub Actions Environment secret and never touches
-    # .env/disk there; locally it can be set in .env for convenience. If
-    # unset, this is skipped entirely and a plaintext key must already
-    # exist, or update_versions below fails with BOINC's own clear
-    # "no code signing private key" error rather than anything silent.
-    # Passphrase piped over stdin, not a docker exec argument, so it doesn't
-    # appear in process listings while this runs (same reasoning as the
-    # Akismet key/SMTP credentials elsewhere in this script).
-    if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
-        echo "🔓 Decrypting code-signing key for this deploy..."
-        docker exec -i "$SERVER_CONTAINER_NAME" bash -c \
-            "gpg --batch --yes --passphrase-fd 0 -o $KEY_DIR/code_sign_private --decrypt $KEY_DIR/code_sign_private.gpg" \
-            <<< "$CODE_SIGN_KEY_PASSPHRASE"
-        docker exec "$SERVER_CONTAINER_NAME" bash -c \
-            "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/code_sign_private && chmod 600 $KEY_DIR/code_sign_private"
-    fi
-
-    echo "🔄 Registering new app version (update_versions)..."
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-        "cd $PROJECT_DIR && ./bin/update_versions --noconfirm"
-
-    echo "🧹 Pruning old app staging directories (apps/$APP_NAME)..."
-    # Safe: update_versions above already copied this run's files into
-    # download_dir -- nothing in BOINC's runtime path (scheduler, resend,
-    # file server) ever reads apps/<app>/<version>/ again afterward, only
-    # download/ (which this never touches). Keeps the RETAIN_APP_VERSIONS
-    # most recent version directories (including the one just staged)
-    # purely as a manual-inspection safety margin, not because anything
-    # still needs them.
-    RETAIN_APP_VERSIONS=3
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "
-        cd '$APP_DIR' 2>/dev/null || exit 0
-        ls -1 | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | \
-            head -n -$RETAIN_APP_VERSIONS | while read -r OLD_VERSION; do
-                echo \"   -> removing apps/$APP_NAME/\$OLD_VERSION\"
-                rm -rf \"\$OLD_VERSION\"
-            done
-    "
-
-    if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
-        echo "🔒 Re-hiding code-signing key..."
-        docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
-    fi
+    CURRENT_STAGE="compiling and publishing the app version"
+    bash ./publish_version.sh
 
     # upload_private, unlike code_sign_private, must stay plaintext
     # continuously -- confirmed the hard way 2026-08-20: sched/transitioner.cpp
@@ -556,6 +358,7 @@ EOF"
     # injection pattern as CODE_SIGN_KEY_PASSPHRASE). fix_permissions.sh's
     # existing "$KEY_DIR"/*_private glob already locks down the resulting
     # file to 600 on this same deploy, no extra chmod needed here.
+    CURRENT_STAGE="restoring upload_private"
     if [ -n "$UPLOAD_KEY_PASSPHRASE" ]; then
         if ! docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -f $KEY_DIR/upload_private ]"; then
             echo "🔓 Restoring missing upload_private from encrypted backup..."
@@ -567,11 +370,12 @@ EOF"
         fi
     fi
 
+    CURRENT_STAGE="restarting daemons"
     echo "▶️ Restarting BOINC project..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"
 
     docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f /tmp/config_new.xml /tmp/merge_config.py"
-    
+
     echo "🚀 Deployment and compilation completed successfully!"
 else
     echo "❌ ERROR: Folder $PROJECT_DIR does not exist inside container $SERVER_CONTAINER_NAME."
