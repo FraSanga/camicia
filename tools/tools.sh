@@ -2,6 +2,15 @@
 set -e
 cd "$(dirname "$0")"
 
+# Delegates to deploy_rollback.sh's own restore path -- the same one the
+# failure trap below uses -- so a deploy that succeeded but left the
+# project unhealthy (caught by deploy.yml's post-health-check step, not by
+# anything in this script) can be rolled back with the exact same logic,
+# not a second copy of it.
+if [ "$1" == "--restore" ]; then
+    exec bash ./deploy_rollback.sh --restore
+fi
+
 if [ -f ../.env ]; then
     set -a
     . ../.env
@@ -20,6 +29,11 @@ KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
 # deploy is loud (you see the actual error) rather than also silently taking
 # the project offline for a few minutes.
 PROJECT_FOUND=0
+# Set once deploy_rollback.sh --backup has actually run (right after
+# daemons stop, before the destructive docker cp block) -- before that
+# point there's nothing to roll back to yet, so a failure still falls back
+# to the plain daemon-restart this always did.
+BACKUP_TAKEN=0
 recover_daemons_on_failure() {
     local exit_code=$?
     # Unconditional, regardless of success/failure: if the decrypt step below
@@ -28,12 +42,17 @@ recover_daemons_on_failure() {
     # between decrypting it and the normal cleanup step further down.
     docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private" 2>/dev/null || true
     if [ "$exit_code" -ne 0 ] && [ "$PROJECT_FOUND" -eq 1 ]; then
-        echo "⚠️  Deploy failed (exit $exit_code) -- attempting to restart daemons so the project isn't left down..."
-        if docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"; then
-            echo "   -> Daemons restarted. The deploy itself still failed -- see the error above."
+        if [ "$BACKUP_TAKEN" -eq 1 ]; then
+            echo "⚠️  Deploy failed (exit $exit_code) -- rolling back to the pre-deploy state..."
+            bash ./deploy_rollback.sh --restore || true
         else
-            echo "   -> Could not restart daemons automatically. Run this manually:"
-            echo "      docker exec --user $PROJECTS_USER $SERVER_CONTAINER_NAME bash -c 'cd $PROJECT_DIR && ./bin/start'"
+            echo "⚠️  Deploy failed (exit $exit_code) -- attempting to restart daemons so the project isn't left down..."
+            if docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/start"; then
+                echo "   -> Daemons restarted. The deploy itself still failed -- see the error above."
+            else
+                echo "   -> Could not restart daemons automatically. Run this manually:"
+                echo "      docker exec --user $PROJECTS_USER $SERVER_CONTAINER_NAME bash -c 'cd $PROJECT_DIR && ./bin/start'"
+            fi
         fi
     fi
 }
@@ -70,6 +89,10 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
 
     echo "🛑 Stopping BOINC project daemons..."
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/stop"
+
+    echo "💾 Backing up pre-deploy state..."
+    bash ./deploy_rollback.sh --backup
+    BACKUP_TAKEN=1
 
     echo "📂 Copying files and folders to the container..."
     docker cp ./assimilator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
