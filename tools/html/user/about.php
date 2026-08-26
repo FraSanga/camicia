@@ -25,7 +25,7 @@ echo "
 <p>".tra("Most deals finish, some taking thousands of tricks. Whether any deal loops forever at all was confirmed for the first time in 2024, when a deal that returns to an identical board state after 474 cards played was documented elsewhere -- proof that some games truly never end. %1 uses that exact deal to verify its own simulation engine is correct, and is now searching the rest of the deck for its own first discovery.", PROJECT)."
 
 <h3>".tra("Who runs %1?", PROJECT)."</h3>
-<p>".tra("%1 is developed and run by %2.", PROJECT, COPYRIGHT_HOLDER)."
+<p>".tra("%1 is developed and run by %2. See our %3 for what data we collect and how it's handled.", PROJECT, COPYRIGHT_HOLDER, "<a href=\"privacy.php\">".tra("Privacy Policy")."</a>")."
 ";
 
 page_tail();

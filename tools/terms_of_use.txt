@@ -35,10 +35,8 @@ results. You run this software at your own risk.
 
 5. Account information and privacy
 
-To create an account, we collect an email address and a password (stored as a salted hash, not in
-plain text). Optionally, you may provide a display name, country, and other profile information you
-choose to add. This information is used only to operate the Project (e.g. account recovery,
-occasional project-related communication) and is not sold or shared with third parties. You may
+See the Project's Privacy Policy page (linked from the About page) for a full account of what data
+is collected, who it's shared with and why, how long it's kept, and your rights over it. You may
 request deletion of your account and associated data at any time via the Project's account deletion
 feature.
 
