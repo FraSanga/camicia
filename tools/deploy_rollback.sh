@@ -97,7 +97,14 @@ do_restore() {
 
     if [ -n "$bad_version" ]; then
         echo "⚠️  A broken app version ($bad_version) was published before this run failed -- publishing a replacement..."
-        if bash ./publish_version.sh; then
+        # --force: publish_version.sh's own git-diff-based "did the worker
+        # source actually change" gate can't see this. The tar extract
+        # above just restored worker/ files into the *container* from the
+        # pre-deploy backup -- local git HEAD hasn't moved, so an
+        # unconditional call here would diff HEAD against itself, see no
+        # change, and wrongly skip republishing the very known-good binary
+        # this path exists to restage.
+        if bash ./publish_version.sh --force; then
             local good_version=""
             [ -f "$PUBLISHED_VERSION_FILE" ] && good_version=$(cat "$PUBLISHED_VERSION_FILE")
 

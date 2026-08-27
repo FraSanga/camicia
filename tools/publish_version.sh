@@ -18,8 +18,24 @@
 # $HOME/.camicia_deploy_backups/published_version -- the checkpoint
 # deploy_rollback.sh's --restore path reads to decide whether a failed
 # deploy needs a replacement version published, not just a file revert.
+#
+# The worker app version is only actually republished when the source
+# that produces it changed -- see the "does the worker need republishing"
+# gate below. Assimilator/work_generator/antique_file_deleter still
+# recompile and redeploy unconditionally on every call: they're server
+# daemons with no BOINC "app version" concept, so there's no version-churn
+# cost to unconditional rebuilds the way there is for the client-shipped
+# worker. Pass --force to publish a new worker version regardless of
+# whether the source changed (used by deploy_rollback.sh's --restore
+# path -- see the gate comment for why that path can't rely on the normal
+# git-diff check).
 set -e
 cd "$(dirname "$0")"
+
+FORCE_PUBLISH=0
+if [ "$1" = "--force" ]; then
+    FORCE_PUBLISH=1
+fi
 
 if [ -f ../.env ]; then
     set -a
@@ -34,6 +50,42 @@ PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
 KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
 BACKUP_DIR="$HOME/.camicia_deploy_backups"
 PUBLISHED_VERSION_FILE="$BACKUP_DIR/published_version"
+# Separate from PUBLISHED_VERSION_FILE above: that file is transient
+# per-deploy-attempt state (deploy_rollback.sh's do_backup() deletes it at
+# the start of every attempt, so it can tell whether *this* attempt got as
+# far as publishing). This one is cumulative and untouched by that -- it's
+# "what commit did the worker last actually get rebuilt from," and it's
+# only ever written below, right where PUBLISHED_VERSION_FILE is.
+PUBLISHED_COMMIT_FILE="$BACKUP_DIR/published_version_commit"
+
+# Does the worker actually need republishing? Compares the current commit
+# against the one the worker was last built from, restricted to the paths
+# that actually feed the compiled binary: worker.cpp + core/ (headers
+# included -- they're #included into the compile even though not passed
+# to g++ directly), and this script itself (a flag/platform-list change
+# here is an app-relevant change even with every .cpp byte-identical).
+# Deliberately NOT all of worker/ -- worker/test_resume.sh lives there too
+# and has no bearing on the compiled binary's bytes.
+#
+# Not used by deploy_rollback.sh's --restore path (always passes --force
+# instead): that path restores old worker/ files into the *container* via
+# tar, not via git, so local git HEAD hasn't moved and this diff would see
+# no change -- which would be exactly wrong there, since the container's
+# actual source just changed underneath it and does need rebuilding.
+SKIP_WORKER_PUBLISH=0
+if [ "$FORCE_PUBLISH" -eq 1 ]; then
+    echo "🔧 --force: publishing a new worker version regardless of source changes."
+elif [ -f "$PUBLISHED_COMMIT_FILE" ]; then
+    LAST_PUBLISHED_SHA=$(cat "$PUBLISHED_COMMIT_FILE")
+    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core publish_version.sh 2>/dev/null; then
+        SKIP_WORKER_PUBLISH=1
+        echo "⏭️  Worker app unchanged since $LAST_PUBLISHED_SHA -- skipping compile/version bump/re-signing. Use --force to publish anyway."
+    fi
+    # A nonzero exit >1 (not just "differs") means the diff itself failed --
+    # e.g. $LAST_PUBLISHED_SHA no longer exists after a history rewrite.
+    # Falls through to SKIP_WORKER_PUBLISH=0 (the safe default: publish) in
+    # that case, same as having no checkpoint at all.
+fi
 
 echo "⚙️ Compiling Assimilator..."
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
@@ -55,8 +107,9 @@ $PROJECT_DIR/assimilator/assimilator.cpp \
 /usr/local/src/boinc/lib/libboinc.a \
 -lmysqlclient -pthread -ldl"
 
-echo "⚙️ Compiling Worker..."
-docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && g++ -O3 -static \
+if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
+    echo "⚙️ Compiling Worker..."
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
 -o $PROJECT_DIR/worker/worker_app \
@@ -68,14 +121,14 @@ $PROJECT_DIR/worker/core/*.cpp \
 /usr/local/src/boinc/lib/libboinc.a \
 -pthread -ldl"
 
-echo "⚙️ Compiling Worker (Windows)..."
-# Cross-compiled with mingw-w64 against the separate boinc-win build
-# (images/server/Dockerfile) so the worker also ships for windows_x86_64,
-# the largest BOINC volunteer platform. No -ldl (no libdl on Windows) and
-# the physical file must end in .exe for Windows to actually execute it
-# once downloaded -- BOINC's own <main_program/> marker in version.xml
-# doesn't care about the name, but the OS does.
-docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && x86_64-w64-mingw32-g++ -O3 -static \
+    echo "⚙️ Compiling Worker (Windows)..."
+    # Cross-compiled with mingw-w64 against the separate boinc-win build
+    # (images/server/Dockerfile) so the worker also ships for windows_x86_64,
+    # the largest BOINC volunteer platform. No -ldl (no libdl on Windows) and
+    # the physical file must end in .exe for Windows to actually execute it
+    # once downloaded -- BOINC's own <main_program/> marker in version.xml
+    # doesn't care about the name, but the OS does.
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && x86_64-w64-mingw32-g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
 -o $PROJECT_DIR/worker/worker_app.exe \
@@ -87,13 +140,13 @@ $PROJECT_DIR/worker/core/*.cpp \
 /usr/local/src/boinc-win/lib/libboinc.a \
 -pthread"
 
-echo "⚙️ Compiling Worker (Linux ARM64)..."
-# Cross-compiled with gcc-aarch64-linux-gnu against the separate
-# boinc-arm64 build (images/server/Dockerfile) so the worker also ships
-# for aarch64-unknown-linux-gnu. Named worker_app_arm64 (not worker_app)
-# since both land in the same $PROJECT_DIR/worker/ directory as the
-# native x86_64 build.
-docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && aarch64-linux-gnu-g++ -O3 -static \
+    echo "⚙️ Compiling Worker (Linux ARM64)..."
+    # Cross-compiled with gcc-aarch64-linux-gnu against the separate
+    # boinc-arm64 build (images/server/Dockerfile) so the worker also ships
+    # for aarch64-unknown-linux-gnu. Named worker_app_arm64 (not worker_app)
+    # since both land in the same $PROJECT_DIR/worker/ directory as the
+    # native x86_64 build.
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && aarch64-linux-gnu-g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
 -o $PROJECT_DIR/worker/worker_app_arm64 \
@@ -104,6 +157,9 @@ $PROJECT_DIR/worker/core/*.cpp \
 /usr/local/src/boinc-arm64/api/libboinc_api.a \
 /usr/local/src/boinc-arm64/lib/libboinc.a \
 -pthread -ldl"
+else
+    echo "⏭️  Skipping worker compile (native/Windows/ARM64) -- source unchanged."
+fi
 
 echo "⚙️ Compiling Work Generator..."
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
@@ -155,50 +211,51 @@ docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
 echo "🔄 Applying configuration changes (xadd)..."
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/xadd"
 
-echo "🏷️ Determining next app version..."
-APP_NAME="simulator"
-APP_DIR="$PROJECT_DIR/apps/$APP_NAME"
+if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
+    echo "🏷️ Determining next app version..."
+    APP_NAME="simulator"
+    APP_DIR="$PROJECT_DIR/apps/$APP_NAME"
 
-LAST_VERSION=$(docker exec "$SERVER_CONTAINER_NAME" bash -c \
-    "ls -1 '$APP_DIR' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | tail -1")
+    LAST_VERSION=$(docker exec "$SERVER_CONTAINER_NAME" bash -c \
+        "ls -1 '$APP_DIR' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | tail -1")
 
-if [ -z "$LAST_VERSION" ]; then
-    NEW_VERSION="1.00"
-else
-    MAJOR="${LAST_VERSION%.*}"
-    MINOR="${LAST_VERSION#*.}"
-    MINOR=$((10#$MINOR + 1))
-    if [ "$MINOR" -ge 100 ]; then MAJOR=$((MAJOR + 1)); MINOR=0; fi
-    NEW_VERSION=$(printf "%d.%02d" "$MAJOR" "$MINOR")
-fi
-echo "   -> New version: $NEW_VERSION"
+    if [ -z "$LAST_VERSION" ]; then
+        NEW_VERSION="1.00"
+    else
+        MAJOR="${LAST_VERSION%.*}"
+        MINOR="${LAST_VERSION#*.}"
+        MINOR=$((10#$MINOR + 1))
+        if [ "$MINOR" -ge 100 ]; then MAJOR=$((MAJOR + 1)); MINOR=0; fi
+        NEW_VERSION=$(printf "%d.%02d" "$MAJOR" "$MINOR")
+    fi
+    echo "   -> New version: $NEW_VERSION"
 
-# Staged together, same version number, one update_versions call below
-# registers both -- matches BOINC's own convention for shipping multiple
-# platforms per version, and means the existing code-signing step (already
-# unconditional) signs both files with no per-platform logic needed.
-echo "📦 Staging new app version..."
-for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION"; do
-    PLATFORM="${ENTRY%%:*}"
-    REST="${ENTRY#*:}"
-    SOURCE_BINARY="${REST%%:*}"
-    PHYSICAL_NAME="${REST#*:}"
-    VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
-    echo "   -> $PLATFORM: $VERSION_DIR/$PHYSICAL_NAME"
+    # Staged together, same version number, one update_versions call below
+    # registers both -- matches BOINC's own convention for shipping multiple
+    # platforms per version, and means the existing code-signing step (already
+    # unconditional) signs both files with no per-platform logic needed.
+    echo "📦 Staging new app version..."
+    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION"; do
+        PLATFORM="${ENTRY%%:*}"
+        REST="${ENTRY#*:}"
+        SOURCE_BINARY="${REST%%:*}"
+        PHYSICAL_NAME="${REST#*:}"
+        VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
+        echo "   -> $PLATFORM: $VERSION_DIR/$PHYSICAL_NAME"
 
-    # BOINC treats download/<physical_name> as immutable once a client has
-    # fetched it: update_versions refuses to re-stage a same-named file
-    # whose bytes differ ("BOINC files are immutable"). Reusing a fixed
-    # physical name like "worker_app" across every version therefore
-    # silently breaks registration the moment worker.cpp's compiled output
-    # actually changes between deploys, which is the normal case, not an
-    # edge case. Version-qualify the physical name so every deploy gets a
-    # filename BOINC has never served before.
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$VERSION_DIR'"
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-        "cp '$PROJECT_DIR/worker/$SOURCE_BINARY' '$VERSION_DIR/$PHYSICAL_NAME'"
-    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-        "cat > '$VERSION_DIR/version.xml' <<EOF
+        # BOINC treats download/<physical_name> as immutable once a client has
+        # fetched it: update_versions refuses to re-stage a same-named file
+        # whose bytes differ ("BOINC files are immutable"). Reusing a fixed
+        # physical name like "worker_app" across every version therefore
+        # silently breaks registration the moment worker.cpp's compiled output
+        # actually changes between deploys, which is the normal case, not an
+        # edge case. Version-qualify the physical name so every deploy gets a
+        # filename BOINC has never served before.
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "mkdir -p '$VERSION_DIR'"
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+            "cp '$PROJECT_DIR/worker/$SOURCE_BINARY' '$VERSION_DIR/$PHYSICAL_NAME'"
+        docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+            "cat > '$VERSION_DIR/version.xml' <<EOF
 <version>
     <file>
         <physical_name>$PHYSICAL_NAME</physical_name>
@@ -206,79 +263,83 @@ for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x
     </file>
 </version>
 EOF"
-done
-docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER '$APP_DIR'"
+    done
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER '$APP_DIR'"
 
-# code_sign_private lives on its own persistent bind mount (KEY_DIR, not
-# PROJECT_DIR -- see config.xml's <key_dir>) and is kept encrypted at
-# rest (code_sign_private.gpg) per BOINC's own code-signing wiki
-# guidance, decrypted only for the brief window update_versions
-# actually needs it to sign. Passphrase comes from
-# CODE_SIGN_KEY_PASSPHRASE -- on production this is injected by
-# deploy.yml from a GitHub Actions Environment secret and never touches
-# .env/disk there; locally it can be set in .env for convenience. If
-# unset, this is skipped entirely and a plaintext key must already
-# exist, or update_versions below fails with BOINC's own clear
-# "no code signing private key" error rather than anything silent.
-# Passphrase piped over stdin, not a docker exec argument, so it doesn't
-# appear in process listings while this runs (same reasoning as the
-# Akismet key/SMTP credentials elsewhere in tools.sh).
-if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
-    echo "🔓 Decrypting code-signing key for this deploy..."
-    docker exec -i "$SERVER_CONTAINER_NAME" bash -c \
-        "gpg --batch --yes --passphrase-fd 0 -o $KEY_DIR/code_sign_private --decrypt $KEY_DIR/code_sign_private.gpg" \
-        <<< "$CODE_SIGN_KEY_PASSPHRASE"
-    docker exec "$SERVER_CONTAINER_NAME" bash -c \
-        "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/code_sign_private && chmod 600 $KEY_DIR/code_sign_private"
+    # code_sign_private lives on its own persistent bind mount (KEY_DIR, not
+    # PROJECT_DIR -- see config.xml's <key_dir>) and is kept encrypted at
+    # rest (code_sign_private.gpg) per BOINC's own code-signing wiki
+    # guidance, decrypted only for the brief window update_versions
+    # actually needs it to sign. Passphrase comes from
+    # CODE_SIGN_KEY_PASSPHRASE -- on production this is injected by
+    # deploy.yml from a GitHub Actions Environment secret and never touches
+    # .env/disk there; locally it can be set in .env for convenience. If
+    # unset, this is skipped entirely and a plaintext key must already
+    # exist, or update_versions below fails with BOINC's own clear
+    # "no code signing private key" error rather than anything silent.
+    # Passphrase piped over stdin, not a docker exec argument, so it doesn't
+    # appear in process listings while this runs (same reasoning as the
+    # Akismet key/SMTP credentials elsewhere in tools.sh).
+    if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
+        echo "🔓 Decrypting code-signing key for this deploy..."
+        docker exec -i "$SERVER_CONTAINER_NAME" bash -c \
+            "gpg --batch --yes --passphrase-fd 0 -o $KEY_DIR/code_sign_private --decrypt $KEY_DIR/code_sign_private.gpg" \
+            <<< "$CODE_SIGN_KEY_PASSPHRASE"
+        docker exec "$SERVER_CONTAINER_NAME" bash -c \
+            "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/code_sign_private && chmod 600 $KEY_DIR/code_sign_private"
+    fi
+
+    echo "🔄 Registering new app version (update_versions)..."
+    # Can't trust this command's own exit status: BOINC's update_versions is a
+    # PHP script that reports a missing/unreadable code-signing key (among
+    # other fatal conditions) via die("some string"), and PHP's die()/exit()
+    # with a STRING argument always exits 0 -- confirmed against
+    # /usr/local/src/boinc/tools/update_versions's own source. Caught live: a
+    # manual (no CODE_SIGN_KEY_PASSPHRASE) run of this script staged files and
+    # printed "✅ Published" while update_versions had actually failed and
+    # registered nothing, and the caller (deploy_rollback.sh) went on to
+    # deprecate the still-good previous version based on that false success.
+    # Capture the real output and scan for its own "Error:" marker instead.
+    UPDATE_VERSIONS_OUTPUT=$(docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+        "cd $PROJECT_DIR && ./bin/update_versions --noconfirm" 2>&1)
+    echo "$UPDATE_VERSIONS_OUTPUT"
+    if echo "$UPDATE_VERSIONS_OUTPUT" | grep -qi "error:"; then
+        echo "❌ update_versions reported an error above -- treating this as a failed publish despite its own exit code."
+        exit 1
+    fi
+
+    # The point of no return: a client could fetch this version the instant
+    # update_versions above returns (it already touches reread_db itself). Only
+    # past this line does deploy_rollback.sh's --restore need to do more than a
+    # plain file revert if this run goes on to fail -- see that script's header.
+    mkdir -p "$BACKUP_DIR"
+    echo "$NEW_VERSION" > "$PUBLISHED_VERSION_FILE"
+    git rev-parse HEAD > "$PUBLISHED_COMMIT_FILE"
+
+    echo "🧹 Pruning old app staging directories (apps/$APP_NAME)..."
+    # Safe: update_versions above already copied this run's files into
+    # download_dir -- nothing in BOINC's runtime path (scheduler, resend,
+    # file server) ever reads apps/<app>/<version>/ again afterward, only
+    # download/ (which this never touches). Keeps the RETAIN_APP_VERSIONS
+    # most recent version directories (including the one just staged)
+    # purely as a manual-inspection safety margin, not because anything
+    # still needs them.
+    RETAIN_APP_VERSIONS=3
+    docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "
+        cd '$APP_DIR' 2>/dev/null || exit 0
+        ls -1 | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | \
+            head -n -$RETAIN_APP_VERSIONS | while read -r OLD_VERSION; do
+                echo \"   -> removing apps/$APP_NAME/\$OLD_VERSION\"
+                rm -rf \"\$OLD_VERSION\"
+            done
+    "
+
+    if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
+        echo "🔒 Re-hiding code-signing key..."
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
+    fi
+
+    echo "✅ Published app version $NEW_VERSION"
+else
+    echo "✅ Worker app version unchanged -- nothing new to publish."
 fi
-
-echo "🔄 Registering new app version (update_versions)..."
-# Can't trust this command's own exit status: BOINC's update_versions is a
-# PHP script that reports a missing/unreadable code-signing key (among
-# other fatal conditions) via die("some string"), and PHP's die()/exit()
-# with a STRING argument always exits 0 -- confirmed against
-# /usr/local/src/boinc/tools/update_versions's own source. Caught live: a
-# manual (no CODE_SIGN_KEY_PASSPHRASE) run of this script staged files and
-# printed "✅ Published" while update_versions had actually failed and
-# registered nothing, and the caller (deploy_rollback.sh) went on to
-# deprecate the still-good previous version based on that false success.
-# Capture the real output and scan for its own "Error:" marker instead.
-UPDATE_VERSIONS_OUTPUT=$(docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-    "cd $PROJECT_DIR && ./bin/update_versions --noconfirm" 2>&1)
-echo "$UPDATE_VERSIONS_OUTPUT"
-if echo "$UPDATE_VERSIONS_OUTPUT" | grep -qi "error:"; then
-    echo "❌ update_versions reported an error above -- treating this as a failed publish despite its own exit code."
-    exit 1
-fi
-
-# The point of no return: a client could fetch this version the instant
-# update_versions above returns (it already touches reread_db itself). Only
-# past this line does deploy_rollback.sh's --restore need to do more than a
-# plain file revert if this run goes on to fail -- see that script's header.
-mkdir -p "$BACKUP_DIR"
-echo "$NEW_VERSION" > "$PUBLISHED_VERSION_FILE"
-
-echo "🧹 Pruning old app staging directories (apps/$APP_NAME)..."
-# Safe: update_versions above already copied this run's files into
-# download_dir -- nothing in BOINC's runtime path (scheduler, resend,
-# file server) ever reads apps/<app>/<version>/ again afterward, only
-# download/ (which this never touches). Keeps the RETAIN_APP_VERSIONS
-# most recent version directories (including the one just staged)
-# purely as a manual-inspection safety margin, not because anything
-# still needs them.
-RETAIN_APP_VERSIONS=3
-docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "
-    cd '$APP_DIR' 2>/dev/null || exit 0
-    ls -1 | grep -E '^[0-9]+\.[0-9]+\$' | sort -t. -k1,1n -k2,2n | \
-        head -n -$RETAIN_APP_VERSIONS | while read -r OLD_VERSION; do
-            echo \"   -> removing apps/$APP_NAME/\$OLD_VERSION\"
-            rm -rf \"\$OLD_VERSION\"
-        done
-"
-
-if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
-    echo "🔒 Re-hiding code-signing key..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private"
-fi
-
-echo "✅ Published app version $NEW_VERSION"
