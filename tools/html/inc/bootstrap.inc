@@ -236,6 +236,12 @@ function sample_navbar(
         array(tra("User search"), $url_prefix."user_search.php"),
         array(tra("User of the day"), $url_prefix."uotd.php"),
         array(tra("Certificate"), $url_prefix.cert_filename(), "", "_blank"),
+        // Camicia addition: a public certificate-authenticity lookup
+        // (verify_cert.php) -- deliberately not tied to cert_filename()'s
+        // "your own certificate" logic, since anyone (not just a logged-in
+        // Camicia volunteer) may need to check a certificate someone else
+        // shared with them.
+        array(tra("Verify a Certificate"), $url_prefix."verify_cert.php"),
     ));
     navbar_menu(tra("Site"), array(
         array(tra("Site search"), $url_prefix."site_search.php"),

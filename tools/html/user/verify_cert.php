@@ -7,6 +7,19 @@
 // so this can't reproduce exactly what a specific downloaded image
 // claimed at the moment it was issued, only that the code itself is real
 // and (if the account still exists) what that account looks like now.
+//
+// Deliberately public (no login required, and not linked from anywhere
+// requiring one): the whole point is that someone with no Camicia
+// account -- shown a certificate by a volunteer -- can still check it's
+// real. Reachable from the Community navbar menu (bootstrap.inc), not
+// linked directly from cert1.php itself.
+//
+// Uses Bootstrap's own .alert-success/-warning/-danger classes rather
+// than hand-picked colors: this project's pages ship both a light and a
+// dark stylesheet (project.inc's DARK_MODE, switched by
+// prefers-color-scheme), and those classes are already themed correctly
+// in both -- a literal inline background color is not, and wouldn't
+// have legible text against dark mode's own light body-text color.
 
 require_once('../inc/util.inc');
 require_once('../inc/translation.inc');
@@ -24,8 +37,8 @@ if (!$code) {
     echo "
     <form method=\"get\" action=\"verify_cert.php\">
     <p>".tra("Enter the certificate number shown on the certificate (for example, %1):", "<code>3F-A1B2C3D4</code>")."</p>
-    <input type=\"text\" name=\"code\" size=\"20\" placeholder=\"XX-XXXXXXXX\" style=\"font-family:monospace\">
-    <input type=\"submit\" value=\"".tra("Check")."\">
+    <input type=\"text\" name=\"code\" size=\"20\" placeholder=\"XX-XXXXXXXX\" class=\"form-control\" style=\"font-family:monospace; display:inline-block; width:auto\">
+    <input type=\"submit\" value=\"".tra("Check")."\" class=\"btn btn-primary\">
     </form>
     ";
 } else {
@@ -36,18 +49,18 @@ if (!$code) {
         $user_id = cert_verify_code_check($code);
         if ($user_id === null) {
             echo "
-            <div style=\"border:1px solid #a83349; border-radius:8px; padding:16px 20px; background:#fdf0f2\">
+            <div class=\"alert alert-danger\" role=\"alert\">
             <b>&#10060; ".tra("Not a valid Camicia certificate number.")."</b>
-            <p>".tra("\"%1\" doesn't match a certificate this project ever issued.", $code_display)."</p>
+            <p class=\"mb-0\">".tra("\"%1\" doesn't match a certificate this project ever issued.", $code_display)."</p>
             </div>
             ";
         } else {
             $cert_user = BoincUser::lookup_id($user_id);
             if (!$cert_user) {
                 echo "
-                <div style=\"border:1px solid #c9a227; border-radius:8px; padding:16px 20px; background:#fdf8ea\">
+                <div class=\"alert alert-warning\" role=\"alert\">
                 <b>&#9989; ".tra("This is a genuine Camicia certificate number.")."</b>
-                <p>".tra("The account it was issued to has since been deleted, so its details can no longer be shown -- but the code itself is real.")."</p>
+                <p class=\"mb-0\">".tra("The account it was issued to has since been deleted, so its details can no longer be shown -- but the code itself is real.")."</p>
                 </div>
                 ";
             } else {
@@ -55,9 +68,9 @@ if (!$code) {
                 $credit_display = number_format($cert_user->total_credit, 0);
                 $name_html = htmlspecialchars($cert_user->name);
                 echo "
-                <div style=\"border:1px solid #16302a; border-radius:8px; padding:16px 20px; background:#eef6f0\">
+                <div class=\"alert alert-success\" role=\"alert\">
                 <b>&#9989; ".tra("Genuine Camicia certificate.")."</b>
-                <p>".tra("Issued to %1, a participant since %2 with %3 units of credit contributed as of today.", "<b>$name_html</b>", $join, "<b>$credit_display</b>")."</p>
+                <p class=\"mb-0\">".tra("Issued to %1, a participant since %2 with %3 units of credit contributed as of today.", "<b>$name_html</b>", $join, "<b>$credit_display</b>")."</p>
                 </div>
                 ";
             }

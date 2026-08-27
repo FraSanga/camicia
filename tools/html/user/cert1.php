@@ -152,9 +152,6 @@ body {
 .cbtn.ghost { background: transparent; }
 .cbtn .ic { font-size: 15px; line-height: 1; }
 .share-row { display: flex; justify-content: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.verify-link { text-align: center; margin-top: 18px; }
-.verify-link a { color: var(--gold); font-size: 12.5px; text-decoration: none; }
-.verify-link a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -213,10 +210,6 @@ body {
 <?php
 show_download_button();
 show_share_buttons();
-if ($verify_code) {
-    $verify_url = url_base()."verify_cert.php?code=".urlencode($verify_code);
-    echo '<p class="verify-link"><a href="'.$verify_url.'">'.tra("Verify this certificate").' &rarr;</a></p>';
-}
 ?>
 </div>
 
