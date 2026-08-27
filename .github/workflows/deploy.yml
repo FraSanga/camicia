@@ -27,6 +27,19 @@ jobs:
   # job below as an artifact. Doesn't touch prod, so no `environment:` gate.
   build-macos:
     runs-on: macos-latest
+    env:
+      # Apple Silicon shipped starting with macOS 11 (Big Sur) in Nov 2020 --
+      # without this, clang/the linker default to whatever SDK version the
+      # macos-latest runner happens to have (confirmed via a real deployed
+      # binary's LC_BUILD_VERSION: minos was 26.0.0), silently narrowing
+      # "arm64 only for now (covers the vast majority of Macs in use,
+      # 2020+)" down to only whatever OS release the runner image shipped
+      # with. Set once here (not per-command flags) so it applies uniformly
+      # to both the BOINC lib/api build below and the worker compile --
+      # the effective minOS of the final linked binary is the MAX of every
+      # input object's own declared minOS, so BOINC's own lib/api must be
+      # built with this too, not just the final link step.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +58,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: boinc-macos
-          key: boinc-macos-arm64-${{ steps.boinc_commit.outputs.commit }}
+          # Includes MACOSX_DEPLOYMENT_TARGET so a change to it (like this
+          # one, fixing a too-high inherited default) busts the cache and
+          # actually rebuilds instead of silently reusing an archive built
+          # for the old target -- the effective minOS of the final linked
+          # binary is the max across every input object, so a stale cached
+          # libboinc.a here would keep the worker binary's minOS wrong even
+          # after the compile step below picks up the new value.
+          key: boinc-macos-arm64-${{ steps.boinc_commit.outputs.commit }}-min${{ env.MACOSX_DEPLOYMENT_TARGET }}
 
       - name: Install autotools (not preinstalled on macos-14 runners)
         if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
