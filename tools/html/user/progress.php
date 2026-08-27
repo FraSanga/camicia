@@ -248,7 +248,7 @@ page_head(tra("Search progress"));
       <div class="game-table" id="gameTable"></div>
       <div class="status-line" id="gameStatus">Ready. Press Play to watch it, or step through it one move at a time.</div>
       <div class="game-controls">
-        <button class="ctrl-btn" id="resetBtn" title="Back to the start">|&#9664; Reset</button>
+        <button class="ctrl-btn" id="resetBtn" title="Back to the start">&#9198; Reset</button>
         <button class="ctrl-btn" id="backBtn" title="One step back">&#9664; Back</button>
         <button class="ctrl-btn play-btn" id="playBtn" title="Play / Pause">&#9654; Play</button>
         <button class="ctrl-btn" id="fwdBtn" title="One step forward">Forward &#9654;</button>
@@ -463,7 +463,7 @@ page_head(tra("Search progress"));
 
   function startPlaying() {
     playing = true;
-    playBtn.textContent = 'Pause';
+    playBtn.textContent = '⏸ Pause';
     (function loop() {
       if (!playing) return;
       if (!stepForward()) { stopPlaying(); return; }
