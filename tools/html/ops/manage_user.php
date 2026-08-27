@@ -23,17 +23,23 @@
 // (or could be used by moderators for bans < 24 hrs).
 //
 // Camicia: vendored here (stock file, otherwise byte-identical) to fix
-// handle_suspend() below -- see the comment on $admin there. Found live
-// 2026-08-27 while testing this page's Suspend button against a
+// two crashes found live 2026-08-27 while testing this page against a
 // disposable test account (see html/ops/index.php's "Manage user"
-// form): every suspend/unsuspend crashed with a fatal error, after the
-// forum_preferences UPDATE had already committed but before either
-// notification email went out.
+// form):
+// - handle_suspend() below -- see the comment on $admin there. Every
+//   suspend/unsuspend crashed with a fatal error, after the
+//   forum_preferences UPDATE had already committed but before either
+//   notification email went out.
+// - possibly_delete_user()'s call to delete_user() (html/inc/
+//   user_util.inc) -- this file never required that include, so
+//   deleting a user (the "Delete user" button) fataled with "Call to
+//   undefined function delete_user()" before anything was deleted.
 
 // TODO: use DB abstraction layer, get_str() functions etc.
 
 require_once("../inc/util.inc");
 require_once("../inc/user.inc");
+require_once("../inc/user_util.inc");
 require_once("../inc/team.inc");
 require_once("../inc/forum.inc");
 require_once("../inc/util_ops.inc");
