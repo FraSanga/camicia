@@ -2054,3 +2054,32 @@ $language_lookup_array["it_IT"]["You can meet and communicate with other %1 part
 // ("dscaricarlo" isn't a word).
 $language_lookup_array["it_IT"]["Your computer hasn't completed any tasks yet.  If you need help, %1go here%2."] = "Il tuo computer non ha ancora completato nessuna attività.  Se ti serve aiuto, %1vai qui%2.";
 $language_lookup_array["it_IT"]["If BOINC is not installed on this computer, %1download it%2."] = "Se BOINC non è installato su questo computer puoi %1scaricarlo da qui%2.";
+
+// "Progress" navbar menu entry (bootstrap.inc) linking to progress.php --
+// an original Camicia label, no upstream BOINC translation exists for it.
+$language_lookup_array["it_IT"]["Progress"] = "Avanzamento";
+$language_lookup_array["az"]["Progress"] = "İrəliləyiş";
+$language_lookup_array["ca"]["Progress"] = "Progrés";
+$language_lookup_array["cs"]["Progress"] = "Průběh";
+$language_lookup_array["de"]["Progress"] = "Fortschritt";
+$language_lookup_array["es"]["Progress"] = "Progreso";
+$language_lookup_array["eu"]["Progress"] = "Aurrerapena";
+$language_lookup_array["fi"]["Progress"] = "Edistyminen";
+$language_lookup_array["fr"]["Progress"] = "Progression";
+$language_lookup_array["he"]["Progress"] = "התקדמות";
+$language_lookup_array["hu"]["Progress"] = "Előrehaladás";
+$language_lookup_array["ja"]["Progress"] = "進捗";
+$language_lookup_array["ko"]["Progress"] = "진행 상황";
+$language_lookup_array["nb"]["Progress"] = "Fremgang";
+$language_lookup_array["nl"]["Progress"] = "Voortgang";
+$language_lookup_array["pl"]["Progress"] = "Postęp";
+$language_lookup_array["pt_BR"]["Progress"] = "Progresso";
+$language_lookup_array["pt_PT"]["Progress"] = "Progresso";
+$language_lookup_array["ru"]["Progress"] = "Прогресс";
+$language_lookup_array["sk"]["Progress"] = "Priebeh";
+$language_lookup_array["sv"]["Progress"] = "Förlopp";
+$language_lookup_array["tr"]["Progress"] = "İlerleme";
+$language_lookup_array["uk"]["Progress"] = "Прогрес";
+$language_lookup_array["vi"]["Progress"] = "Tiến độ";
+$language_lookup_array["zh_CN"]["Progress"] = "进度";
+$language_lookup_array["zh_TW"]["Progress"] = "進度";
