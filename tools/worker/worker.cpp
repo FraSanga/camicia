@@ -17,6 +17,19 @@ using namespace std;
 #define INPUT_FILENAME "in"
 #define OUTPUT_FILENAME "out"
 
+// Test-only override: forces a checkpoint on every iteration instead of
+// waiting on BOINC's own (real-time-based) boinc_time_to_checkpoint(),
+// which a short-lived test process has no reliable way to trigger.
+// Production never sets this env var, so this is a no-op there -- see
+// tests/test_resume.sh's "orphaned camicia_loops" scenario for the actual
+// regression test this exists for (cce5745's fix only has an observable
+// effect once a checkpoint genuinely appends to LOOPS_FILE mid-run, which
+// a purely file-seeded test can't reach on its own).
+static bool should_checkpoint() {
+    if (getenv("CAMICIA_FORCE_CHECKPOINT")) return true;
+    return boinc_time_to_checkpoint();
+}
+
 struct GameResultInfo {
     int128 index;
     long long cards;
@@ -196,7 +209,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (boinc_time_to_checkpoint()) {
+        if (should_checkpoint()) {
             do_checkpoint(state, loopsAppended);
         }
         

@@ -80,6 +80,31 @@ echo "loop entries for MID after crash-window resume: $crash_window_loop_count"
 rm -f in out camicia_state camicia_loops
 
 echo
+echo "=== Orphaned camicia_loops: camicia_state lost entirely, then a real second resume ==="
+echo "    (the actual bug cce5745 fixes -- and the one scenario the three tests above can't"
+echo "     reach, since worker's final 'out' is always written fresh from in-memory state,"
+echo "     never by re-reading camicia_loops within the same run. Needs a real checkpoint to"
+echo "     really append to disk, and a real second resume to read that disk state back in,"
+echo "     which is what CAMICIA_FORCE_CHECKPOINT (worker.cpp's should_checkpoint()) is for.)"
+echo "    Run 1: [$START, $MID] with forced checkpointing -- ends with camicia_state"
+echo "    (cur=$NEXT) and camicia_loops (1 entry for MID) genuinely on disk."
+echo "$START $MID" > in
+CAMICIA_FORCE_CHECKPOINT=1 "$WORKER"
+rm -f camicia_state  # the crash: header lost, loops file survives
+echo "    Run 2: reprocess the full [$START, $END] range from scratch (no camicia_state),"
+echo "    forced checkpointing again -- re-finds MID; on disk this either duplicates the"
+echo "    stale entry (pre-fix) or replaces it after truncating (post-fix)."
+echo "$START $END" > in
+CAMICIA_FORCE_CHECKPOINT=1 "$WORKER"
+echo "    Run 3: normal resume from run 2's real checkpoint (cur past $END, so no new"
+echo "    processing happens) -- just reads camicia_loops back into memory and writes it"
+echo "    to out, which is where a disk-level duplicate would finally become observable."
+"$WORKER"
+orphaned_loops_count=$(count_loop_lines_for_mid out)
+echo "loop entries for MID after the orphaned-loops-file sequence: $orphaned_loops_count"
+rm -f in out camicia_state camicia_loops
+
+echo
 pass=1
 if [ "$straight_loop_count" != "1" ]; then
     echo "❌ FAIL: straight-through run should find exactly 1 loop entry for MID, got $straight_loop_count"
@@ -97,11 +122,20 @@ if [ "$crash_window_loop_count" != "1" ]; then
     echo "   and silently dropping a real result."
     pass=0
 fi
+if [ "$orphaned_loops_count" != "1" ]; then
+    echo "❌ FAIL: after camicia_state is lost entirely and a real second resume reads back"
+    echo "   camicia_loops, there should be exactly 1 entry for MID (cce5745's truncation-on-"
+    echo "   non-resume fix) -- got $orphaned_loops_count. If this is 2, that fix regressed and"
+    echo "   the loops file is accumulating duplicates across crashed attempts again."
+    pass=0
+fi
 
 if [ "$pass" = "1" ]; then
     echo "✅ PASS: current checkpoint semantics produce no duplicate under a normal resume,"
-    echo "   and the dedup guard correctly prevents a duplicate even when camicia_state and"
-    echo "   camicia_loops are left inconsistent by a simulated crash between the two writes."
+    echo "   the dedup guard correctly prevents a duplicate even when camicia_state and"
+    echo "   camicia_loops are left inconsistent by a simulated crash between the two writes,"
+    echo "   and a genuinely orphaned camicia_loops file (camicia_state lost entirely) gets"
+    echo "   truncated rather than duplicated across a real second resume."
     exit 0
 else
     exit 1
