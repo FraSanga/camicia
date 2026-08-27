@@ -22,8 +22,16 @@
 //
 // Camicia: restyled to match the site's own felt/gold/cream identity
 // (same palette as html/user/progress.php) instead of BOINC's plain
-// bordered-table default, and added a verification code + link -- see
+// bordered-table default, and added a verification code -- see
 // html/inc/cert.inc's cert_verify_code() for how/why.
+//
+// Deliberately English-only (no tra() on the certificate text), unlike
+// every other page on this site: it's a document meant to be downloaded
+// and shared outside the project (social media, a CV, a forum signature)
+// where the audience isn't necessarily the visitor who generated it, so
+// its wording stays fixed rather than following whatever locale that one
+// visitor happened to be browsing in. verify_cert.php (the lookup tool
+// this points to) is a normal, translated site page.
 
 require_once("../inc/util.inc");
 require_once("../inc/translation.inc");
@@ -32,7 +40,9 @@ require_once("../inc/cert.inc");
 $border = get_str("border", true);
 $show_border = ($border != "no");
 
-// Make sure user_id is in the URL so that share functions work
+// Make sure user_id is in the URL, so a copy-pasted link still resolves
+// to the same certificate rather than silently redirecting to whoever's
+// currently logged in.
 //
 $user_id = get_int('user_id', true);
 if (!$user_id) {
@@ -58,7 +68,7 @@ $name_html = htmlspecialchars($user->name);
 <html>
 <head>
 <meta charset="utf-8">
-<title><?php echo tra("Certificate of Computation"); ?></title>
+<title>Certificate of Computation</title>
 <style>
 :root {
     --felt: #0f1f1a; --felt-2: #16302a; --felt-line: #1d3a32;
@@ -149,9 +159,6 @@ body {
 }
 .cbtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .cbtn.primary { background: var(--gold); color: var(--felt); border-color: var(--gold); }
-.cbtn.ghost { background: transparent; }
-.cbtn .ic { font-size: 15px; line-height: 1; }
-.share-row { display: flex; justify-content: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -174,14 +181,14 @@ body {
 </svg>
 </div>
 
-<p class="cert-title"><?php echo tra("Certificate of Computation"); ?></p>
+<p class="cert-title">Certificate of Computation</p>
 <p class="cert-subtitle"><?php echo PROJECT; ?></p>
 
-<p class="cert-lede"><?php echo tra("This certifies that"); ?></p>
+<p class="cert-lede">This certifies that</p>
 <div class="cert-name-row"><span class="cert-name"><?php echo $name_html; ?></span></div>
 
 <p class="cert-body">
-<?php echo tra("has contributed computing time to %1's search since %2, contributing %3 units of credit toward the search.", PROJECT, $join, "<b>$credit_display</b>"); ?>
+has contributed computing time to <?php echo PROJECT; ?>'s search since <?php echo $join; ?>, contributing <b><?php echo $credit_display; ?></b> units of credit toward the search.
 </p>
 
 <div class="cert-footer">
@@ -191,17 +198,17 @@ body {
 <?php endif; ?>
 <?php if (defined("CERT_DIRECTOR_NAME")): ?>
         <div class="name"><?php echo CERT_DIRECTOR_NAME; ?></div>
-        <div class="role"><?php echo tra("Director, %1", PROJECT); ?></div>
+        <div class="role">Director, <?php echo PROJECT; ?></div>
 <?php endif; ?>
     </div>
     <div class="cert-date">
         <div class="date"><?php echo $today; ?></div>
-        <div class="label"><?php echo tra("Issued"); ?></div>
+        <div class="label">Issued</div>
     </div>
 </div>
 
 <?php if ($verify_code): ?>
-<p class="cert-serial"><?php echo tra("Certificate No."); ?> <?php echo $verify_code; ?></p>
+<p class="cert-serial">Certificate No. <?php echo $verify_code; ?></p>
 <?php endif; ?>
 
 </div>
@@ -209,7 +216,6 @@ body {
 
 <?php
 show_download_button();
-show_share_buttons();
 ?>
 </div>
 

@@ -240,8 +240,9 @@ function sample_navbar(
         // (verify_cert.php) -- deliberately not tied to cert_filename()'s
         // "your own certificate" logic, since anyone (not just a logged-in
         // Camicia volunteer) may need to check a certificate someone else
-        // shared with them.
-        array(tra("Verify a Certificate"), $url_prefix."verify_cert.php"),
+        // shared with them. Same source string as verify_cert.php's own
+        // page_head() title, deliberately -- one translation covers both.
+        array(tra("Verify a certificate"), $url_prefix."verify_cert.php"),
     ));
     navbar_menu(tra("Site"), array(
         array(tra("Site search"), $url_prefix."site_search.php"),

@@ -95,11 +95,21 @@ function cert_verify_code_check($code) {
 // Camicia: restyled to match the certificate's own gold/felt palette
 // (cert1.php's own <style> block defines .cbtn); still a plain <button>
 // with no framework dependency, since these pages don't use bootstrap.
+// Text-only (no icon) and hardcoded English, not tra() -- the whole
+// certificate page is deliberately kept English-only regardless of
+// visitor locale (it's a document that gets shared/posted outside the
+// project, e.g. on social media, so its wording stays consistent no
+// matter who's viewing it -- see cert1.php's own header comment).
+//
+// The share-to-Facebook/X buttons this used to sit next to were removed
+// (kept adding friction/clutter to a page whose only real job is "prove
+// I did this and let me save a copy" -- verify_cert.php already covers
+// authenticity for anyone a certificate gets shared with).
 //
 function show_download_button() {
     echo '
         <div class="cert-controls">
-        <button id="export" class="cbtn primary"><span class="ic">&#11015;&#65039;</span> '.tra('Download as image').'</button>
+        <button id="export" class="cbtn primary">Download as image</button>
         <script src="html2canvas.min.js"></script>
         <script type="text/javascript">
             const $btn = document.querySelector("#export");
@@ -121,36 +131,5 @@ function show_download_button() {
             }
         </script>
     ';
-}
-
-// show buttons to share certificate on facebook and X (formerly Twitter)
-// Camicia: restyled to match, and the share text now actually names the
-// project instead of generic "BOINC" boilerplate.
-// Note: the cert pages don't use bootstrap, so we can't use show_button()
-//
-function show_share_buttons() {
-    echo '<div class="share-row">';
-    $current_url = (empty($_SERVER['HTTPS']) ? 'http' : 'https') . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
-    $cert_url = urlencode($current_url);
-
-    // Share on Facebook
-    $fb_url = 'https://www.facebook.com/sharer/sharer.php?u='.$cert_url;
-    echo sprintf(
-        '<button class="cbtn ghost" onclick="window.location.href=\'%s\';"><span class="ic">f</span> %s</button>',
-        $fb_url,
-        tra('Share on Facebook')
-    );
-
-    // Share on X (formerly Twitter) -- x.com/intent/post is the current
-    // endpoint; twitter.com/intent/tweet still 301-redirects there as of
-    // this writing, but linking the real one directly avoids depending on
-    // that redirect staying in place.
-    $share_text = urlencode(tra("I'm helping search for infinite games of Camicia!"));
-    $x_url = 'https://x.com/intent/post?url='.$cert_url.'&text='.$share_text;
-    echo sprintf('<button class="cbtn ghost" onclick="window.location.href=\'%s\';"><span class="ic">&#120143;</span> %s</button>',
-        $x_url,
-        tra('Share on X')
-    );
-    echo '</div>';
 }
 ?>

@@ -38,7 +38,7 @@ if (!$code) {
     <form method=\"get\" action=\"verify_cert.php\">
     <p>".tra("Enter the certificate number shown on the certificate (for example, %1):", "<code>3F-A1B2C3D4</code>")."</p>
     <input type=\"text\" name=\"code\" size=\"20\" placeholder=\"XX-XXXXXXXX\" class=\"form-control\" style=\"font-family:monospace; display:inline-block; width:auto\">
-    <input type=\"submit\" value=\"".tra("Check")."\" class=\"btn btn-primary\">
+    <input type=\"submit\" value=\"".tra("Verify")."\" class=\"btn btn-primary\">
     </form>
     ";
 } else {
