@@ -15,6 +15,10 @@ require_once("../inc/util.inc");
 
 define("PROJECT", "Camicia");
 define("COPYRIGHT_HOLDER", "Francesco Sangalli");
+// Read by html/user/cert1.php for the signature line on certificates
+// (a stock BOINC customization hook -- see cert1.php's own header
+// comment/the wiki link there -- left unset by make_project by default).
+define("CERT_DIRECTOR_NAME", COPYRIGHT_HOLDER);
 
 //-------------- URLs and directories
 
@@ -127,6 +131,18 @@ if (file_exists($smtp_credentials_file)) {
         $mail->addReplyTo(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
         return $mail;
     }
+}
+
+//-------------- Certificate verification
+
+// Real HMAC secret is kept out of this (git-tracked) file, same pattern as
+// the SMTP credentials just above -- tools.sh writes it into
+// cert_verify_secret.inc.php at the project root, from CERT_VERIFY_SECRET
+// in .env. If not present, cert.inc's cert_verify_code() simply returns
+// null and cert1.php doesn't print a verification code/link at all.
+$cert_verify_secret_file = __DIR__ . "/../../cert_verify_secret.inc.php";
+if (file_exists($cert_verify_secret_file)) {
+    require_once($cert_verify_secret_file);
 }
 
 //-------------- Header and footer

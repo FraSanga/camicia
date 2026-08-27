@@ -136,6 +136,11 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./html/project/project_specific_prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_specific_prefs.inc"
     docker cp ./html/user/about.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/about.php"
     docker cp ./html/user/privacy.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/privacy.php"
+    # Certificate: restyled to match the site's felt/gold/cream identity,
+    # plus a verification code/link -- see html/inc/cert.inc.
+    docker cp ./html/user/cert1.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/cert1.php"
+    docker cp ./html/inc/cert.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/cert.inc"
+    docker cp ./html/user/verify_cert.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/verify_cert.php"
     # Public progress page -- reads progress_stats.json and the two
     # records_*.txt files below, never queries the DB itself (see
     # generate_progress_stats.php's header comment for why).
@@ -255,6 +260,16 @@ define('SMTP_FROM_NAME', '$SMTP_FROM_NAME');
 EOF
     fi
 
+    # HMAC secret for cert1.php's verification codes -- optional, only
+    # written if CERT_VERIFY_SECRET is set in .env. Same kept-out-of-the-repo,
+    # piped-over-stdin treatment as the SMTP credentials just above.
+    if [ -n "$CERT_VERIFY_SECRET" ]; then
+        docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/cert_verify_secret.inc.php" <<EOF
+<?php
+define('CERT_VERIFY_SECRET', '$CERT_VERIFY_SECRET');
+EOF
+    fi
+
     echo "🧩 Preparing smart merge of config.xml..."
     docker cp ./config.xml "$SERVER_CONTAINER_NAME":/tmp/config_new.xml
     docker cp ./merge_config.py "$SERVER_CONTAINER_NAME":/tmp/merge_config.py
@@ -325,7 +340,7 @@ $RECAPTCHA_SECRET_KEY"
 
     CURRENT_STAGE="fixing file permissions"
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
@@ -349,6 +364,11 @@ $RECAPTCHA_SECRET_KEY"
         # www-data and require_once()s this file directly (same treatment as
         # config.xml, for the same reason).
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/smtp_credentials.inc.php && chmod 640 $PROJECT_DIR/smtp_credentials.inc.php"
+    fi
+    if [ -n "$CERT_VERIFY_SECRET" ]; then
+        # Same www-data group-read treatment as smtp_credentials.inc.php --
+        # project.inc require_once()s this one too, also running as www-data.
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/cert_verify_secret.inc.php && chmod 640 $PROJECT_DIR/cert_verify_secret.inc.php"
     fi
 
     CURRENT_STAGE="compiling and publishing the app version"
