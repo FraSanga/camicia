@@ -163,7 +163,7 @@ page_head(tra("Search progress"));
 .progress-page .ctrl-btn:disabled { opacity: .4; }
 .progress-page .ctrl-btn.play-btn { background: var(--gold); color: var(--felt); border-color: var(--gold); padding: 8px 22px; }
 .progress-page .legend-note { font-size: 12px; color: var(--cream-dim); margin-top: 18px; line-height: 1.6; }
-.progress-page .legend-note .chip { display: inline-flex; width: 18px; height: 24px; font-size: 10px; vertical-align: -6px; margin: 0 4px; }
+.progress-page .legend-note .chip { display: inline-flex; width: 18px; height: 24px; font-size: 10px; vertical-align: middle; margin: 0 4px; }
 .progress-page .discovery-tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; margin-bottom: 10px; }
 .progress-page .discovery-tag.camicia { background: var(--gold); color: var(--felt); }
 .progress-page .discovery-tag.reference { background: transparent; border: 1px solid var(--cream-dim); color: var(--cream-dim); }
