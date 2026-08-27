@@ -233,8 +233,23 @@ if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
 fi
 
 echo "🔄 Registering new app version (update_versions)..."
-docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
-    "cd $PROJECT_DIR && ./bin/update_versions --noconfirm"
+# Can't trust this command's own exit status: BOINC's update_versions is a
+# PHP script that reports a missing/unreadable code-signing key (among
+# other fatal conditions) via die("some string"), and PHP's die()/exit()
+# with a STRING argument always exits 0 -- confirmed against
+# /usr/local/src/boinc/tools/update_versions's own source. Caught live: a
+# manual (no CODE_SIGN_KEY_PASSPHRASE) run of this script staged files and
+# printed "✅ Published" while update_versions had actually failed and
+# registered nothing, and the caller (deploy_rollback.sh) went on to
+# deprecate the still-good previous version based on that false success.
+# Capture the real output and scan for its own "Error:" marker instead.
+UPDATE_VERSIONS_OUTPUT=$(docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+    "cd $PROJECT_DIR && ./bin/update_versions --noconfirm" 2>&1)
+echo "$UPDATE_VERSIONS_OUTPUT"
+if echo "$UPDATE_VERSIONS_OUTPUT" | grep -qi "error:"; then
+    echo "❌ update_versions reported an error above -- treating this as a failed publish despite its own exit code."
+    exit 1
+fi
 
 # The point of no return: a client could fetch this version the instant
 # update_versions above returns (it already touches reread_db itself). Only
