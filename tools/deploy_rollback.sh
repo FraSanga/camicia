@@ -72,7 +72,18 @@ do_backup() {
     # --ignore-failed-read: some paths may not exist yet on a brand new
     # project -- keep going instead of aborting the whole backup over one
     # missing entry.
-    tar czf "$BACKUP_FILE.tmp" --ignore-failed-read -C "$HOST_PROJECT_DIR" $BACKUP_PATHS
+    #
+    # --exclude=html/ops/.htpasswd: this one file is 640, owned by
+    # www-data -- unreadable by the runner's own host user (confirmed:
+    # `ls -la` shows `-rw-r----- www-data www-data`), so it was already
+    # silently dropped from every backup via --ignore-failed-read, just
+    # with a "Permission denied" warning on every single deploy. Excluding
+    # it outright is a deliberate no-op, not a new gap: nothing in the
+    # deploy pipeline ever writes or deletes .htpasswd (it's a manually-set
+    # ops admin password), so --restore never needed to touch it -- the
+    # live file was never at risk either way, this just makes the exclusion
+    # explicit and silent instead of an unexplained warning every time.
+    tar czf "$BACKUP_FILE.tmp" --ignore-failed-read --exclude='html/ops/.htpasswd' -C "$HOST_PROJECT_DIR" $BACKUP_PATHS
     mv "$BACKUP_FILE.tmp" "$BACKUP_FILE"
     echo "✅ Pre-deploy backup saved to $BACKUP_FILE"
 }
