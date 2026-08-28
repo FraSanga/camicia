@@ -12,7 +12,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
+#include <ctime>
 #include <string>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "backend_lib.h"
 #include "boinc_db.h"
@@ -174,14 +178,18 @@ static int init_cursor_if_missing() {
 
 // Returns 0 on success (including "already dispatched by a previous,
 // interrupted run" - detected via the workunit.name UNIQUE constraint).
-static int make_job(int128 start, int128 end) {
+// Creates one workunit for [start, end] under an explicit name, rather
+// than always deriving it from start/end -- needed so redispatch_
+// rejected_wus() below can recreate a range under a *different* name
+// than the original (workunit.name is unique-indexed, and the original
+// row still exists, just permanently un-assimilated). make_job() is the
+// normal case, always deriving the name; this is the shared logic both
+// paths call.
+static int create_wu_with_name(int128 start, int128 end, const char* name) {
     DB_WORKUNIT wu;
-    char name[256], path[MAXPATHLEN];
+    char path[MAXPATHLEN];
     const char* infiles[1];
     int retval;
-
-    snprintf(name, sizeof(name), "%s_%s_%s",
-        app_name, int128ToPadded(start).c_str(), int128ToPadded(end).c_str());
 
     retval = config.download_path(name, path);
     if (retval) return retval;
@@ -237,9 +245,110 @@ static int make_job(int128 start, int128 end) {
     return 0;
 }
 
+static int make_job(int128 start, int128 end) {
+    char name[256];
+    snprintf(name, sizeof(name), "%s_%s_%s",
+        app_name, int128ToPadded(start).c_str(), int128ToPadded(end).c_str());
+    return create_wu_with_name(start, end, name);
+}
+
+// Redispatch: scans for assimilate_handler()'s own *_verify_rejected
+// marker files (results/<batch>/<wu_name>_verify_rejected -- see
+// assimilator.cpp's write_verify_rejected(), the authoritative
+// verify_sample gate's failure path) and creates a fresh replacement
+// workunit covering the identical range for each one not yet handled, so
+// the range genuinely gets recomputed by new, independent clients rather
+// than silently dropped. Deliberately only ever acts on
+// *_verify_rejected specifically -- never the generic *_error files
+// assimilate_handler()'s other failure paths still use (missing output
+// files, no canonical result at all), which a redispatch wouldn't fix;
+// see assimilator.cpp's own comment on why those stay separate.
+//
+// Idempotent by renaming the marker after a successful redispatch (append
+// ".redispatched_as_<new-name>"), so a re-scan -- this runs on every
+// outer main_loop() iteration, rate-limited there -- never double-
+// dispatches the same failure. The replacement can't reuse the original
+// name (still taken -- that row just never got a canonical result
+// assimilated), so it gets a timestamp suffix instead of a retry
+// counter: simplest way to guarantee no collision without persisting any
+// extra state of its own.
+static void redispatch_rejected_wus() {
+    const char* results_dir = "../results";
+    const std::string suffix = "_verify_rejected";
+
+    DIR* d = opendir(results_dir);
+    if (!d) return;
+    struct dirent* batch_entry;
+    while ((batch_entry = readdir(d)) != nullptr) {
+        if (batch_entry->d_name[0] == '.') continue;
+        char batch_path[1024];
+        snprintf(batch_path, sizeof(batch_path), "%s/%s", results_dir, batch_entry->d_name);
+        struct stat st;
+        if (stat(batch_path, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+
+        DIR* bd = opendir(batch_path);
+        if (!bd) continue;
+        struct dirent* file_entry;
+        while ((file_entry = readdir(bd)) != nullptr) {
+            std::string fname(file_entry->d_name);
+            if (fname.size() <= suffix.size()) continue;
+            if (fname.compare(fname.size() - suffix.size(), suffix.size(), suffix) != 0) {
+                continue; // not a *_verify_rejected marker (or already renamed .redispatched_as_...)
+            }
+
+            std::string wu_name = fname.substr(0, fname.size() - suffix.size());
+            // Same first/last-underscore split as assimilator.cpp's own
+            // parse_wu_range(), applied to the same "simulator_<start>_
+            // <end>" naming.
+            size_t first_us = wu_name.find_first_of('_');
+            size_t last_us = wu_name.find_last_of('_');
+            if (first_us == std::string::npos || last_us == std::string::npos || first_us >= last_us) {
+                log_messages.printf(MSG_CRITICAL,
+                    "redispatch: couldn't parse start/end from '%s', skipping\n", wu_name.c_str());
+                continue;
+            }
+            int128 start = stringTo128(wu_name.substr(first_us + 1, last_us - first_us - 1));
+            int128 end = stringTo128(wu_name.substr(last_us + 1));
+
+            char new_name[300];
+            snprintf(new_name, sizeof(new_name), "%s_r%ld", wu_name.c_str(), (long)time(0));
+
+            int retval = create_wu_with_name(start, end, new_name);
+            char full_path[1024];
+            snprintf(full_path, sizeof(full_path), "%s/%s", batch_path, file_entry->d_name);
+            if (retval) {
+                log_messages.printf(MSG_CRITICAL,
+                    "redispatch: create_wu_with_name failed for %s: %s -- will retry next scan\n",
+                    wu_name.c_str(), boincerror(retval));
+                continue; // leave the marker as-is, try again next scan
+            }
+            log_messages.printf(MSG_NORMAL, "redispatch: %s -> %s\n", wu_name.c_str(), new_name);
+
+            char renamed_path[1536];
+            snprintf(renamed_path, sizeof(renamed_path), "%s.redispatched_as_%s", full_path, new_name);
+            rename(full_path, renamed_path);
+        }
+        closedir(bd);
+    }
+    closedir(d);
+}
+
 static void main_loop() {
+    // Rate-limited independently of the main dispatch loop's own sleeps
+    // below (which range from 5s to 3600s depending on state) -- a flat
+    // 60s floor keeps this from re-scanning the results/ tree on every
+    // single tight iteration while the cushion's being topped up, without
+    // tying its cadence to unrelated dispatch-loop timing.
+    double last_redispatch_scan = 0;
+
     while (1) {
         check_stop_daemons();
+
+        double now_ts = dtime();
+        if (now_ts - last_redispatch_scan > 60) {
+            redispatch_rejected_wus();
+            last_redispatch_scan = now_ts;
+        }
 
         int128 next_index;
         bool exhausted;

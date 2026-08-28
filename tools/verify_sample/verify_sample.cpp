@@ -199,6 +199,35 @@ static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anom
     }
 }
 
+// Exhaustively (not just via random sampling) re-checks the WU's own
+// specific claims -- the recorded best-finished index, and every recorded
+// loop index -- regardless of whether either happens to fall in the
+// random sample. This matters because both are RARE, SPECIFIC claims
+// (typically 0-1 best, 0-a-handful of loops per block), not "some
+// fraction of a billion ordinary deals" -- exactly the class of defect
+// the file header comment says random sampling can't reliably catch (the
+// odds a single specific rare index lands in a sample covering ~0.09% of
+// the block are, unsurprisingly, about 0.09%). Cheap regardless: there
+// are never more than a handful of these per block, unlike the sample
+// itself. Reuses check_deal() for the best index -- same logic, same
+// message, just guaranteed to run instead of only running if the random
+// sample happens to land on it.
+static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly>& anomalies) {
+    if (recorded.best.has_value()) {
+        check_deal(recorded.best->index, recorded, anomalies);
+    }
+    for (const string& idxStr : recorded.loopIndices) {
+        int128 index = stringTo128(idxStr);
+        GameResult res = simulate_deal(index);
+        if (res.status != "loop") {
+            anomalies.push_back({index,
+                "recorded as a loop, but the true outcome is 'finished' (cards=" +
+                to_string(res.cards) + ", tricks=" + to_string(res.tricks) +
+                ") -- this loop claim is false"});
+        }
+    }
+}
+
 void usage(const char* name) {
     fprintf(stderr,
         "Camicia spot-check verifier: instead of re-simulating an entire\n"
@@ -334,14 +363,21 @@ int main(int argc, char** argv) {
     }
 
     vector<Anomaly> anomalies;
+    // Always exhaustive, regardless of sample size -- see this function's
+    // own comment for why the random sample alone can't be trusted to
+    // catch a false or omitted claim about the one specific best index or
+    // the (usually very few) specific recorded loop indices.
+    check_recorded_claims(recorded, anomalies);
     for (uint64_t off : offsets) {
         check_deal(start + (int128)off, recorded, anomalies);
     }
 
-    printf("Checked %llu / %s deals (%.4f%%)%s.\n",
+    printf("Checked %llu / %s deals (%.4f%%)%s, plus an exhaustive re-check of the recorded "
+           "best-finished claim and all %zu recorded loop claim(s).\n",
            (unsigned long long)offsets.size(), int128ToString(blockSizeFull).c_str(),
            100.0 * (double)offsets.size() / (double)N,
-           fullVerification ? " -- sample size reached the full block, this was an exhaustive check" : "");
+           fullVerification ? " -- sample size reached the full block, this was an exhaustive check" : "",
+           recorded.loopIndices.size());
 
     if (anomalies.empty()) {
         if (!fullVerification) {

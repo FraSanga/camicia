@@ -53,8 +53,8 @@ bool parse_wu_range(const char* wu_name, string& start, string& end) {
 // Spawns verify_sample directly via fork/exec (no shell involved, so
 // nothing here needs escaping) against one already-assimilated-candidate
 // result file, capturing its stdout (the human-readable inconsistency
-// report, if any) for write_error() to record on failure. Deliberately
-// never passes --seed: the whole point is that which deals get sampled is
+// report, if any) for write_verify_rejected() to record on failure.
+// Deliberately never passes --seed: the whole point is that which deals get sampled is
 // unpredictable from outside the server, so a cheat client can't
 // precompute just the checked subset and fabricate the rest -- letting
 // verify_sample fall through to its own random_device default is what
@@ -111,6 +111,84 @@ int run_verify_sample(
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     return 1; // killed/signaled -- treat as a failure, not a pass
+}
+
+// Fires a push notification via bin/notify.sh's notify() shell function,
+// which only *defines* that function rather than calling it -- so this
+// sources it, then calls it with $1/$2/$3 (bash's own positional
+// parameters) rather than string-interpolating title/message into the
+// script text. That's what lets a WU name or a multi-line verify_sample
+// report contain arbitrary characters with zero C++-side escaping. Runs
+// synchronously (like run_verify_sample() above) rather than true
+// fire-and-forget: this only ever runs on a loop-related rejection, which
+// should be rare-to-never, and losing the one alert that matters most to
+// a stray zombie-avoidance shortcut isn't worth it.
+void send_notify(const string& title, const string& message, const string& priority) {
+    pid_t pid = fork();
+    if (pid < 0) return;
+    if (pid == 0) {
+        FILE* devnull = fopen("/dev/null", "w");
+        if (devnull) {
+            dup2(fileno(devnull), STDOUT_FILENO);
+            dup2(fileno(devnull), STDERR_FILENO);
+        }
+        execl("/bin/bash", "bash", "-c",
+            ". ./notify.sh && notify \"$1\" \"$2\" \"$3\"",
+            "bash", title.c_str(), message.c_str(), priority.c_str(),
+            (char*)nullptr
+        );
+        _exit(127);
+    }
+    int status;
+    waitpid(pid, &status, 0);
+}
+
+// Appends one line per rejection to a standing audit trail, deliberately
+// separate from the per-WU _verify_rejected file below: the point isn't
+// re-reading one WU's detail, it's being able to grep this file later for
+// the same host/user id showing up across *multiple, unrelated*
+// rejections -- see assimilator.cpp's design discussion on why a single
+// rejection can't distinguish a shared worker.cpp bug from a fabricated
+// result (two independent hosts agreeing on the same wrong answer is
+// already what quorum-of-2 is supposed to make astronomically unlikely by
+// chance), but a repeated pattern for the same account is a much stronger
+// signal, worth a human's judgment call via manage_user.php rather than
+// anything automatic here. Logs every contributing result's host/user id,
+// not just the canonical one -- `results` used to be an unused parameter
+// (see the old /*results*/ comment this replaces) specifically because
+// nothing needed it before this.
+void log_verify_rejection(
+    WORKUNIT& wu, vector<RESULT>& results, bool loop_related
+) {
+    char path[1024];
+    sprintf(path, "%s/verify_rejections.log", outdir);
+    FILE* f = fopen(path, "a");
+    if (!f) return;
+    fprintf(f, "%ld %s %s", (long)time(0), wu.name, loop_related ? "loop" : "best");
+    for (const RESULT& r : results) {
+        fprintf(f, " host=%lld/user=%lld", (long long)r.hostid, (long long)r.userid);
+    }
+    fprintf(f, "\n");
+    fclose(f);
+}
+
+// Same shape as write_error() above, but a distinct filename/suffix so
+// this specific failure class -- and only this one -- is what
+// work_generator's redispatch scan watches for (it globs *_verify_rejected
+// specifically, never the generic *_error files the other failure paths
+// still use, which aren't things a redispatch would fix).
+int write_verify_rejected(WORKUNIT &wu, const string& detail) {
+    char batch_dir[1024];
+    char path[1024];
+    sprintf(batch_dir, "%s/%d", outdir, wu.batch);
+    int retval = boinc_mkdir(batch_dir);
+    if (retval) return retval;
+    sprintf(path, "%s/%s_verify_rejected", batch_dir, wu.name);
+    FILE* f = fopen(path, "a");
+    if (!f) return ERR_FOPEN;
+    fprintf(f, "%s", detail.c_str());
+    fclose(f);
+    return 0;
 }
 
 // records_longest.txt / records_loops.txt: tiny plain-text side files
@@ -205,7 +283,7 @@ void assimilate_handler_usage() {
 }
 
 int assimilate_handler(
-    WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canonical_result
+    WORKUNIT& wu, vector<RESULT>& results, RESULT& canonical_result
 ) {
     int retval;
     char buf[1024];
@@ -249,15 +327,42 @@ int assimilate_handler(
             wu_start, wu_end, output_files[0].path, verify_output
         );
         if (verify_status != 0) {
+            // Loop-related vs. best-related is a real, not cosmetic,
+            // distinction -- see verify_sample.cpp's anomaly messages:
+            // every one that involves a loop claim (found-but-unflagged,
+            // or flagged-but-false) is the only kind of message that ever
+            // contains the word "loop"; every best-related message talks
+            // about cards/tricks/"the recorded best" instead. A block can
+            // in principle raise both kinds at once -- treat it as
+            // loop-related (the louder path) if any anomaly is.
+            bool loop_related = verify_output.find("loop") != string::npos;
+
+            log_verify_rejection(wu, results, loop_related);
+
+            if (loop_related) {
+                // Deliberately does NOT write a corrected/confirmed loop
+                // line into results.txt automatically, even though
+                // verify_sample's own re-simulation already knows the
+                // true answer -- writing straight into the permanent,
+                // immutable scientific record with no human sign-off is
+                // the same class of hard-to-reverse action as an account
+                // ban, and belongs in the same "software escalates, a
+                // person decides" bucket. A human can hand-verify and
+                // record it immediately from this alert if they want to
+                // move faster than waiting on the redispatch below.
+                char title[256];
+                snprintf(title, sizeof(title),
+                    "Camicia: possible loop found in %s", wu.name);
+                send_notify(title, verify_output, "urgent");
+            }
+
             char header[256];
             snprintf(header, sizeof(header),
                 "assimilate: verify_sample rejected this result (exit %d):\n",
                 verify_status
             );
             string full_msg = string(header) + verify_output;
-            vector<char> msg_buf(full_msg.begin(), full_msg.end());
-            msg_buf.push_back('\0');
-            return write_error(wu, msg_buf.data());
+            return write_verify_rejected(wu, full_msg);
         }
 
         // Safe only because config.xml runs a single, unsharded assimilator
