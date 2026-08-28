@@ -43,12 +43,17 @@ fi
 # SERVER_VOLUME_PROJECTS is the host-side path docker-compose.yml binds to
 # SERVER_VOLUME_PROJECTS_DIR inside the container -- this script runs on
 # the host, so it operates on the former directly, no docker exec needed.
-# It's relative to the repo root (same convention docker-compose.yml itself
-# relies on, since that's always invoked from there) -- but this script's
-# own cwd is tools/ (the `cd "$(dirname "$0")"` above), so it's resolved
-# against the actual repo root rather than joined onto cwd directly.
+# When relative, it's relative to the repo root (same convention
+# docker-compose.yml itself relies on, since that's always invoked from
+# there) -- but this script's own cwd is tools/ (the `cd "$(dirname "$0")"`
+# above), so a relative value is resolved against the actual repo root
+# rather than joined onto cwd directly. An absolute value is used as-is.
 REPO_ROOT="$(cd .. && pwd)"
-HOST_PROJECT_DIR="$REPO_ROOT/${SERVER_VOLUME_PROJECTS#./}/camicia"
+if [[ "$SERVER_VOLUME_PROJECTS" = /* ]]; then
+    HOST_PROJECT_DIR="$SERVER_VOLUME_PROJECTS/camicia"
+else
+    HOST_PROJECT_DIR="$REPO_ROOT/${SERVER_VOLUME_PROJECTS#./}/camicia"
+fi
 CONTAINER_PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
 BACKUP_DIR="$HOME/.camicia_deploy_backups"
 BACKUP_FILE="$BACKUP_DIR/pre_deploy.tar.gz"
