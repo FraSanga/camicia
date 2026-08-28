@@ -208,6 +208,22 @@ docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
 /usr/local/src/boinc/lib/libboinc.a \
 -lmysqlclient -lcrypto -lssl -pthread -ldl"
 
+echo "⚙️ Compiling verify_sample..."
+# Server-side only, same bucket as assimilator/work_generator/
+# antique_file_deleter above (no BOINC "app version", no client
+# distribution, so no version-churn cost to rebuilding it every deploy).
+# Deployed to bin/ so assimilate_handler()'s "./verify_sample" (relative
+# to its own cwd, same convention as its own "../results" etc.) resolves.
+# No BOINC headers/libs needed at all -- it only links against the same
+# worker/core engine used to produce the results it's checking (-std=c++17
+# for std::optional, matching tests/test_verify_sample.sh's own build).
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -std=c++17 -O2 \
+$PROJECT_DIR/verify_sample/verify_sample.cpp \
+$PROJECT_DIR/worker/core/permutation.cpp \
+$PROJECT_DIR/worker/core/engine.cpp \
+-o $PROJECT_DIR/bin/verify_sample \
+-I$PROJECT_DIR/worker/core"
+
 echo "🔄 Applying configuration changes (xadd)..."
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/xadd"
 

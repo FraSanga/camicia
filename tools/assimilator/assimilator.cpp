@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include "boinc_db.h"
 #include "error_numbers.h"
@@ -16,6 +18,100 @@ using std::vector;
 using std::string;
 
 const char* outdir = "../results";
+
+// Authoritative spot-check gate, run once per workunit right before its
+// canonical result becomes part of results.txt -- see run_verify_sample()
+// below for how it's invoked, and tools/verify_sample/verify_sample.cpp's
+// own header comment for the full design rationale (what this can/can't
+// catch, why the sample size is a confidence/defect-rate policy choice
+// independent of block size). C = 99.99%, p = 0.001% chosen deliberately:
+// at ~921k samples this costs a few seconds of CPU per workunit -- utterly
+// negligible next to the hours a real client spends producing the block
+// in the first place -- so there's no reason to pick anything looser.
+const char* VERIFY_SAMPLE_BIN = "./verify_sample";
+const char* VERIFY_CONFIDENCE = "0.9999";
+const char* VERIFY_DEFECT_RATE = "0.00001";
+
+// wu.name is always "simulator_<start>_<end>" (work_generator.cpp's own
+// naming, zero-padded decimal -- stringTo128()-compatible either way).
+// Split on the first/last underscore rather than assuming exactly one
+// field between them, matching the same defensive convention
+// work_generator.cpp's own resume-cursor logic already uses (find_last_of
+// for the end field).
+bool parse_wu_range(const char* wu_name, string& start, string& end) {
+    string name(wu_name);
+    size_t first_us = name.find_first_of('_');
+    size_t last_us = name.find_last_of('_');
+    if (first_us == string::npos || last_us == string::npos || first_us >= last_us) {
+        return false;
+    }
+    start = name.substr(first_us + 1, last_us - first_us - 1);
+    end = name.substr(last_us + 1);
+    return !start.empty() && !end.empty();
+}
+
+// Spawns verify_sample directly via fork/exec (no shell involved, so
+// nothing here needs escaping) against one already-assimilated-candidate
+// result file, capturing its stdout (the human-readable inconsistency
+// report, if any) for write_error() to record on failure. Deliberately
+// never passes --seed: the whole point is that which deals get sampled is
+// unpredictable from outside the server, so a cheat client can't
+// precompute just the checked subset and fabricate the rest -- letting
+// verify_sample fall through to its own random_device default is what
+// keeps that true. Returns the child's exit status (0 = consistent,
+// nonzero = verify_sample found at least one inconsistency or failed to
+// run at all), or -1 if fork/exec itself failed.
+int run_verify_sample(
+    const string& start, const string& end, const string& result_file,
+    string& output_capture
+) {
+    int pipefd[2];
+    if (pipe(pipefd) != 0) return -1;
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return -1;
+    }
+
+    if (pid == 0) {
+        // child: stdout+stderr both go to the pipe, so a crash/usage
+        // error shows up in the captured report too, not just a
+        // consistency failure.
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd[1], STDERR_FILENO);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        execl(
+            VERIFY_SAMPLE_BIN, VERIFY_SAMPLE_BIN,
+            "--start", start.c_str(),
+            "--end", end.c_str(),
+            "--result-file", result_file.c_str(),
+            "--confidence", VERIFY_CONFIDENCE,
+            "--defect-rate", VERIFY_DEFECT_RATE,
+            (char*)nullptr
+        );
+        // execl only returns on failure (e.g. binary missing) -- _exit,
+        // not exit/return, to avoid running any parent-process atexit
+        // handlers twice in the forked child.
+        _exit(127);
+    }
+
+    // parent
+    close(pipefd[1]);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
+        output_capture.append(buf, n);
+    }
+    close(pipefd[0]);
+
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return 1; // killed/signaled -- treat as a failure, not a pass
+}
 
 // records_longest.txt / records_loops.txt: tiny plain-text side files
 // tracking the project's two headline findings (longest finished game,
@@ -122,6 +218,46 @@ int assimilate_handler(
         if (retval) {
             sprintf(buf, "get_output_file_infos() failed: %d\n", retval);
             return write_error(wu, buf);
+        }
+
+        // Authoritative gate: verify a random sample of this block's own
+        // deals against the canonical result's output BEFORE any of it
+        // becomes part of results.txt. This is the actual immutability
+        // boundary (nothing below this point ever gets deleted or
+        // reopened -- see rotate_results.sh/CLAUDE.md), so it's the right
+        // and only place to reject a bad result: a failure here means the
+        // canonical result simply never gets in, not that something
+        // already-recorded needs undoing.
+        //
+        // Fails closed on every early-exit path (can't parse wu.name,
+        // zero output files) -- an authoritative check that silently
+        // no-ops on the inputs it doesn't understand isn't actually
+        // authoritative. wu.name is always our own work_generator's
+        // "simulator_<start>_<end>" though, so these paths should never
+        // actually trigger outside of a deeper bug worth surfacing anyway.
+        if (output_files.empty()) {
+            sprintf(buf, "assimilate: canonical result has no output files\n");
+            return write_error(wu, buf);
+        }
+        string wu_start, wu_end;
+        if (!parse_wu_range(wu.name, wu_start, wu_end)) {
+            sprintf(buf, "assimilate: couldn't parse start/end from wu.name '%s'\n", wu.name);
+            return write_error(wu, buf);
+        }
+        string verify_output;
+        int verify_status = run_verify_sample(
+            wu_start, wu_end, output_files[0].path, verify_output
+        );
+        if (verify_status != 0) {
+            char header[256];
+            snprintf(header, sizeof(header),
+                "assimilate: verify_sample rejected this result (exit %d):\n",
+                verify_status
+            );
+            string full_msg = string(header) + verify_output;
+            vector<char> msg_buf(full_msg.begin(), full_msg.end());
+            msg_buf.push_back('\0');
+            return write_error(wu, msg_buf.data());
         }
 
         // Safe only because config.xml runs a single, unsharded assimilator

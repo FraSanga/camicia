@@ -112,6 +112,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./assimilator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./worker "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./work_generator "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
+    # assimilate_handler() spawns bin/verify_sample as its authoritative
+    # pre-canonicalization check -- see assimilator.cpp's own header
+    # comment on run_verify_sample() for why. Source lands here for
+    # publish_version.sh to compile from, same as assimilator/worker/
+    # work_generator above.
+    docker cp ./verify_sample "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./templates "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     docker cp ./project.xml "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/"
     # Tells bin/db_dump (config.xml's already-enabled 24h task) which tables
@@ -347,7 +353,7 @@ $RECAPTCHA_SECRET_KEY"
 
     CURRENT_STAGE="fixing file permissions"
     echo "🔐 Fixing permissions for user $PROJECTS_USER..."
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/*.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
