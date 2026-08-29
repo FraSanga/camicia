@@ -1,0 +1,145 @@
+name: deploy-staging
+
+# Auto-deploys on every push to `staging`, unlike deploy.yml which is
+# workflow_dispatch-only. Staging is meant for fast iteration before merging
+# into main, so it should redeploy the instant something lands here, no
+# separate manual trigger step. Runs on its own dedicated self-hosted runner
+# (label "staging", not "production") registered on the same box as
+# production's runner, with its own checkout directory (~/camicia-staging),
+# so a push here can never be routed to production's runner or vice versa.
+on:
+  push:
+    branches:
+      - staging
+
+# Least privilege: this workflow builds/deploys the project but never
+# writes to the repo, a PR, or anything else on GitHub itself.
+permissions:
+  contents: read
+
+jobs:
+  # Same reasoning as deploy.yml's own build-macos job: cross-compiling the
+  # worker for macOS needs a real Apple SDK, so it's built here on ephemeral,
+  # GitHub-hosted infrastructure and handed to the deploy job below as an
+  # artifact.
+  build-macos:
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get pinned BOINC commit
+        id: boinc_commit
+        run: |
+          echo "commit=$(grep -oE 'ARG BOINC_COMMIT=[0-9a-f]+' images/server/Dockerfile | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache BOINC lib/api (macOS arm64)
+        id: cache-boinc-macos
+        uses: actions/cache@v4
+        with:
+          path: boinc-macos
+          key: boinc-macos-arm64-${{ steps.boinc_commit.outputs.commit }}-min${{ env.MACOSX_DEPLOYMENT_TARGET }}
+
+      - name: Install autotools (not preinstalled on macos-14 runners)
+        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
+        run: |
+          brew install autoconf automake libtool pkg-config
+          echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Build BOINC lib/api (macOS arm64, native)
+        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
+        run: |
+          git init boinc-macos
+          cd boinc-macos
+          git remote add origin https://github.com/BOINC/boinc.git
+          git fetch --depth 1 origin "${{ steps.boinc_commit.outputs.commit }}"
+          git checkout FETCH_HEAD
+          ./_autosetup
+          ./configure --disable-client --disable-manager --disable-server
+          make
+
+      - name: Compile Worker (macOS arm64)
+        run: |
+          clang++ -O3 \
+            tools/worker/worker.cpp tools/worker/core/*.cpp \
+            -o worker_app_macos \
+            -I boinc-macos/api -I boinc-macos/lib \
+            -I tools/worker -I tools/worker/core \
+            boinc-macos/api/libboinc_api.a boinc-macos/lib/libboinc.a \
+            -pthread
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worker_app_macos
+          path: worker_app_macos
+          retention-days: 1
+
+  deploy:
+    needs: build-macos
+    runs-on: [self-hosted, staging]
+    # No `environment:` block, unlike deploy.yml: staging deliberately skips
+    # CODE_SIGN_KEY_PASSPHRASE/UPLOAD_KEY_PASSPHRASE entirely (see STAGING.md
+    # "Decisions made"), so there is nothing to store as an Environment
+    # secret. publish_version.sh's decrypt step only runs when
+    # CODE_SIGN_KEY_PASSPHRASE is set; left unset here, it falls back to
+    # using code_sign_private directly, exactly the "local dev convenience"
+    # path make_project's freshly-generated plaintext key already supports.
+    steps:
+      - name: Download macOS worker artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: worker_app_macos
+
+      - name: Pull latest staging and redeploy
+        run: |
+          cd ~/camicia-staging
+          git fetch origin staging
+          git reset --hard origin/staging
+          cp "$GITHUB_WORKSPACE/worker_app_macos" tools/worker/worker_app_macos
+          chmod +x tools/worker/worker_app_macos
+          bash tools/tools.sh
+
+      - name: Verify deployment health
+        run: |
+          cd ~/camicia-staging
+          docker compose -p camicia-staging ps
+
+          echo "--- daemons ---"
+          MISSING=""
+          for d in assimilator sample_bitwise_validator work_generator feeder transitioner file_deleter; do
+            if docker exec --user boincadm boinc_server_staging pgrep -f "^$d " > /dev/null; then
+              echo "OK: $d"
+            else
+              echo "MISSING: $d is not running"
+              MISSING="$MISSING $d"
+            fi
+          done
+
+          echo "--- user site ---"
+          docker exec boinc_server_staging curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost/camicia/
+
+          if [ -n "$MISSING" ]; then
+            echo "Deploy health check FAILED, daemon(s) not running:$MISSING"
+            exit 1
+          fi
+
+      # Same rollback path as deploy.yml, run against the staging checkout.
+      # No CODE_SIGN_KEY_PASSPHRASE to pass through here either, for the same
+      # reason as the deploy job above.
+      - name: Roll back on health check failure
+        if: failure()
+        run: |
+          cd ~/camicia-staging
+          bash tools/tools.sh --restore
+
+      - name: Record deployed commit
+        run: |
+          # Path suffixed with "camicia-staging" (this checkout's own
+          # directory name) to match deploy_rollback.sh's own derivation and
+          # deploy.yml's equivalent step for production -- kept in sync
+          # manually since this step writes the file directly rather than
+          # through that script.
+          mkdir -p ~/.camicia_deploy_state_camicia-staging
+          cd ~/camicia-staging
+          git rev-parse HEAD > ~/.camicia_deploy_state_camicia-staging/deployed_sha
