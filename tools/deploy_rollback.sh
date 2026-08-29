@@ -55,7 +55,14 @@ else
     HOST_PROJECT_DIR="$REPO_ROOT/${SERVER_VOLUME_PROJECTS#./}/camicia"
 fi
 CONTAINER_PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
-BACKUP_DIR="$HOME/.camicia_deploy_backups"
+# Suffixed with the checkout's own directory name (e.g. "camicia" vs
+# "camicia-staging") so production and staging, which run as the same OS
+# user on the same host, never collide on each other's backup/rollback
+# state -- REPO_ROOT already differs correctly per checkout, this just
+# reuses that instead of a fixed path. Both files are purely transient,
+# regenerated on every deploy, so this being a new path for existing
+# checkouts loses nothing.
+BACKUP_DIR="$HOME/.camicia_deploy_backups_$(basename "$REPO_ROOT")"
 BACKUP_FILE="$BACKUP_DIR/pre_deploy.tar.gz"
 # Written by publish_version.sh the instant it publishes a new app
 # version (the true point of no return -- see that script's own
@@ -65,7 +72,7 @@ BACKUP_FILE="$BACKUP_DIR/pre_deploy.tar.gz"
 # that already finished (successfully or via its own completed --restore)
 # never leaks into a later, unrelated failure.
 PUBLISHED_VERSION_FILE="$BACKUP_DIR/published_version"
-DEPLOYED_SHA_FILE="$HOME/.camicia_deploy_state/deployed_sha"
+DEPLOYED_SHA_FILE="$HOME/.camicia_deploy_state_$(basename "$REPO_ROOT")/deployed_sha"
 # Same subpaths tools.sh's docker cp block overwrites -- kept in sync
 # manually with that list. Deliberately not results/, db_backups/, apps/,
 # download/ -- see header comment above.

@@ -215,6 +215,13 @@ jobs:
       # wipe anything tracked or left inside it.
       - name: Record deployed commit
         run: |
-          mkdir -p ~/.camicia_deploy_state
+          # Path suffixed with "camicia" (this checkout's own directory
+          # name) to match deploy_rollback.sh's own derivation -- kept in
+          # sync manually since this step writes the file directly rather
+          # than through that script. Matters now that a second checkout
+          # (~/camicia-staging) exists on the same host under the same OS
+          # user: without the suffix, production and staging would collide
+          # on this exact path.
+          mkdir -p ~/.camicia_deploy_state_camicia
           cd ~/camicia
-          git rev-parse HEAD > ~/.camicia_deploy_state/deployed_sha
+          git rev-parse HEAD > ~/.camicia_deploy_state_camicia/deployed_sha

@@ -15,9 +15,10 @@
 # recovery flow.
 #
 # On success, writes the just-published version number to
-# $HOME/.camicia_deploy_backups/published_version -- the checkpoint
-# deploy_rollback.sh's --restore path reads to decide whether a failed
-# deploy needs a replacement version published, not just a file revert.
+# $HOME/.camicia_deploy_backups_<checkout-dir-name>/published_version -- the
+# checkpoint deploy_rollback.sh's --restore path reads to decide whether a
+# failed deploy needs a replacement version published, not just a file
+# revert.
 #
 # The worker app version is only actually republished when the source
 # that produces it changed -- see the "does the worker need republishing"
@@ -48,7 +49,12 @@ fi
 
 PROJECT_DIR="${SERVER_VOLUME_PROJECTS_DIR}/camicia"
 KEY_DIR="${SERVER_VOLUME_KEYS_DIR}"
-BACKUP_DIR="$HOME/.camicia_deploy_backups"
+# Same derivation as deploy_rollback.sh's own BACKUP_DIR -- must match
+# exactly, since both scripts read/write the same files across a single
+# deploy. Suffixed with the checkout's own directory name so production and
+# staging, which run as the same OS user on the same host, never collide.
+REPO_ROOT="$(cd .. && pwd)"
+BACKUP_DIR="$HOME/.camicia_deploy_backups_$(basename "$REPO_ROOT")"
 PUBLISHED_VERSION_FILE="$BACKUP_DIR/published_version"
 # Separate from PUBLISHED_VERSION_FILE above: that file is transient
 # per-deploy-attempt state (deploy_rollback.sh's do_backup() deletes it at
