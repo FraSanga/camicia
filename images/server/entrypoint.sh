@@ -7,8 +7,13 @@ export PYTHONPATH=$PYTHONPATH:/usr/local/src/boinc/py
 
 echo "🚀 [BOOT] Starting BOINC Server..."
 
-echo "⏳ [DB-CHECK] Waiting database to start (boinc_db)..."
-while ! bash -c 'echo > /dev/tcp/boinc_db/3306' 2>/dev/null; do
+# "database", not $DATABASE_CONTAINER_NAME: Docker Compose always resolves
+# the service name itself (the docker-compose.yml key, "database") within
+# the shared network, regardless of what container_name/.env sets it to --
+# stable across every environment, not just whichever one happens to name
+# its container "boinc_db".
+echo "⏳ [DB-CHECK] Waiting database to start (database)..."
+while ! bash -c 'echo > /dev/tcp/database/3306' 2>/dev/null; do
     echo "   -> Database not ready. Retry in 3 seconds..."
     sleep 3
 done
