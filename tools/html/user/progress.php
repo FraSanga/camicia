@@ -243,8 +243,13 @@ page_head(tra("Search progress"));
       <div class="empty-state"><?php echo tra("Camicia hasn't confirmed any games yet -- check back once the search is running."); ?></div>
 <?php endif; ?>
       <p class="section-sub" style="margin:16px 0 4px">
-        <?php echo tra("Below, a playable example showing %1how%2 a game works, built on the same game engine.", "<em>", "</em>"); ?>
+        <?php if ($longest): ?>
+        <?php echo tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>"); ?>
+        <?php else: ?>
+        <?php echo tra("No game to play back yet -- check back once the search has confirmed one."); ?>
+        <?php endif; ?>
       </p>
+<?php if ($longest): ?>
       <div class="game-table" id="gameTable"></div>
       <div class="status-line" id="gameStatus">Ready. Press Play to watch it, or step through it one move at a time.</div>
       <div class="game-controls">
@@ -257,6 +262,7 @@ page_head(tra("Search progress"));
         <?php echo tra("Only aces, kings, queens and jacks determine the outcome of the game -- suit never matters either, only rank."); ?>
         <span class="chip honor">K</span> <?php echo tra("affects the result, a generic"); ?> <span class="chip plain"></span> <?php echo tra("doesn't: that's why every other card is shown the same."); ?>
       </p>
+<?php endif; ?>
     </div>
 
     <div class="discovery">
@@ -331,6 +337,73 @@ page_head(tra("Search progress"));
 
   // ---- Playable animation, driven by the exact same rules as
   // tools/worker/core/engine.cpp's CamiciaGame::simulate().
+<?php if ($longest): ?>
+  // Reconstructs the actual deal from its index, the same multinomial-
+  // ranking algorithm as tools/worker/core/permutation.cpp, ported here
+  // (not called into from PHP) so the record's own real deck drives this
+  // widget instead of a fixed illustrative example. Deal indices exceed
+  // 64 bits (up to ~6.5e20), hence BigInt throughout -- JS's native
+  // arbitrary-precision integer type, no library needed. Verified against
+  // this project's own test vectors (tests/test_data_gen.hpp), including
+  // both the first and last possible indices and every real historical
+  // record in that file.
+  function buildNCrTable() {
+    var table = [];
+    for (var n = 0; n <= 52; n++) {
+      table.push(new Array(53).fill(0n));
+      table[n][0] = 1n;
+      for (var r = 1; r <= n; r++) {
+        table[n][r] = table[n - 1][r - 1] + table[n - 1][r];
+      }
+    }
+    return table;
+  }
+  var nCrTable = buildNCrTable();
+
+  function fastMultinomial(counts) {
+    var n = counts.reduce(function(a, b) { return a + b; }, 0);
+    var res = 1n, currentN = n;
+    for (var i = 0; i < 5; i++) {
+      if (counts[i] > 0) {
+        res *= nCrTable[currentN][counts[i]];
+        currentN -= counts[i];
+      }
+    }
+    return res;
+  }
+
+  // Returns an array of 52 single-character cards ('A'/'K'/'Q'/'J'/'2'),
+  // same shape and same '2' convention worker.cpp/permutation.cpp use for
+  // every non-honor card -- rank never matters beyond honor-or-not, so
+  // there's nothing else to distinguish.
+  function getNthPermutation(indexStr) {
+    var n = BigInt(indexStr);
+    var counts = [4, 4, 4, 4, 36];
+    var symbols = ['A', 'K', 'Q', 'J', '2'];
+    var result = [];
+    for (var i = 0; i < 52; i++) {
+      for (var s = 0; s < 5; s++) {
+        if (counts[s] === 0) continue;
+        counts[s]--;
+        var num = fastMultinomial(counts);
+        if (n < num) {
+          result.push(symbols[s]);
+          break;
+        } else {
+          n -= num;
+          counts[s]++;
+        }
+      }
+    }
+    return result;
+  }
+
+  var realDeck = getNthPermutation(<?php echo json_encode($longest['deal_index']); ?>);
+  // Same split worker.cpp itself uses: first 26 dealt to A, last 26 to B,
+  // no interleaving.
+  var deckA = realDeck.slice(0, 26);
+  var deckB = realDeck.slice(26);
+
   function penaltyOf(c) { return { A: 4, K: 3, Q: 2, J: 1 }[c] || 0; }
 
   function makeEngine(from) {
@@ -382,14 +455,9 @@ page_head(tra("Search progress"));
     };
   }
 
-  // A short, playable example deal (not the real record above) -- finishes
-  // in 66 card-plays / 9 tricks, verified against this exact algorithm.
-  var demoA = ['Q','N','N','J','N','N','Q','N','N','N','N','N','A','N','K','A','Q','N','N','K','N','J','N','N','J','A'];
-  var demoB = ['N','N','N','N','N','N','N','A','N','K','N','N','N','N','Q','N','N','N','N','N','J','N','K','N','N','N'];
-
   function renderSlots(cards) {
     var filled = cards.map(function(c) {
-      return c === 'N' ? '<div class="slot plain"></div>' : '<div class="slot honor">' + c + '</div>';
+      return c === '2' ? '<div class="slot plain"></div>' : '<div class="slot honor">' + c + '</div>';
     }).join('');
     var empty = new Array(52 - cards.length + 1).join('<div class="slot empty"></div>');
     return filled + empty;
@@ -473,7 +541,7 @@ page_head(tra("Search progress"));
 
   function resetGame() {
     stopPlaying();
-    var engine = makeEngine({ handA: demoA, handB: demoB });
+    var engine = makeEngine({ handA: deckA, handB: deckB });
     var full = engine.fullState();
     checkpoints = [{ step: 0, full: full, event: null, done: false }];
     current = { step: 0, state: engine.state(), event: null, done: false };
@@ -486,6 +554,7 @@ page_head(tra("Search progress"));
   resetBtn.addEventListener('click', resetGame);
 
   resetGame();
+<?php endif; ?>
 })();
 </script>
 <?php
