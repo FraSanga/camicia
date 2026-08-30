@@ -115,6 +115,26 @@ do_restore() {
     echo "⏪ Restoring pre-deploy state from $BACKUP_FILE..."
     tar xzf "$BACKUP_FILE" -C "$HOST_PROJECT_DIR"
 
+    # tar runs as this script's own host user, not root -- it can extract
+    # file *content* fine, but can't restore arbitrary ownership/group it
+    # doesn't itself hold, so every extracted file silently comes out
+    # owned by that host user instead of the boincadm/www-data it had at
+    # backup time. Confirmed live 2026-08-30: after a real restore,
+    # config.xml (640, needs group www-data for the ops/user PHP pages to
+    # read it) came back owned by the host user's own uid/gid instead,
+    # which happened to resolve to boincadm:boincadm inside the container
+    # rather than boincadm:www-data -- config.xml became unreadable to
+    # www-data and the entire site 500'd. Same fix tools.sh itself runs on
+    # every deploy re-applied here, so a restore leaves the tree in the
+    # same state a normal deploy would.
+    docker exec \
+        -e SERVER_VOLUME_PROJECTS_DIR="$SERVER_VOLUME_PROJECTS_DIR" \
+        -e PROJECTS_USER="$PROJECTS_USER" \
+        -e OPS_USER="$OPS_USER" \
+        -e OPS_PASS="$OPS_PASS" \
+        -e SERVER_HOSTNAME="$SERVER_HOSTNAME" \
+        "$SERVER_CONTAINER_NAME" /usr/local/bin/fix_permissions.sh
+
     local bad_version=""
     [ -f "$PUBLISHED_VERSION_FILE" ] && bad_version=$(cat "$PUBLISHED_VERSION_FILE")
 
