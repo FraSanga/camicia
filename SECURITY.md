@@ -21,3 +21,12 @@ daemons/worker, deployment scripts/config).
 
 Out of scope: the BOINC client itself and third-party BOINC server
 code this project vendors unmodified (see individual files' headers).
+
+## Further reading
+
+This project follows upstream BOINC's own security guidance, not something invented here:
+
+- [Code Signing](https://github.com/BOINC/boinc/wiki/Code-signing): key generation, offline
+  storage, and rotation. `RUNBOOK.md`'s own key-rotation procedure follows this directly.
+- [BOINC Security](https://github.com/BOINC/boinc/wiki/BOINC_Security): the wider threat model
+  BOINC projects and volunteers operate under (code signing, sandboxing, spoofed projects, and more).
