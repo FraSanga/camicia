@@ -28,7 +28,12 @@ const char* outdir = "../results";
 // at ~921k samples this costs a few seconds of CPU per workunit -- utterly
 // negligible next to the hours a real client spends producing the block
 // in the first place -- so there's no reason to pick anything looser.
-const char* VERIFY_SAMPLE_BIN = "./verify_sample";
+// Not "./verify_sample": this daemon's actual runtime cwd is
+// tmp_<hostname>/ (BOINC's own daemon framework chdirs there after
+// bin/start launches it, same reason outdir below is "../results" and
+// not "results"), a sibling of bin/ under the project root, not bin/
+// itself, where tools.sh/publish_version.sh actually compile this to.
+const char* VERIFY_SAMPLE_BIN = "../bin/verify_sample";
 const char* VERIFY_CONFIDENCE = "0.9999";
 const char* VERIFY_DEFECT_RATE = "0.00001";
 
