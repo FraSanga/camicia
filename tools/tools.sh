@@ -44,11 +44,18 @@ BACKUP_TAKEN=0
 CURRENT_STAGE="starting deploy"
 recover_daemons_on_failure() {
     local exit_code=$?
-    # Unconditional, regardless of success/failure: if the decrypt step below
-    # ever ran, this guarantees the plaintext code-signing key can't survive
-    # past this script's exit, even if `set -e` kills the script somewhere
-    # between decrypting it and the normal cleanup step further down.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private" 2>/dev/null || true
+    # Guarded on CODE_SIGN_KEY_PASSPHRASE, not unconditional: only decrypted
+    # keys/code_sign_private.gpg into a plaintext code_sign_private if this
+    # was set (see publish_version.sh), so only then is there anything to
+    # clean up, and only then does an encrypted backup exist to restore a
+    # fresh plaintext copy from on the next run. Without this guard, the
+    # "no passphrase set, a plaintext code_sign_private must already exist"
+    # local-dev/staging convenience mode (see .env.example) would have its
+    # only copy of the key deleted the moment this script exits, with
+    # nothing able to regenerate it short of a full make_project re-bootstrap.
+    if [ -n "$CODE_SIGN_KEY_PASSPHRASE" ]; then
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "rm -f $KEY_DIR/code_sign_private" 2>/dev/null || true
+    fi
     if [ "$exit_code" -ne 0 ] && [ "$PROJECT_FOUND" -eq 1 ]; then
         if [ "$BACKUP_TAKEN" -eq 1 ]; then
             echo "⚠️  Deploy failed during '$CURRENT_STAGE' (exit $exit_code) -- rolling back to the pre-deploy state..."
