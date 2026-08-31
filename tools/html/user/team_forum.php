@@ -49,18 +49,26 @@ function create_forum($user, $team) {
     if ($f) {
         error_page(tra("Team already has a message board"));
     }
-    // Camicia fix: upstream's INSERT never sets orderID, and forum.orderID
-    // is NOT NULL with no default -- silently fine under a lenient SQL
-    // mode (implicitly inserts 0), but a hard, uncaught mysqli_sql_exception
-    // ("Field 'orderID' doesn't have a default value") under
-    // STRICT_TRANS_TABLES, which is this project's DB's actual mode (and
-    // MariaDB's own modern default). Explicit 0 matches what a lenient mode
-    // would have done anyway -- a team's own forum is the only one in its
-    // "category" (category=$team->id), so there's nothing else to order it
-    // against. Confirmed this is upstream's own bug, not something this
-    // project introduced: present verbatim at the exact BOINC commit this
+    // Camicia fix: upstream's INSERT only sets category/parent_type, but
+    // forum.orderID/title/description are all NOT NULL with no default --
+    // silently fine under a lenient SQL mode (implicitly inserts 0/''/''),
+    // a hard, uncaught mysqli_sql_exception ("Field '<col>' doesn't have a
+    // default value") under STRICT_TRANS_TABLES, which is this project's
+    // DB's actual mode (and MariaDB's own modern default). Confirmed live:
+    // fixing orderID alone still crashed on title next, then description.
+    // Empty string for title/description is intentional, not a placeholder
+    // bug: edit_form() (called right after this insert, see below) already
+    // falls back to $team->name / a generated description for *display*
+    // when either is blank, and the row only becomes visible with real
+    // content once the founder submits that form (edit_action below does
+    // the actual UPDATE) -- this INSERT was always meant to create a bare
+    // placeholder row first. orderID=0 matches what a lenient mode would
+    // have done anyway -- a team's own forum is the only one in its
+    // "category" (category=$team->id), nothing else to order it against.
+    // Confirmed this is upstream's own bug, not something this project
+    // introduced: present verbatim at the exact BOINC commit this
     // project's image builds from.
-    $id = BoincForum::insert("(category, orderID, parent_type) values ($team->id, 0, 1)");
+    $id = BoincForum::insert("(category, orderID, title, description, parent_type) values ($team->id, 0, '', '', 1)");
     $forum = BoincForum::lookup_id($id);
     if (!$forum) {
         error_page("couldn't create message board");
