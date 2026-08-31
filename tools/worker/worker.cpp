@@ -123,6 +123,40 @@ int main(int argc, char** argv) {
         fclose(chkpt);
     }
 
+    // Camicia fix: a checkpoint found on disk was trusted completely as-is
+    // -- its own startIndex/endIndex, not this WU's actual input file --
+    // with nothing checking it actually belongs to this WU. BOINC's own
+    // slot-file resolution is supposed to keep different tasks'
+    // checkpoints from ever crossing, but a real incident (a client-side
+    // project reset mid-task, from an unrelated master_url change, causing
+    // repeated re-dispatch of one huge WU) produced a false "loop" claim
+    // on an unrelated, tiny WU scheduled right after on the same client --
+    // caught before it ever reached results.txt by verify_sample's own
+    // independent re-check, but only after the fact. Cross-checking
+    // against the input file's own authoritative range costs one extra
+    // file read and closes the gap outright: a checkpoint whose range
+    // doesn't match this WU's own input is treated exactly like no
+    // checkpoint at all (fresh start below, LOOPS_FILE truncated), rather
+    // than trusted.
+    if (resumed) {
+        FILE* in_check = boinc_fopen(input_path, "r");
+        if (in_check) {
+            char realStartStr[128], realEndStr[128];
+            if (fscanf(in_check, "%127s %127s", realStartStr, realEndStr) == 2) {
+                if (stringTo128(realStartStr) != state.startIndex ||
+                    stringTo128(realEndStr) != state.endIndex) {
+                    resumed = false;
+                    // Undo the checkpoint parse's own writes into state,
+                    // matching a genuinely fresh start -- otherwise the
+                    // wrong checkpoint's bestFinished would linger even
+                    // though resumed is now false.
+                    state.bestFinished = {0, 0, 0};
+                }
+            }
+            fclose(in_check);
+        }
+    }
+
     // LOOPS_FILE is independently authoritative for which loops have
     // already been durably recorded -- read whatever complete lines
     // currently exist in it, regardless of exactly when the last
