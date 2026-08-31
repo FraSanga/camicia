@@ -31,15 +31,50 @@ define('RANGE_SIZE', 1000000000); // work_generator.cpp's --range_size
 // native ints can't hold it exactly anyway (it's a 128-bit value).
 define('SEARCH_SPACE_BLOCKS', 653534134887);
 
+// do_query() returns null on a genuine query failure (connection dropped,
+// deadlock, syntax error) and a mysqli_result on success -- see
+// db_conn.inc's own do_query(). Every query scalar() runs here is a bare
+// aggregate (count(*)/sum(...)), which always returns exactly one row even
+// when nothing matches, so a real "no rows" case never reaches the
+// $row ? ... : 0 fallback below in practice; that branch only exists as a
+// defensive fallback. The one case that matters is failure: without
+// $query_failed, a transient DB hiccup would silently produce the same "0"
+// a genuinely-empty aggregate does, and the script would go on to publish a
+// fresh-looking (generated_at updates normally) but wrong, zeroed stats
+// file over whatever good data was already there.
+$query_failed = false;
 function scalar($db, $sql) {
+    global $query_failed;
     $result = $db->do_query($sql);
-    if (!$result) return 0;
+    if (!$result) {
+        $query_failed = true;
+        return 0;
+    }
     $row = $result->fetch_row();
     $result->free();
     return $row ? $row[0] : 0;
 }
 
 $db = BoincDb::get();
+
+// Everything that touches the DB is wrapped in one try/catch: confirmed
+// live (2026-08-31, against a real closed/dropped connection) that on this
+// project's actual PHP 8.2 / mysqli setup, a failing query throws an
+// uncaught mysqli_sql_exception (or a plain Error, for a fully-dead
+// connection) rather than making $db_conn->query() return false the way
+// db_conn.inc's own do_query() fallback expects -- no mysqli_report() call
+// anywhere in this project's inc/ overrides PHP 8.1+'s throw-on-error
+// default. scalar()'s own null check below is kept as defense in depth
+// (it's the documented do_query() contract, and would matter if that
+// default ever changed), but the catch here is what actually protects
+// against the failure mode this script hits in practice: without it, any
+// transient DB hiccup mid-run crashed with a raw stack trace to stderr
+// AND a nonzero exit -- which incidentally already skipped the publish
+// step (it never got that far), but with none of the other queries this
+// run needed getting a chance to run either, and no clean single-line
+// record of what happened.
+try {
+
 $app = BoincApp::lookup("name='" . APPNAME . "'");
 $appid = $app ? (int)$app->id : 0;
 
@@ -121,6 +156,25 @@ $stats = [
         'waiting' => $waiting,
     ],
 ];
+
+} catch (Throwable $e) {
+    fwrite(STDERR, date(DATE_RFC822) . ": ERROR: " . $e->getMessage() . " -- leaving progress_stats.json unchanged\n");
+    exit(1);
+}
+
+// Skip the publish entirely on a failed query rather than overwrite a good
+// existing progress_stats.json with one full of zeros -- a transient DB
+// hiccup during one of this task's 15-minute cycles should leave the last
+// known-good file in place for visitors, not silently replace it with a
+// fresh-looking (generated_at still updates) but wrong snapshot. The next
+// cycle 15 minutes later self-heals once the DB is reachable again. (In
+// practice, on this project's real PHP/mysqli setup, this branch is the
+// defensive fallback -- the catch above is what actually fires today, see
+// its own comment.)
+if ($query_failed) {
+    fwrite(STDERR, date(DATE_RFC822) . ": ERROR: one or more queries failed, leaving progress_stats.json unchanged\n");
+    exit(1);
+}
 
 $final_path = "../user/progress_stats.json";
 $tmp_path = "$final_path.tmp";
