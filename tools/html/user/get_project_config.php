@@ -58,7 +58,23 @@ function show_platforms() {
     echo $xmlFragment;
 }
 
-$master_url = master_url();
+// Camicia fix: echo the *actual request's own* host, not config.xml's static master_url,
+// for this one field in this one RPC response only. BOINC Manager overwrites its own
+// stored project URL with whatever this field says right after fetching it (see
+// ProjectProcessingPage.cpp's project_config.master_url handling) -- with the static
+// value, a client reaching this project via any address other than the canonical domain
+// (e.g. staging2's Tailscale-only published port, used for real client testing without
+// going through Cloudflare Access at all, which no BOINC client can complete an
+// interactive login for) gets silently redirected back to the domain for every subsequent
+// step, defeating the whole point. Deriving just the path from the configured master_url
+// (rather than hardcoding "/camicia/") keeps this correct if that path ever changes.
+// Every OTHER master_url() call on this site (logout.php's redirect, forum_email.inc,
+// bootstrap.inc, account_ownership.php) is untouched and still uses the real config.xml
+// value -- those are genuinely human-facing (redirects, email links), so only this one
+// BOINC-client-facing RPC field should ever reflect how the request actually arrived.
+$configured_master_url = master_url();
+$master_url_path = parse_url($configured_master_url, PHP_URL_PATH);
+$master_url = (is_https() ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'] . $master_url_path;
 $long_name = project_config_val("long_name");
 
 $min_passwd_length = project_config_val("min_passwd_length");
