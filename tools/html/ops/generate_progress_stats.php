@@ -56,6 +56,25 @@ function scalar($db, $sql) {
 }
 
 $db = BoincDb::get();
+
+// Everything that touches the DB is wrapped in one try/catch: confirmed
+// live (2026-08-31, against a real closed/dropped connection) that on this
+// project's actual PHP 8.2 / mysqli setup, a failing query throws an
+// uncaught mysqli_sql_exception (or a plain Error, for a fully-dead
+// connection) rather than making $db_conn->query() return false the way
+// db_conn.inc's own do_query() fallback expects -- no mysqli_report() call
+// anywhere in this project's inc/ overrides PHP 8.1+'s throw-on-error
+// default. scalar()'s own null check below is kept as defense in depth
+// (it's the documented do_query() contract, and would matter if that
+// default ever changed), but the catch here is what actually protects
+// against the failure mode this script hits in practice: without it, any
+// transient DB hiccup mid-run crashed with a raw stack trace to stderr
+// AND a nonzero exit -- which incidentally already skipped the publish
+// step (it never got that far), but with none of the other queries this
+// run needed getting a chance to run either, and no clean single-line
+// record of what happened.
+try {
+
 $app = BoincApp::lookup("name='" . APPNAME . "'");
 $appid = $app ? (int)$app->id : 0;
 
@@ -138,12 +157,20 @@ $stats = [
     ],
 ];
 
+} catch (Throwable $e) {
+    fwrite(STDERR, date(DATE_RFC822) . ": ERROR: " . $e->getMessage() . " -- leaving progress_stats.json unchanged\n");
+    exit(1);
+}
+
 // Skip the publish entirely on a failed query rather than overwrite a good
 // existing progress_stats.json with one full of zeros -- a transient DB
 // hiccup during one of this task's 15-minute cycles should leave the last
 // known-good file in place for visitors, not silently replace it with a
 // fresh-looking (generated_at still updates) but wrong snapshot. The next
-// cycle 15 minutes later self-heals once the DB is reachable again.
+// cycle 15 minutes later self-heals once the DB is reachable again. (In
+// practice, on this project's real PHP/mysqli setup, this branch is the
+// defensive fallback -- the catch above is what actually fires today, see
+// its own comment.)
 if ($query_failed) {
     fwrite(STDERR, date(DATE_RFC822) . ": ERROR: one or more queries failed, leaving progress_stats.json unchanged\n");
     exit(1);
