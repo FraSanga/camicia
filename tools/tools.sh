@@ -185,6 +185,13 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # own comment; confirmed present verbatim in upstream at the exact
     # BOINC commit this image builds from.
     docker cp ./html/user/team_forum.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_forum.php"
+    # Same class of bug as team_forum.php just above: add_admin()'s INSERT
+    # never sets team_admin.rights, which is NOT NULL with no default --
+    # uncaught mysqli_sql_exception under STRICT_TRANS_TABLES the instant a
+    # founder tries to add a team admin. `rights` isn't read anywhere in
+    # this codebase or upstream's own team code, so 0 has no behavioral
+    # effect either way. See the file's own comment.
+    docker cp ./html/user/team_admins.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_admins.php"
     # Same PHP 8.1 deprecation class, this time xml_parse(null,...) instead
     # of unserialize(null) -- $prefs_xml is null for a user who's never
     # saved custom prefs. Found live on prefs.php.
