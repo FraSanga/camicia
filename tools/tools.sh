@@ -177,6 +177,14 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./html/user/download_network.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/download_network.php"
     docker cp ./html/user/get_project_config.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/get_project_config.php"
     docker cp ./html/user/team_members.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_members.php"
+    # Byte-identical copy of BOINC's own file, with one fix: create_forum()'s
+    # INSERT never sets orderID, which is NOT NULL with no default -- fine
+    # under a lenient SQL mode, an uncaught mysqli_sql_exception under
+    # STRICT_TRANS_TABLES (this DB's actual mode), the instant a team
+    # founder tries to create their team's message board. See the file's
+    # own comment; confirmed present verbatim in upstream at the exact
+    # BOINC commit this image builds from.
+    docker cp ./html/user/team_forum.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_forum.php"
     # Same PHP 8.1 deprecation class, this time xml_parse(null,...) instead
     # of unserialize(null) -- $prefs_xml is null for a user who's never
     # saved custom prefs. Found live on prefs.php.
