@@ -31,9 +31,25 @@ define('RANGE_SIZE', 1000000000); // work_generator.cpp's --range_size
 // native ints can't hold it exactly anyway (it's a 128-bit value).
 define('SEARCH_SPACE_BLOCKS', 653534134887);
 
+// do_query() returns null on a genuine query failure (connection dropped,
+// deadlock, syntax error) and a mysqli_result on success -- see
+// db_conn.inc's own do_query(). Every query scalar() runs here is a bare
+// aggregate (count(*)/sum(...)), which always returns exactly one row even
+// when nothing matches, so a real "no rows" case never reaches the
+// $row ? ... : 0 fallback below in practice; that branch only exists as a
+// defensive fallback. The one case that matters is failure: without
+// $query_failed, a transient DB hiccup would silently produce the same "0"
+// a genuinely-empty aggregate does, and the script would go on to publish a
+// fresh-looking (generated_at updates normally) but wrong, zeroed stats
+// file over whatever good data was already there.
+$query_failed = false;
 function scalar($db, $sql) {
+    global $query_failed;
     $result = $db->do_query($sql);
-    if (!$result) return 0;
+    if (!$result) {
+        $query_failed = true;
+        return 0;
+    }
     $row = $result->fetch_row();
     $result->free();
     return $row ? $row[0] : 0;
@@ -121,6 +137,17 @@ $stats = [
         'waiting' => $waiting,
     ],
 ];
+
+// Skip the publish entirely on a failed query rather than overwrite a good
+// existing progress_stats.json with one full of zeros -- a transient DB
+// hiccup during one of this task's 15-minute cycles should leave the last
+// known-good file in place for visitors, not silently replace it with a
+// fresh-looking (generated_at still updates) but wrong snapshot. The next
+// cycle 15 minutes later self-heals once the DB is reachable again.
+if ($query_failed) {
+    fwrite(STDERR, date(DATE_RFC822) . ": ERROR: one or more queries failed, leaving progress_stats.json unchanged\n");
+    exit(1);
+}
 
 $final_path = "../user/progress_stats.json";
 $tmp_path = "$final_path.tmp";
