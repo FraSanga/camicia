@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pushes keys/, db_backups/, and results/ to Google Drive via rclone -- genuine
+# Pushes keys/, db_backups/, results/, and archives/ to Google Drive via rclone -- genuine
 # offsite protection, unlike db_backups/ and results/ segments, which
 # otherwise only ever live on this one host's disk. Runs daily via
 # config.xml's <tasks>, same pattern as db_backup.sh/rotate_results.sh.
@@ -67,5 +67,11 @@ rclone copy ./db_backups "$REMOTE/db_backups" --config "$RCLONE_CONF" \
 
 rclone copy ./results "$REMOTE/results" --config "$RCLONE_CONF" \
     || fail "rclone copy of results/ failed"
+
+# archives/ (db_purge --gzip's row-metadata dump, see config.xml's own <task> comment): additive
+# for the same reason as db_backups/results above, nothing here ever deletes an archive locally
+# either.
+rclone copy ./archives "$REMOTE/archives" --config "$RCLONE_CONF" \
+    || fail "rclone copy of archives/ failed"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') OK: offsite backup to Google Drive complete"

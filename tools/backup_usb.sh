@@ -1,5 +1,5 @@
 #!/bin/bash
-# Mirrors keys/, db_backups/, and results/ to a second, physically separate
+# Mirrors keys/, db_backups/, results/, and archives/ to a second, physically separate
 # local drive (BACKUP_DRIVE_DIR) -- a genuine second copy independent of the
 # host's main disk, distinct from the Google Drive offsite backup
 # (backup_offsite_gdrive.sh) and from SERVER_VOLUME_PROJECTS/KEYS
@@ -35,7 +35,7 @@ fail() {
 # additive copy -- this is a second *local* copy of the same current state,
 # not a longer-term archive, so there's no reason to keep stale data around
 # once the primary copy has rotated/pruned it away.
-mkdir -p "$DEST/keys" "$DEST/db_backups" "$DEST/results"
+mkdir -p "$DEST/keys" "$DEST/db_backups" "$DEST/results" "$DEST/archives"
 # Exclude rclone.conf, rclone_config_pass, AND the plaintext upload_private
 # -- same reasoning as backup_offsite_gdrive.sh's own exclude list, and it
 # applies just as much to a physically separate, removable drive as it does
@@ -48,5 +48,9 @@ rsync -a --delete --exclude rclone.conf --exclude rclone_config_pass --exclude u
     "$KEYS_DIR/" "$DEST/keys/" || fail "rsync of keys/ failed"
 rsync -a --delete ./db_backups/ "$DEST/db_backups/" || fail "rsync of db_backups/ failed"
 rsync -a --delete ./results/ "$DEST/results/" || fail "rsync of results/ failed"
+# archives/ (db_purge --gzip's row-metadata dump, see config.xml's own <task> comment): nothing
+# reads it back at runtime, in this project or in BOINC's own source, so unlike results/ it's safe
+# to prune locally in a genuine disk emergency once this copy exists.
+rsync -a --delete ./archives/ "$DEST/archives/" || fail "rsync of archives/ failed"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') OK: USB backup complete"
