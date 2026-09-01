@@ -46,16 +46,36 @@ if (!$code) {
     if (!defined('CERT_VERIFY_SECRET')) {
         echo "<p>".tra("Certificate verification isn't configured on this project.")."</p>";
     } else {
-        $user_id = cert_verify_code_check($code);
-        if ($user_id === null) {
+        $verified = cert_verify_code_check($code);
+        if ($verified === null) {
             echo "
             <div class=\"alert alert-danger\" role=\"alert\">
             <b>&#10060; ".tra("Not a valid Camicia certificate number.")."</b>
             <p class=\"mb-0\">".tra("\"%1\" doesn't match a certificate this project ever issued.", $code_display)."</p>
             </div>
             ";
+        } else if ($verified['type'] == 'team') {
+            $cert_team = BoincTeam::lookup_id($verified['id']);
+            if (!$cert_team) {
+                echo "
+                <div class=\"alert alert-warning\" role=\"alert\">
+                <b>&#9989; ".tra("This is a genuine Camicia team certificate number.")."</b>
+                <p class=\"mb-0\">".tra("The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real.")."</p>
+                </div>
+                ";
+            } else {
+                $join = gmdate('j F Y', $cert_team->create_time);
+                $credit_display = number_format($cert_team->total_credit, 0);
+                $name_html = htmlspecialchars($cert_team->name);
+                echo "
+                <div class=\"alert alert-success\" role=\"alert\">
+                <b>&#9989; ".tra("Genuine Camicia team certificate.")."</b>
+                <p class=\"mb-0\">".tra("Issued to team %1, participating since %2 with %3 units of credit contributed as of today.", "<b>$name_html</b>", $join, "<b>$credit_display</b>")."</p>
+                </div>
+                ";
+            }
         } else {
-            $cert_user = BoincUser::lookup_id($user_id);
+            $cert_user = BoincUser::lookup_id($verified['id']);
             if (!$cert_user) {
                 echo "
                 <div class=\"alert alert-warning\" role=\"alert\">
