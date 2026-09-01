@@ -167,7 +167,7 @@
                  placeholder user account for that team's founder (their
                  actual name/email from the original project, a random
                  password), then emails them saying an instance of their
-                 team was created here -- see html/ops/team_import.php's
+                 team was created here; see html/ops/team_import.php's
                  own header comment for the fixed crash bug found in this
                  one real run. That means real strangers get real accounts
                  and a real email from a project they never asked to join;
