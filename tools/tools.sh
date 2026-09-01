@@ -321,7 +321,7 @@ EOF
     # since the <url> must be this environment's own $DOMAIN (staging2 vs
     # the real one) -- same reasoning as the SMTP credentials above, minus
     # the need to keep it off stdin/out of `docker top`.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/project_files.xml" <<EOF
+    docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/project_files.xml" <<EOF
 <file_info>
     <name>stat_icon_40.png</name>
     <url>http://$DOMAIN/camicia/img/stat_icon_40.png</url>
