@@ -267,6 +267,18 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # unsuspend crashed after the DB update committed but before either
     # notification email went out.
     docker cp ./html/ops/manage_user.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/manage_user.php"
+    # Same html/ops/ placement/reason again -- byte-identical stock file
+    # plus a try/catch around each team's processing in main(), and an
+    # optional argv[1] source-URL override for testing. Found live
+    # 2026-08-31: make_user()/BoincUser::insert() throws an uncaught
+    # mysqli_sql_exception on a genuine user.name collision (two upstream
+    # teams' founders both registered as "Coordinador"), which stock
+    # upstream let kill the entire run -- every team after the colliding
+    # one silently never processed, every single time this ran. See the
+    # comment above main() in the file itself for the full story. The
+    # <task> that runs this (config.xml) stays deliberately disabled for
+    # now regardless of this fix -- see the comment on that <task>.
+    docker cp ./html/ops/team_import.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/team_import.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
@@ -420,6 +432,7 @@ $RECAPTCHA_SECRET_KEY"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/team_import.php && chmod +x $PROJECT_DIR/html/ops/team_import.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
