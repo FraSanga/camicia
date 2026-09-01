@@ -72,23 +72,45 @@ function cert_verify_code($user_id) {
     return "$uid_b36-$check";
 }
 
-// Returns the user id the code claims to belong to if it's genuine
-// (HMAC matches), or null if it's malformed, doesn't match, or
-// CERT_VERIFY_SECRET isn't configured.
+// Camicia addition: same scheme as cert_verify_code() above, for
+// cert_team.php. Deliberately a different HMAC message ("cert_team:<id>"
+// vs "cert:<id>") rather than a format marker (e.g. a leading "T") baked
+// into the code string -- a marker would need its own escape from the
+// base36 alphabet, which already uses every character a marker could be.
+// Keying off the HMAC message instead means cert_verify_code_check() can
+// try both and see which one (if either) actually matches, with no risk
+// of an ambiguous or colliding code format, and zero change needed to
+// already-issued user certificates' codes.
+function cert_verify_code_team($team_id) {
+    if (!defined('CERT_VERIFY_SECRET')) return null;
+    $tid_b36 = strtoupper(base_convert($team_id, 10, 36));
+    $check = strtoupper(substr(hash_hmac('sha256', "cert_team:$team_id", CERT_VERIFY_SECRET), 0, 8));
+    return "$tid_b36-$check";
+}
+
+// Returns ['type' => 'user'|'team', 'id' => <int>] if the code is genuine
+// (its HMAC matches either message), or null if it's malformed, matches
+// neither, or CERT_VERIFY_SECRET isn't configured.
 function cert_verify_code_check($code) {
     if (!defined('CERT_VERIFY_SECRET')) return null;
     $code = strtoupper(trim($code));
     $parts = explode('-', $code, 2);
     if (count($parts) != 2) return null;
-    list($uid_b36, $given_check) = $parts;
-    if (!preg_match('/^[0-9A-Z]+$/', $uid_b36) || !preg_match('/^[0-9A-F]{8}$/', $given_check)) {
+    list($id_b36, $given_check) = $parts;
+    if (!preg_match('/^[0-9A-Z]+$/', $id_b36) || !preg_match('/^[0-9A-F]{8}$/', $given_check)) {
         return null;
     }
-    $user_id = (int)base_convert($uid_b36, 36, 10);
-    if ($user_id <= 0) return null;
-    $expected_check = strtoupper(substr(hash_hmac('sha256', "cert:$user_id", CERT_VERIFY_SECRET), 0, 8));
-    if (!hash_equals($expected_check, $given_check)) return null;
-    return $user_id;
+    $id = (int)base_convert($id_b36, 36, 10);
+    if ($id <= 0) return null;
+    $expected_user_check = strtoupper(substr(hash_hmac('sha256', "cert:$id", CERT_VERIFY_SECRET), 0, 8));
+    if (hash_equals($expected_user_check, $given_check)) {
+        return array('type' => 'user', 'id' => $id);
+    }
+    $expected_team_check = strtoupper(substr(hash_hmac('sha256', "cert_team:$id", CERT_VERIFY_SECRET), 0, 8));
+    if (hash_equals($expected_team_check, $given_check)) {
+        return array('type' => 'team', 'id' => $id);
+    }
+    return null;
 }
 
 // show button to download certificate as PNG
