@@ -105,6 +105,28 @@ echo "loop entries for MID after the orphaned-loops-file sequence: $orphaned_loo
 rm -f in out camicia_state camicia_loops
 
 echo
+echo "=== Mismatched checkpoint: claims the [MID-2, MID+2] range, but this WU's real input"
+echo "    file says a completely different, non-overlapping [0, 1] ==="
+echo "    (a real incident: a client-side project reset mid-task caused repeated re-dispatch"
+echo "     of one huge WU, and a tiny, unrelated WU scheduled right after on the same client"
+echo "     picked up its leftover checkpoint -- caught by verify_sample only after the fact."
+echo "     The fix cross-checks a found checkpoint's range against the WU's own input file"
+echo "     before trusting it, treating a mismatch exactly like no checkpoint at all.)"
+cat > camicia_state <<EOF
+$NEXT $START $END 0 0 0
+EOF
+cat > camicia_loops <<EOF
+$MID 474 66
+EOF
+echo "0 1" > in
+"$WORKER"
+mismatch_loop_for_mid=$(count_loop_lines_for_mid out)
+mismatch_finished_for_real_range=$(grep -cE "^finished,[01]," out || true)
+echo "loop entries for MID after the mismatched-checkpoint run: $mismatch_loop_for_mid"
+echo "finished entries for the real [0,1] range: $mismatch_finished_for_real_range"
+rm -f in out camicia_state camicia_loops
+
+echo
 pass=1
 if [ "$straight_loop_count" != "1" ]; then
     echo "❌ FAIL: straight-through run should find exactly 1 loop entry for MID, got $straight_loop_count"
@@ -130,12 +152,27 @@ if [ "$orphaned_loops_count" != "1" ]; then
     pass=0
 fi
 
+if [ "$mismatch_loop_for_mid" != "0" ]; then
+    echo "❌ FAIL: a checkpoint claiming the [MID-2,MID+2] range was trusted even though this"
+    echo "   WU's real input file says [0,1] -- MID isn't even in the real range, so any loop"
+    echo "   claim for it here means the mismatched checkpoint's input-file cross-check regressed."
+    pass=0
+fi
+if [ "$mismatch_finished_for_real_range" != "1" ]; then
+    echo "❌ FAIL: expected exactly one 'finished' line for the real [0,1] input range after a"
+    echo "   mismatched checkpoint is correctly discarded, got $mismatch_finished_for_real_range --"
+    echo "   the worker isn't falling back to processing its own real input file."
+    pass=0
+fi
+
 if [ "$pass" = "1" ]; then
     echo "✅ PASS: current checkpoint semantics produce no duplicate under a normal resume,"
     echo "   the dedup guard correctly prevents a duplicate even when camicia_state and"
     echo "   camicia_loops are left inconsistent by a simulated crash between the two writes,"
-    echo "   and a genuinely orphaned camicia_loops file (camicia_state lost entirely) gets"
-    echo "   truncated rather than duplicated across a real second resume."
+    echo "   a genuinely orphaned camicia_loops file (camicia_state lost entirely) gets"
+    echo "   truncated rather than duplicated across a real second resume, and a checkpoint"
+    echo "   that doesn't actually belong to this WU (range mismatch against its own input"
+    echo "   file) is discarded rather than trusted."
     exit 0
 else
     exit 1
