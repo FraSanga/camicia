@@ -167,6 +167,13 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # "camicia") with a diamond pip nested in the neckline and two buttons
     # down the front.
     docker cp ./html/user/img/favicon.svg "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/favicon.svg"
+    # BOINC Manager's Simple View project icon (the "stat_icon" logical name,
+    # see clientgui/sg_ProjectPanel.cpp) -- a 40x40 PNG rendering of
+    # favicon.svg, since Manager's own image loader doesn't parse SVG.
+    # Regenerate with: cairosvg html/user/img/favicon.svg -o
+    # html/user/img/stat_icon_40.png --output-width 40 --output-height 40
+    # (and update project_files.xml's md5_cksum/nbytes below if it changes).
+    docker cp ./html/user/img/stat_icon_40.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/stat_icon_40.png"
     # All four below are byte-identical copies of BOINC's own files, each
     # with the same one-line-becomes-two-lines fix: get_cached_data() can
     # return null on a cold/expired cache, and passing null to
@@ -304,6 +311,30 @@ EOF
 define('CERT_VERIFY_SECRET', '$CERT_VERIFY_SECRET');
 EOF
     fi
+
+    # project_files.xml: read directly by the scheduler daemon
+    # (config.project_path("project_files.xml"), sched/sched_types.cpp) and
+    # embedded verbatim into every scheduler reply -- this is what gets
+    # BOINC Manager's Simple View to show the project icon (the "stat_icon"
+    # logical name in the file_ref below; see clientgui/sg_ProjectPanel.cpp).
+    # Not secret, but still generated here rather than tracked statically,
+    # since the <url> must be this environment's own $DOMAIN (staging2 vs
+    # the real one) -- same reasoning as the SMTP credentials above, minus
+    # the need to keep it off stdin/out of `docker top`.
+    docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/project_files.xml" <<EOF
+<file_info>
+    <name>stat_icon_40.png</name>
+    <url>http://$DOMAIN/camicia/img/stat_icon_40.png</url>
+    <md5_cksum>38bfb91f58fa3c8f31aa1ef80e3234c6</md5_cksum>
+    <nbytes>1572</nbytes>
+</file_info>
+<project_files>
+    <file_ref>
+        <file_name>stat_icon_40.png</file_name>
+        <open_name>stat_icon</open_name>
+    </file_ref>
+</project_files>
+EOF
 
     echo "🧩 Preparing smart merge of config.xml..."
     docker cp ./config.xml "$SERVER_CONTAINER_NAME":/tmp/config_new.xml
