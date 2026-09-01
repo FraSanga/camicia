@@ -2398,3 +2398,178 @@ $language_lookup_array["vi"]["Issued to %1, a participant since %2 with %3 units
 $language_lookup_array["zh_CN"]["Issued to %1, a participant since %2 with %3 units of credit contributed as of today."] = "颁发给 %1,自 %2 起成为参与者,截至今日已贡献 %3 个积分单位。";
 $language_lookup_array["zh_TW"]["Issued to %1, a participant since %2 with %3 units of credit contributed as of today."] = "頒發給 %1,自 %2 起成為參與者,截至今日已貢獻 %3 個積分單位。";
 
+
+// 2026-09-01: progress.php's game-playback empty state and caption (found
+// untranslated by the user), plus cert_team.php/verify_cert.php's new team
+// certificate strings (mirroring the "Genuine Camicia certificate."-style
+// entries above for the individual-certificate originals). Machine-translated
+// into every language this project has a compiled locale for, same as the
+// rest of this file -- not reviewed by native speakers.
+//
+// No game to play back yet -- check back once the search has confirmed one.
+$language_lookup_array["az"]["No game to play back yet -- check back once the search has confirmed one."] = "Hələ geri oynadılacaq oyun yoxdur -- axtarış birini təsdiqləyəndən sonra yenidən yoxlayın.";
+$language_lookup_array["ca"]["No game to play back yet -- check back once the search has confirmed one."] = "Encara no hi ha cap partida per reproduir -- torna a comprovar-ho un cop la cerca n'hagi confirmat una.";
+$language_lookup_array["cs"]["No game to play back yet -- check back once the search has confirmed one."] = "Zatím není žádná hra k přehrání -- zkontrolujte to znovu, jakmile hledání nějakou potvrdí.";
+$language_lookup_array["de"]["No game to play back yet -- check back once the search has confirmed one."] = "Noch kein Spiel zum Abspielen -- schauen Sie noch einmal vorbei, sobald die Suche eines bestätigt hat.";
+$language_lookup_array["es"]["No game to play back yet -- check back once the search has confirmed one."] = "Todavía no hay ninguna partida para reproducir -- vuelve a comprobarlo cuando la búsqueda haya confirmado una.";
+$language_lookup_array["eu"]["No game to play back yet -- check back once the search has confirmed one."] = "Oraindik ez dago atzera erreproduzitzeko partidarik -- egiaztatu berriro bilaketak bat berretsi ondoren.";
+$language_lookup_array["fi"]["No game to play back yet -- check back once the search has confirmed one."] = "Ei vielä peliä toistettavaksi -- tarkista uudelleen, kun haku on vahvistanut sellaisen.";
+$language_lookup_array["fr"]["No game to play back yet -- check back once the search has confirmed one."] = "Aucune partie à rejouer pour l'instant -- revenez une fois que la recherche en aura confirmé une.";
+$language_lookup_array["he"]["No game to play back yet -- check back once the search has confirmed one."] = "אין עדיין משחק לשחזור -- בדקו שוב לאחר שהחיפוש יאשר אחד.";
+$language_lookup_array["hu"]["No game to play back yet -- check back once the search has confirmed one."] = "Még nincs visszajátszható játszma -- nézzen vissza, amint a keresés megerősít egyet.";
+$language_lookup_array["it_IT"]["No game to play back yet -- check back once the search has confirmed one."] = "Nessuna partita da rivedere ancora -- ricontrolla una volta che la ricerca ne avrà confermata una.";
+$language_lookup_array["ja"]["No game to play back yet -- check back once the search has confirmed one."] = "まだ再生できるゲームはありません -- 検索が1つを確定したら再度ご確認ください。";
+$language_lookup_array["ko"]["No game to play back yet -- check back once the search has confirmed one."] = "아직 재생할 게임이 없습니다 -- 검색이 하나를 확정하면 다시 확인해 주세요.";
+$language_lookup_array["nb"]["No game to play back yet -- check back once the search has confirmed one."] = "Ingen spill å spille av ennå -- sjekk tilbake når søket har bekreftet ett.";
+$language_lookup_array["nl"]["No game to play back yet -- check back once the search has confirmed one."] = "Nog geen spel om af te spelen -- kom terug zodra de zoektocht er een heeft bevestigd.";
+$language_lookup_array["pl"]["No game to play back yet -- check back once the search has confirmed one."] = "Nie ma jeszcze gry do odtworzenia -- sprawdź ponownie, gdy wyszukiwanie potwierdzi jedną.";
+$language_lookup_array["pt_BR"]["No game to play back yet -- check back once the search has confirmed one."] = "Ainda não há nenhum jogo para reproduzir -- volte a verificar assim que a busca confirmar um.";
+$language_lookup_array["pt_PT"]["No game to play back yet -- check back once the search has confirmed one."] = "Ainda não há nenhum jogo para reproduzir -- volte a verificar assim que a pesquisa confirmar um.";
+$language_lookup_array["ru"]["No game to play back yet -- check back once the search has confirmed one."] = "Пока нет партии для воспроизведения -- загляните снова, когда поиск подтвердит одну.";
+$language_lookup_array["sk"]["No game to play back yet -- check back once the search has confirmed one."] = "Zatiaľ nie je žiadna hra na prehratie -- skontrolujte znova, keď hľadanie nejakú potvrdí.";
+$language_lookup_array["sv"]["No game to play back yet -- check back once the search has confirmed one."] = "Inget spel att spela upp än -- kolla igen när sökningen har bekräftat ett.";
+$language_lookup_array["tr"]["No game to play back yet -- check back once the search has confirmed one."] = "Henüz geri oynatılacak bir oyun yok -- arama bir tanesini onayladığında tekrar kontrol edin.";
+$language_lookup_array["uk"]["No game to play back yet -- check back once the search has confirmed one."] = "Поки що немає гри для відтворення -- перевірте пізніше, коли пошук підтвердить одну.";
+$language_lookup_array["vi"]["No game to play back yet -- check back once the search has confirmed one."] = "Chưa có ván nào để phát lại -- hãy quay lại kiểm tra khi quá trình tìm kiếm xác nhận được một ván.";
+$language_lookup_array["zh_CN"]["No game to play back yet -- check back once the search has confirmed one."] = "目前还没有可回放的对局——请在搜索确认一局后再来查看。";
+$language_lookup_array["zh_TW"]["No game to play back yet -- check back once the search has confirmed one."] = "目前還沒有可回放的對局——請在搜尋確認一局後再來查看。";
+
+// Below, %1the actual longest game found%2, played back move by move.
+$language_lookup_array["az"]["Below, %1the actual longest game found%2, played back move by move."] = "Aşağıda, %1tapılan faktiki ən uzun oyun%2, hərəkətbəhərəkət geri oynadılır.";
+$language_lookup_array["ca"]["Below, %1the actual longest game found%2, played back move by move."] = "A continuació, %1la partida més llarga trobada realment%2, reproduïda jugada a jugada.";
+$language_lookup_array["cs"]["Below, %1the actual longest game found%2, played back move by move."] = "Níže %1skutečně nejdelší nalezená hra%2, přehraná tah po tahu.";
+$language_lookup_array["de"]["Below, %1the actual longest game found%2, played back move by move."] = "Unten %1das tatsächlich gefundene längste Spiel%2, Zug für Zug abgespielt.";
+$language_lookup_array["es"]["Below, %1the actual longest game found%2, played back move by move."] = "A continuación, %1la partida más larga encontrada realmente%2, reproducida jugada a jugada.";
+$language_lookup_array["eu"]["Below, %1the actual longest game found%2, played back move by move."] = "Behean, %1aurkitutako benetako partidarik luzeena%2, jokaldiz jokaldi erreproduzitua.";
+$language_lookup_array["fi"]["Below, %1the actual longest game found%2, played back move by move."] = "Alla %1todellinen löydetty pisin peli%2, toistettuna siirto siirrolta.";
+$language_lookup_array["fr"]["Below, %1the actual longest game found%2, played back move by move."] = "Ci-dessous, %1la partie la plus longue réellement trouvée%2, rejouée coup par coup.";
+$language_lookup_array["he"]["Below, %1the actual longest game found%2, played back move by move."] = "למטה, %1המשחק הארוך ביותר שנמצא בפועל%2, משוחזר מהלך אחר מהלך.";
+$language_lookup_array["hu"]["Below, %1the actual longest game found%2, played back move by move."] = "Alább %1a ténylegesen megtalált leghosszabb játszma%2, lépésről lépésre visszajátszva.";
+$language_lookup_array["it_IT"]["Below, %1the actual longest game found%2, played back move by move."] = "Di seguito, %1la partita più lunga effettivamente trovata%2, rivista mossa per mossa.";
+$language_lookup_array["ja"]["Below, %1the actual longest game found%2, played back move by move."] = "以下は%1実際に発見された最長のゲーム%2で、一手ずつ再生されます。";
+$language_lookup_array["ko"]["Below, %1the actual longest game found%2, played back move by move."] = "아래는 %1실제로 발견된 가장 긴 게임%2으로, 한 수씩 재생됩니다.";
+$language_lookup_array["nb"]["Below, %1the actual longest game found%2, played back move by move."] = "Nedenfor, %1det faktiske lengste spillet som er funnet%2, spilt av trekk for trekk.";
+$language_lookup_array["nl"]["Below, %1the actual longest game found%2, played back move by move."] = "Hieronder %1het daadwerkelijk gevonden langste spel%2, stap voor stap afgespeeld.";
+$language_lookup_array["pl"]["Below, %1the actual longest game found%2, played back move by move."] = "Poniżej %1rzeczywista najdłuższa znaleziona gra%2, odtworzona ruch po ruchu.";
+$language_lookup_array["pt_BR"]["Below, %1the actual longest game found%2, played back move by move."] = "Abaixo, %1o jogo mais longo realmente encontrado%2, reproduzido jogada por jogada.";
+$language_lookup_array["pt_PT"]["Below, %1the actual longest game found%2, played back move by move."] = "Abaixo, %1o jogo mais longo efetivamente encontrado%2, reproduzido jogada a jogada.";
+$language_lookup_array["ru"]["Below, %1the actual longest game found%2, played back move by move."] = "Ниже — %1реально найденная самая длинная партия%2, воспроизведённая ход за ходом.";
+$language_lookup_array["sk"]["Below, %1the actual longest game found%2, played back move by move."] = "Nižšie %1skutočne najdlhšia nájdená hra%2, prehraná ťah po ťahu.";
+$language_lookup_array["sv"]["Below, %1the actual longest game found%2, played back move by move."] = "Nedan %1det faktiskt längsta hittade spelet%2, uppspelat drag för drag.";
+$language_lookup_array["tr"]["Below, %1the actual longest game found%2, played back move by move."] = "Aşağıda, %1gerçekten bulunan en uzun oyun%2, hamle hamle geri oynatılıyor.";
+$language_lookup_array["uk"]["Below, %1the actual longest game found%2, played back move by move."] = "Нижче %1справді знайдена найдовша гра%2, відтворена хід за ходом.";
+$language_lookup_array["vi"]["Below, %1the actual longest game found%2, played back move by move."] = "Bên dưới là %1ván đấu dài nhất thực sự được tìm thấy%2, được phát lại từng nước một.";
+$language_lookup_array["zh_CN"]["Below, %1the actual longest game found%2, played back move by move."] = "下方是%1实际找到的最长对局%2,逐步回放。";
+$language_lookup_array["zh_TW"]["Below, %1the actual longest game found%2, played back move by move."] = "下方是%1實際找到的最長對局%2,逐步回放。";
+
+// Genuine Camicia team certificate.
+$language_lookup_array["az"]["Genuine Camicia team certificate."] = "Həqiqi Camicia komanda sertifikatı.";
+$language_lookup_array["ca"]["Genuine Camicia team certificate."] = "Certificat d'equip de Camicia genuí.";
+$language_lookup_array["cs"]["Genuine Camicia team certificate."] = "Pravý týmový certifikát Camicia.";
+$language_lookup_array["de"]["Genuine Camicia team certificate."] = "Echtes Camicia-Team-Zertifikat.";
+$language_lookup_array["es"]["Genuine Camicia team certificate."] = "Certificado de equipo genuino de Camicia.";
+$language_lookup_array["eu"]["Genuine Camicia team certificate."] = "Camiciaren taldearen benetako ziurtagiria.";
+$language_lookup_array["fi"]["Genuine Camicia team certificate."] = "Aito Camicia-joukkuetodistus.";
+$language_lookup_array["fr"]["Genuine Camicia team certificate."] = "Certificat d'équipe Camicia authentique.";
+$language_lookup_array["he"]["Genuine Camicia team certificate."] = "תעודת קבוצת Camicia אמיתית.";
+$language_lookup_array["hu"]["Genuine Camicia team certificate."] = "Valódi Camicia csapattanúsítvány.";
+$language_lookup_array["it_IT"]["Genuine Camicia team certificate."] = "Certificato di team Camicia autentico.";
+$language_lookup_array["ja"]["Genuine Camicia team certificate."] = "本物のCamiciaチーム証明書です。";
+$language_lookup_array["ko"]["Genuine Camicia team certificate."] = "정품 Camicia 팀 인증서입니다.";
+$language_lookup_array["nb"]["Genuine Camicia team certificate."] = "Ekte Camicia-lagsertifikat.";
+$language_lookup_array["nl"]["Genuine Camicia team certificate."] = "Echt Camicia-teamcertificaat.";
+$language_lookup_array["pl"]["Genuine Camicia team certificate."] = "Prawdziwy certyfikat zespołu Camicia.";
+$language_lookup_array["pt_BR"]["Genuine Camicia team certificate."] = "Certificado de equipe Camicia genuíno.";
+$language_lookup_array["pt_PT"]["Genuine Camicia team certificate."] = "Certificado de equipa Camicia genuíno.";
+$language_lookup_array["ru"]["Genuine Camicia team certificate."] = "Подлинный командный сертификат Camicia.";
+$language_lookup_array["sk"]["Genuine Camicia team certificate."] = "Pravý tímový certifikát Camicia.";
+$language_lookup_array["sv"]["Genuine Camicia team certificate."] = "Äkta Camicia-lagcertifikat.";
+$language_lookup_array["tr"]["Genuine Camicia team certificate."] = "Gerçek Camicia takım sertifikası.";
+$language_lookup_array["uk"]["Genuine Camicia team certificate."] = "Справжній командний сертифікат Camicia.";
+$language_lookup_array["vi"]["Genuine Camicia team certificate."] = "Chứng chỉ đội Camicia thật.";
+$language_lookup_array["zh_CN"]["Genuine Camicia team certificate."] = "真实的 Camicia 团队证书。";
+$language_lookup_array["zh_TW"]["Genuine Camicia team certificate."] = "真實的 Camicia 團隊證書。";
+
+// This is a genuine Camicia team certificate number.
+$language_lookup_array["az"]["This is a genuine Camicia team certificate number."] = "Bu, həqiqi bir Camicia komanda sertifikat nömrəsidir.";
+$language_lookup_array["ca"]["This is a genuine Camicia team certificate number."] = "Aquest és un número de certificat d'equip genuí de Camicia.";
+$language_lookup_array["cs"]["This is a genuine Camicia team certificate number."] = "Toto je platné číslo týmového certifikátu Camicia.";
+$language_lookup_array["de"]["This is a genuine Camicia team certificate number."] = "Dies ist eine echte Camicia-Team-Zertifikatsnummer.";
+$language_lookup_array["es"]["This is a genuine Camicia team certificate number."] = "Este es un número de certificado de equipo genuino de Camicia.";
+$language_lookup_array["eu"]["This is a genuine Camicia team certificate number."] = "Hau Camiciaren taldearen benetako ziurtagiri-zenbaki bat da.";
+$language_lookup_array["fi"]["This is a genuine Camicia team certificate number."] = "Tämä on aito Camicia-joukkuetodistusnumero.";
+$language_lookup_array["fr"]["This is a genuine Camicia team certificate number."] = "Il s'agit d'un numéro de certificat d'équipe Camicia authentique.";
+$language_lookup_array["he"]["This is a genuine Camicia team certificate number."] = "זהו מספר תעודת קבוצת Camicia אמיתי.";
+$language_lookup_array["hu"]["This is a genuine Camicia team certificate number."] = "Ez egy valódi Camicia csapattanúsítvány-szám.";
+$language_lookup_array["it_IT"]["This is a genuine Camicia team certificate number."] = "Questo è un numero di certificato di team Camicia autentico.";
+$language_lookup_array["ja"]["This is a genuine Camicia team certificate number."] = "これは本物のCamiciaチーム証明書番号です。";
+$language_lookup_array["ko"]["This is a genuine Camicia team certificate number."] = "이것은 정품 Camicia 팀 인증서 번호입니다.";
+$language_lookup_array["nb"]["This is a genuine Camicia team certificate number."] = "Dette er et ekte Camicia-lagsertifikatnummer.";
+$language_lookup_array["nl"]["This is a genuine Camicia team certificate number."] = "Dit is een echt Camicia-teamcertificaatnummer.";
+$language_lookup_array["pl"]["This is a genuine Camicia team certificate number."] = "To jest prawdziwy numer certyfikatu zespołu Camicia.";
+$language_lookup_array["pt_BR"]["This is a genuine Camicia team certificate number."] = "Este é um número de certificado de equipe Camicia genuíno.";
+$language_lookup_array["pt_PT"]["This is a genuine Camicia team certificate number."] = "Este é um número de certificado de equipa Camicia genuíno.";
+$language_lookup_array["ru"]["This is a genuine Camicia team certificate number."] = "Это подлинный номер командного сертификата Camicia.";
+$language_lookup_array["sk"]["This is a genuine Camicia team certificate number."] = "Toto je platné číslo tímového certifikátu Camicia.";
+$language_lookup_array["sv"]["This is a genuine Camicia team certificate number."] = "Det här är ett äkta Camicia-lagcertifikatnummer.";
+$language_lookup_array["tr"]["This is a genuine Camicia team certificate number."] = "Bu gerçek bir Camicia takım sertifika numarasıdır.";
+$language_lookup_array["uk"]["This is a genuine Camicia team certificate number."] = "Це справжній номер командного сертифіката Camicia.";
+$language_lookup_array["vi"]["This is a genuine Camicia team certificate number."] = "Đây là số chứng chỉ đội Camicia thật.";
+$language_lookup_array["zh_CN"]["This is a genuine Camicia team certificate number."] = "这是一个真实的 Camicia 团队证书编号。";
+$language_lookup_array["zh_TW"]["This is a genuine Camicia team certificate number."] = "這是一個真實的 Camicia 團隊證書編號。";
+
+// The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real.
+$language_lookup_array["az"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Verildiyi komanda artıq mövcud deyil, ona görə də təfərrüatları göstərilə bilmir -- lakin kodun özü həqiqidir.";
+$language_lookup_array["ca"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "L'equip al qual es va emetre ja no existeix, de manera que els seus detalls ja no es poden mostrar -- però el codi en si és autèntic.";
+$language_lookup_array["cs"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Tým, kterému byl vydán, již neexistuje, takže jeho podrobnosti již nelze zobrazit -- ale samotný kód je pravý.";
+$language_lookup_array["de"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Das Team, für das es ausgestellt wurde, existiert nicht mehr, daher können seine Details nicht mehr angezeigt werden -- der Code selbst ist jedoch echt.";
+$language_lookup_array["es"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "El equipo al que se emitió ya no existe, por lo que ya no se pueden mostrar sus datos -- pero el código en sí es auténtico.";
+$language_lookup_array["eu"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Jaulki zitzaion taldea jada ez da existitzen, beraz, bere xehetasunak ezin dira erakutsi jada -- baina kodea bera benetakoa da.";
+$language_lookup_array["fi"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Joukkue, jolle se myönnettiin, ei enää ole olemassa, joten sen tietoja ei voida enää näyttää -- mutta koodi itsessään on aito.";
+$language_lookup_array["fr"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "L'équipe à laquelle il a été délivré n'existe plus, ses détails ne peuvent donc plus être affichés -- mais le code lui-même est authentique.";
+$language_lookup_array["he"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "הקבוצה שאליה הונפקה כבר לא קיימת, ולכן לא ניתן עוד להציג את פרטיה -- אך הקוד עצמו אמיתי.";
+$language_lookup_array["hu"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "A csapat, amelyhez kiállították, már nem létezik, így annak részletei már nem jeleníthetők meg -- de maga a kód valódi.";
+$language_lookup_array["it_IT"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Il team a cui è stato rilasciato non esiste più, quindi i suoi dettagli non possono più essere mostrati -- ma il codice stesso è autentico.";
+$language_lookup_array["ja"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "発行先のチームはすでに存在しないため、詳細を表示することはできません -- ただしコード自体は本物です。";
+$language_lookup_array["ko"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "발급된 팀은 더 이상 존재하지 않아 세부 정보를 더 이상 표시할 수 없습니다 -- 하지만 코드 자체는 진짜입니다.";
+$language_lookup_array["nb"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Laget det ble utstedt til finnes ikke lenger, så detaljene kan ikke lenger vises -- men selve koden er ekte.";
+$language_lookup_array["nl"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Het team waaraan het is uitgegeven, bestaat niet meer, dus de gegevens kunnen niet meer worden getoond -- maar de code zelf is echt.";
+$language_lookup_array["pl"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Zespół, dla którego został wydany, już nie istnieje, więc jego szczegóły nie mogą być już wyświetlone -- ale sam kod jest prawdziwy.";
+$language_lookup_array["pt_BR"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "A equipe à qual foi emitido não existe mais, portanto seus detalhes não podem mais ser exibidos -- mas o código em si é real.";
+$language_lookup_array["pt_PT"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "A equipa à qual foi emitido já não existe, pelo que os seus detalhes já não podem ser mostrados -- mas o código em si é genuíno.";
+$language_lookup_array["ru"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Команда, которой он был выдан, больше не существует, поэтому её данные больше нельзя показать -- но сам код подлинный.";
+$language_lookup_array["sk"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Tím, ktorému bol vydaný, už neexistuje, takže jeho podrobnosti už nie je možné zobraziť -- ale samotný kód je pravý.";
+$language_lookup_array["sv"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Laget det utfärdades till finns inte längre, så dess uppgifter kan inte längre visas -- men själva koden är äkta.";
+$language_lookup_array["tr"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Verildiği takım artık mevcut değil, bu nedenle ayrıntıları artık gösterilemiyor -- ancak kodun kendisi gerçek.";
+$language_lookup_array["uk"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Команда, якій його видано, більше не існує, тому її дані більше не можна показати -- але сам код справжній.";
+$language_lookup_array["vi"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "Đội mà chứng chỉ này được cấp cho không còn tồn tại nữa, vì vậy không thể hiển thị chi tiết của đội đó nữa -- nhưng bản thân mã này là thật.";
+$language_lookup_array["zh_CN"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "颁发给的团队已不复存在,因此无法再显示其详细信息 -- 但代码本身是真实的。";
+$language_lookup_array["zh_TW"]["The team it was issued to no longer exists, so its details can no longer be shown -- but the code itself is real."] = "頒發給的團隊已不復存在,因此無法再顯示其詳細資料 -- 但代碼本身是真實的。";
+
+// Issued to team %1, participating since %2 with %3 units of credit contributed as of today.
+$language_lookup_array["az"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "%1 komandasına verilib, %2 tarixindən bəri iştirak edir, bu günə qədər %3 vahid krediti töhfə verib.";
+$language_lookup_array["ca"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Emès a l'equip %1, participant des del %2 amb %3 unitats de crèdit aportades fins avui.";
+$language_lookup_array["cs"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Vydáno týmu %1, účastníkovi od %2, s %3 jednotkami kreditu přispěnými k dnešnímu dni.";
+$language_lookup_array["de"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Ausgestellt für Team %1, teilnehmend seit %2, mit %3 Punkten Guthaben, die bis heute beigetragen wurden.";
+$language_lookup_array["es"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Emitido al equipo %1, participante desde el %2, con %3 unidades de crédito aportadas hasta hoy.";
+$language_lookup_array["eu"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "%1 taldeari jaulkia, %2(e)tik parte hartzen, gaur arte ekarritako %3 kreditu-unitaterekin.";
+$language_lookup_array["fi"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Myönnetty joukkueelle %1, osallistuen %2 lähtien, %3 hyvitysyksikköä tähän päivään mennessä.";
+$language_lookup_array["fr"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Délivré à l'équipe %1, participant depuis le %2, avec %3 unités de crédit apportées à ce jour.";
+$language_lookup_array["he"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "הונפקה עבור קבוצת %1, משתתפת מאז %2, עם %3 יחידות קרדיט שנתרמו עד היום.";
+$language_lookup_array["hu"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Kiállítva a(z) %1 csapat részére, résztvevő %2 óta, a mai napig %3 egység jóváírt kredittel.";
+$language_lookup_array["it_IT"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Rilasciato al team %1, partecipante dal %2, con %3 unità di credito contribuite ad oggi.";
+$language_lookup_array["ja"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "チーム%1に発行され、%2から参加しており、本日までに%3単位のクレジットを貢献しています。";
+$language_lookup_array["ko"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "%1 팀에게 발급됨, %2부터 참여, 오늘까지 %3 단위의 크레딧을 기여했습니다.";
+$language_lookup_array["nb"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Utstedt til laget %1, deltaker siden %2, med %3 enheter kreditt bidratt til i dag.";
+$language_lookup_array["nl"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Uitgegeven aan team %1, deelnemer sinds %2, met %3 eenheden krediet die tot vandaag zijn bijgedragen.";
+$language_lookup_array["pl"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Wydany dla zespołu %1, uczestniczącego od %2, z %3 jednostkami kredytu wniesionymi do dziś.";
+$language_lookup_array["pt_BR"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Emitido para a equipe %1, participante desde %2, com %3 unidades de crédito contribuídas até hoje.";
+$language_lookup_array["pt_PT"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Emitido à equipa %1, participante desde %2, com %3 unidades de crédito contribuídas até hoje.";
+$language_lookup_array["ru"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Выдан команде %1, участвующей с %2, внёсшей на сегодняшний день %3 единиц кредита.";
+$language_lookup_array["sk"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Vydané pre tím %1, účastníka od %2, s %3 jednotkami kreditu prispenými k dnešnému dňu.";
+$language_lookup_array["sv"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Utfärdat till laget %1, deltagare sedan %2, med %3 enheter kredit bidragna fram till idag.";
+$language_lookup_array["tr"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "%1 takımına verildi, %2 tarihinden beri katılımcı, bugüne kadar %3 birim kredi katkısında bulundu.";
+$language_lookup_array["uk"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Видано команді %1, яка бере участь з %2, яка на сьогодні зробила внесок у розмірі %3 одиниць кредиту.";
+$language_lookup_array["vi"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "Được cấp cho đội %1, tham gia từ %2, với %3 đơn vị tín dụng đã đóng góp tính đến hôm nay.";
+$language_lookup_array["zh_CN"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "颁发给团队 %1,自 %2 起参与,截至今日已贡献 %3 个积分单位。";
+$language_lookup_array["zh_TW"]["Issued to team %1, participating since %2 with %3 units of credit contributed as of today."] = "頒發給團隊 %1,自 %2 起參與,截至今日已貢獻 %3 個積分單位。";
