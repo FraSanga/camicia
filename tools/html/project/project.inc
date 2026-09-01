@@ -145,6 +145,21 @@ if (file_exists($cert_verify_secret_file)) {
     require_once($cert_verify_secret_file);
 }
 
+//-------------- Credit gates
+
+// TEAM_CREATE_NEED_CREDIT is checked by stock team_create_form.php/
+// team_create_action.php (if (defined('TEAM_CREATE_NEED_CREDIT') &&
+// TEAM_CREATE_NEED_CREDIT)) but never defined by stock BOINC anywhere --
+// it's off unless a project turns it on. Same not-baked-into-this-git-
+// tracked-file pattern as SMTP/cert secrets above, purely so it's an
+// .env-driven, per-environment tunable (TEAM_CREATE_NEED_CREDIT in .env)
+// rather than a code change. If the file isn't present, the constant
+// stays undefined and team creation is unrestricted, matching stock.
+$credit_gates_file = __DIR__ . "/../../credit_gates.inc.php";
+if (file_exists($credit_gates_file)) {
+    require_once($credit_gates_file);
+}
+
 //-------------- Header and footer
 
 // Put your project title and logo here

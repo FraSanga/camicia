@@ -329,6 +329,22 @@ define('CERT_VERIFY_SECRET', '$CERT_VERIFY_SECRET');
 EOF
     fi
 
+    # TEAM_CREATE_NEED_CREDIT: stock BOINC constant (checked in
+    # team_create_form.php/team_create_action.php) requiring total_credit>0
+    # before a user can create a team -- i.e. must have completed at least
+    # one real workunit first. Not secret, just an environment-specific
+    # tunable, same reasoning/pattern as profile_min_credit above -- written
+    # to its own small generated file rather than baked into the git-tracked
+    # project.inc, so it can be flipped per-environment via .env alone.
+    # Left unwritten (feature off, matching stock behavior) if
+    # TEAM_CREATE_NEED_CREDIT isn't set to a truthy value in .env.
+    if [ -n "$TEAM_CREATE_NEED_CREDIT" ] && [ "$TEAM_CREATE_NEED_CREDIT" != "0" ]; then
+        docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/credit_gates.inc.php" <<EOF
+<?php
+define('TEAM_CREATE_NEED_CREDIT', true);
+EOF
+    fi
+
     # project_files.xml: read directly by the scheduler daemon
     # (config.project_path("project_files.xml"), sched/sched_types.cpp) and
     # embedded verbatim into every scheduler reply -- this is what gets
@@ -417,6 +433,32 @@ $RECAPTCHA_SECRET_KEY"
         docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
     fi
 
+    # profile_min_credit: stock BOINC config.xml element, read by
+    # profile.inc/create_profile.php via project_config_val(). Gates two
+    # things at once: creating/editing a profile, and whether an anonymous
+    # (not logged in) visitor can see a low-credit user's profile at all.
+    # Not secret, just an environment-specific tunable -- same injection
+    # pattern as the Akismet key above, so it can be changed per-environment
+    # in .env without touching this git-tracked script. Unset/empty in .env
+    # means the element is left out entirely, matching stock behavior (no
+    # gate at all).
+    if [ -n "$PROFILE_MIN_CREDIT" ]; then
+        echo "🎓 Injecting profile_min_credit into config.xml..."
+        docker exec -i "$SERVER_CONTAINER_NAME" python3 -c "
+import sys, xml.etree.ElementTree as ET
+val = sys.stdin.read().strip()
+tree = ET.parse('/tmp/config_new.xml')
+root = tree.getroot()
+config = root.find('config')
+node = config.find('profile_min_credit')
+if node is None:
+    node = ET.SubElement(config, 'profile_min_credit')
+node.text = val
+tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
+" <<< "$PROFILE_MIN_CREDIT"
+        docker exec "$SERVER_CONTAINER_NAME" mv /tmp/config_new.xml.tmp /tmp/config_new.xml
+    fi
+
     CURRENT_STAGE="merging config.xml"
     echo "🐍 Running Python script to update XML nodes..."
     docker exec "$SERVER_CONTAINER_NAME" python3 /tmp/merge_config.py
@@ -458,6 +500,12 @@ $RECAPTCHA_SECRET_KEY"
         # Same www-data group-read treatment as smtp_credentials.inc.php --
         # project.inc require_once()s this one too, also running as www-data.
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/cert_verify_secret.inc.php && chmod 640 $PROJECT_DIR/cert_verify_secret.inc.php"
+    fi
+    if [ -n "$TEAM_CREATE_NEED_CREDIT" ] && [ "$TEAM_CREATE_NEED_CREDIT" != "0" ]; then
+        # Same www-data group-read treatment -- project.inc require_once()s
+        # this one too. Not actually secret, just consistent with the other
+        # generated project.inc includes.
+        docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:www-data $PROJECT_DIR/credit_gates.inc.php && chmod 640 $PROJECT_DIR/credit_gates.inc.php"
     fi
 
     CURRENT_STAGE="compiling and publishing the app version"
