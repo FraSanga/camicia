@@ -209,6 +209,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # saved custom prefs. Found live on prefs.php.
     docker cp ./html/inc/prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
     docker cp ./html/inc/prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
+    # Byte-identical copy of BOINC's own file, with a fix to
+    # scale_image(): casts $destWidth/$destHeight to (int) right after
+    # they're computed via float division, before any GD call uses them
+    # -- PHP 8.1+ throws a real deprecation notice otherwise on every
+    # profile-picture upload. See the file's own comment.
+    docker cp ./html/inc/profile.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/profile.inc"
     # Byte-identical copy of BOINC's own file, with a targeted fix to the
     # SHORTCUT_ICON block (see util.inc's own comment): prepends $url_base
     # like STYLESHEET/STYLESHEET2 already do, and emits the real MIME type
@@ -255,6 +261,14 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # a deploy published a broken app version and needs to stop it being
     # served.
     docker cp ./html/ops/deprecate_app_version.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/deprecate_app_version.php"
+    # Same html/ops/ placement/reason again -- byte-identical stock file
+    # plus initializing $letters_used before build_alpha_pages()'s own
+    # foreach loop, and resetting $did_page_head before each of this
+    # script's three page_head() calls (a global one-time guard, never
+    # reset between the many files this script generates per run --
+    # without it only the first generated page ever got a real <head>).
+    # See the file's own comments for both.
+    docker cp ./html/ops/update_profile_pages.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/update_profile_pages.php"
     # Same html/ops/ placement/reason again -- byte-identical stock file plus
     # a one-line PHP 8.1 strlen(null) deprecation-notice fix (same class of
     # fix as html/user/get_project_config.php etc.), found live on
