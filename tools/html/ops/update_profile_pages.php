@@ -188,6 +188,21 @@ function build_picture_pages($width, $height) {
         $filename = PROFILE_PATH . "user_gallery_" . $page . ".html";
         open_output_buffer();
 
+        // Camicia fix: page_head() sets a global "already called" guard
+        // ($did_page_head, html/inc/util.inc) that's designed for the
+        // normal one-page-per-HTTP-request case and is never reset by
+        // open_output_buffer()/close_output_buffer() -- but this script
+        // calls page_head() once per *file* it generates, many times in
+        // one process. Without resetting the guard here, only the very
+        // first page_head() call in the whole run ever actually emits
+        // anything; every subsequent generated page (confirmed: every
+        // gallery/alphabetical/country page after the first one built)
+        // silently got no <head>, no CSS, no navbar at all -- not just
+        // broken links, the entire head section missing. Reproduced in
+        // isolation and confirmed present on current upstream BOINC
+        // master too. Found live during profiles testing.
+        global $did_page_head;
+        $did_page_head = false;
         page_head("Profile gallery: page $page of $numPages", null, false, "../");
 
         echo "Last updated ", pretty_time_str(time()),
@@ -352,6 +367,12 @@ function build_profile_pages(
         $filename = $dir . $base_filename . "_" . $page . ".html";
         open_output_buffer();
 
+        // Camicia fix: same $did_page_head reset as build_picture_pages()
+        // above -- see that call site's comment for the full story. This
+        // is the function used for both per-country and per-letter
+        // listing pages, so it's the one called most often per run.
+        global $did_page_head;
+        $did_page_head = false;
         $pagetitle = $title.": Page $page of $numPages";
         page_head($pagetitle, null, null, "../");
 
@@ -377,6 +398,10 @@ function build_country_summary_page($countryMembers) {
     $filename = PROFILE_PATH . "profile_country.html";
     open_output_buffer();
 
+    // Camicia fix: same $did_page_head reset as build_picture_pages()
+    // above -- see that call site's comment for the full story.
+    global $did_page_head;
+    $did_page_head = false;
     page_head("User Profiles by Country", null, null, "../");
     echo "Last updated " . pretty_time_str(time()) . "<p>";
 
