@@ -157,7 +157,20 @@ function sample_navbar(
     $x = array();
     if ($user) {
         $x[] = array(tra("Account"), $url_prefix.HOME_PAGE);
-        $x[] = array(tra("Join"), $url_prefix."join.php");
+        // Camicia fix: html/user/join.php (a "how to download/attach
+        // BOINC" onboarding page for logged-in users, added 2016) was
+        // deleted from stock BOINC on 2026-03-30 -- ee8692be84, titled
+        // "fix copilot warnings, remove deprecated files. No functional
+        // changes" -- but that commit never touched this file, leaving
+        // this exact link dead. Confirmed still broken on current
+        // upstream master: any logged-in user clicking "Join" in the
+        // Project dropdown gets a raw Apache 404. download_software.php
+        // is the real, current successor for the same purpose (its own
+        // header comment: "There's a logged-in user" -- download/attach
+        // guidance, with autoattach support) -- confirmed it's what this
+        // link should point to, not a removal. Found live during
+        // profiles testing.
+        $x[] = array(tra("Join"), $url_prefix."download_software.php");
         $x[] = array(tra("Preferences"), $url_prefix."prefs.php?subset=project");
     }
     $x[] = array(tra("About %1", PROJECT), $url_prefix."about.php");
