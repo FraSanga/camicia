@@ -328,6 +328,20 @@ function page_head(
         <meta charset="utf-8">
     ';
     if (DARK_MODE) {
+        // Camicia fix: all 5 hrefs below were bare relative paths in
+        // stock BOINC (confirmed still true on current upstream master)
+        // -- fine for pages generated at the top level, but broken for
+        // anything generated one level down, e.g. update_profile_pages.php's
+        // static gallery/alphabetical/country pages under user_profile/,
+        // which resolve them relative to their OWN directory and 404 on
+        // every one of these stylesheets, leaving the page essentially
+        // unstyled (just the browser/dark-mode default background, no
+        // Bootstrap layout at all). Same class of bug already fixed once
+        // in this same function for SHORTCUT_ICON below -- prefixing
+        // with $url_base (already computed above), matching how
+        // STYLESHEET/STYLESHEET2/the non-dark-mode fallback branch all
+        // already do it, rather than the more fragile $url_prefix
+        // relative-path approach. Found live during profiles testing.
         echo <<<EOT
 <script>
   if (window.matchMedia('(prefers-color-scheme: dark)').media === 'not all') {
@@ -335,14 +349,14 @@ function page_head(
     document.documentElement.style.display = 'none';
     document.head.insertAdjacentHTML(
         'beforeend',
-        '<link rel="stylesheet" href="sample_bootstrap.min.css" onload="document.documentElement.style.display = \'\'"><link rel="stylesheet" href="custom.css">'
+        '<link rel="stylesheet" href="{$url_base}sample_bootstrap.min.css" onload="document.documentElement.style.display = \'\'"><link rel="stylesheet" href="{$url_base}custom.css">'
     );
   }
 </script>
-<link rel="stylesheet" href="bootstrap_darkly.min.css" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="custom_dark.css" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="sample_bootstrap.min.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
-<link rel="stylesheet" href="custom.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
+<link rel="stylesheet" href="{$url_base}bootstrap_darkly.min.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="{$url_base}custom_dark.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="{$url_base}sample_bootstrap.min.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
+<link rel="stylesheet" href="{$url_base}custom.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
 EOT;
     } else {
         echo '
