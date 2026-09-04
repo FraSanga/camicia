@@ -94,6 +94,10 @@ elif [ -f "$PUBLISHED_COMMIT_FILE" ]; then
 fi
 
 echo "⚙️ Compiling Assimilator..."
+# -I$PROJECT_DIR/worker/core: needed for int128_io.hpp (CA-M1 fix --
+# validates a canonical result's deal_index against Camicia's declared
+# permutation-index space before it can reach records_longest.txt/
+# records_loops.txt). Header-only, so no extra .cpp/.a to link.
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
 $PROJECT_DIR/assimilator/assimilator.cpp \
 /usr/local/src/boinc/sched/validate_util.cpp \
@@ -106,6 +110,7 @@ $PROJECT_DIR/assimilator/assimilator.cpp \
 -I/usr/local/src/boinc/db \
 -I/usr/include/mysql \
 -I/usr/include/mariadb \
+-I$PROJECT_DIR/worker/core \
 -L/usr/local/src/boinc/lib \
 -L/usr/local/src/boinc/sched \
 /usr/local/src/boinc/sched/libsched.a \
