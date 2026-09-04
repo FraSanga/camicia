@@ -13,11 +13,19 @@
 #include "sched_msgs.h"
 #include "validate_util.h"
 #include "assimilate_handler.h"
+#include "int128_io.hpp"
 
 using std::vector;
 using std::string;
 
 const char* outdir = "../results";
+
+// Camicia's declared permutation-index space: legal deal indices are
+// [0, MAX_INDEX], i.e. MAX_INDEX+1 distinct 52-card deals (4x A/K/Q/J +
+// 36 number cards). Same value work_generator.cpp/worker.cpp already
+// hardcode (kept as an independent copy here, not shared via a header, so
+// this fix doesn't touch those files' builds).
+static const char* MAX_INDEX_STR = "653534134886878244999";
 
 // Authoritative spot-check gate, run once per workunit right before its
 // canonical result becomes part of results.txt -- see run_verify_sample()
@@ -234,6 +242,47 @@ void record_loop_found(const char* wu_name, const char* deal_index) {
     fclose(f);
 }
 
+// CA-M1 fix: records_longest.txt/records_loops.txt were previously
+// updated straight from an already-read results.txt line with zero
+// validation -- deal_index (a free-form string) and cards/tricks
+// (unbounded long long) went straight into the two files
+// html/user/progress.php displays as the project's headline findings.
+// This runs downstream of quorum-of-2 + verify_sample's own random
+// re-simulation gate (see assimilate_handler() below), but neither of
+// those is guaranteed to catch a single fabricated "here's my best" line
+// in an otherwise-honest block: verify_sample spot-checks a random
+// SAMPLE of the block's own deals for internal consistency, it doesn't
+// specifically re-derive and cross-check the claimed "best" line itself.
+//
+// Validates:
+// - deal_index is pure ASCII digits (stringTo128() silently *skips*
+//   non-digit characters rather than rejecting them, so "12x3" would
+//   otherwise quietly become 123 instead of being caught here) and
+//   parses to a value actually inside Camicia's declared permutation
+//   space, [0, MAX_INDEX].
+// - cards/tricks are non-negative.
+// - tricks <= cards: a real invariant, not a heuristic guess -- traced
+//   through engine.cpp's simulate(): every trick collects at least one
+//   already-played card off the pile (RESULT_finished/loop lines can
+//   only be produced by that function), so cumulative tricks won can
+//   never exceed cumulative cards played.
+//
+// Deliberately does NOT impose a numeric ceiling on cards/tricks
+// themselves -- the reachable-state space is astronomically large and
+// legitimately long games are the entire point of this project, so
+// there's no defensible bound to pick without risking rejecting a real
+// record. The deal_index range check is the meaningful defense: it
+// forces any accepted record to correspond to an actual possible deal.
+bool valid_result_line(const char* deal_index, long long cards, long long tricks) {
+    if (cards < 0 || tricks < 0 || tricks > cards) return false;
+    if (!deal_index[0]) return false;
+    for (const char* p = deal_index; *p; p++) {
+        if (*p < '0' || *p > '9') return false;
+    }
+    static const int128 max_index = stringTo128(MAX_INDEX_STR);
+    return stringTo128(deal_index) <= max_index;
+}
+
 // Parses one already-read results.txt line (before the wu.name prefix is
 // added below) and updates the record files above when it's a new
 // longest finished game or any loop at all.
@@ -244,11 +293,13 @@ void track_result_line(const char* wu_name, const char* line) {
     char deal_index[64];
     long long cards, tricks;
     if (!strcmp(status, "finished")) {
-        if (sscanf(line, "finished,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3) {
+        if (sscanf(line, "finished,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3
+            && valid_result_line(deal_index, cards, tricks)) {
             maybe_update_longest_record(wu_name, cards, tricks, deal_index);
         }
     } else if (!strcmp(status, "loop")) {
-        if (sscanf(line, "loop,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3) {
+        if (sscanf(line, "loop,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3
+            && valid_result_line(deal_index, cards, tricks)) {
             record_loop_found(wu_name, deal_index);
         }
     }
@@ -411,6 +462,136 @@ int assimilate_handler(
         sprintf(buf_err, "0x%x\n", wu.error_mask);
         return write_error(wu, buf_err);
     }
-    
+
     return 0;
 }
+
+#ifdef CAMICIA_TEST_RECORDS
+// Standalone regression test for the CA-M1 validation gate
+// (valid_result_line() / track_result_line()) -- compiled with
+// -DCAMICIA_TEST_RECORDS, and deliberately NOT linked against BOINC's own
+// sched/assimilator.cpp (which normally supplies main() and calls
+// assimilate_handler()), so this file's own main() below is the real
+// entry point instead. Works because none of the functions under test
+// touch BOINC types -- they take plain C strings/numbers and read/write
+// local text files only; assimilate_handler()/write_error()/etc are still
+// compiled into this binary (their referenced BOINC symbols are resolved
+// by the same libsched.a/libboinc.a link line as the real binary) but
+// never called. Zero cost in the production build (this whole block
+// compiles out without the flag). Self-contained, no BOINC/DB/network
+// dependency -- can run anywhere, same spirit as
+// tests/test_permutation.cpp/test_engine.cpp (though those live in
+// tests/ since they're pure host-side; this one stays here since it's
+// gated behind a flag on the real daemon source rather than a separate
+// TU including a shared header).
+#include <sys/stat.h>
+
+static bool file_contains(const char* path, const char* needle) {
+    FILE* f = fopen(path, "r");
+    if (!f) return false;
+    char buf[4096];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return strstr(buf, needle) != nullptr;
+}
+
+static long long file_line_count(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) return 0;
+    long long n = 0;
+    int c;
+    while ((c = fgetc(f)) != EOF) if (c == '\n') n++;
+    fclose(f);
+    return n;
+}
+
+int main() {
+    char tmpl[] = "/tmp/camicia_ca_m1_test_XXXXXX";
+    char* tmpdir = mkdtemp(tmpl);
+    if (!tmpdir) {
+        fprintf(stderr, "mkdtemp failed\n");
+        return 1;
+    }
+    char subdir[300], longest_path[300], loops_path[300];
+    snprintf(subdir, sizeof(subdir), "%s/sub", tmpdir);
+    snprintf(longest_path, sizeof(longest_path), "%s/records_longest.txt", tmpdir);
+    snprintf(loops_path, sizeof(loops_path), "%s/records_loops.txt", tmpdir);
+    mkdir(subdir, 0755);
+    if (chdir(subdir) != 0) {
+        fprintf(stderr, "chdir failed\n");
+        return 1;
+    }
+    // track_result_line()'s two sinks resolve "../records_longest.txt" /
+    // "../records_loops.txt" relative to cwd -- from subdir/, that's
+    // tmpdir/records_longest.txt and tmpdir/records_loops.txt.
+
+    int failures = 0;
+    auto check = [&](const char* label, bool cond) {
+        printf("%s %s\n", cond ? "PASS" : "FAIL", label);
+        if (!cond) failures++;
+    };
+
+    // 1) legit finished line -> becomes the record (best_cards starts at -1)
+    track_result_line("wu_a", "finished,1000,500,250\n");
+    check("legit finished line recorded",
+        file_contains(longest_path, "500 250 1000 wu_a"));
+
+    // 2) legit loop line -> appended
+    track_result_line("wu_b", "loop,2000,10,5\n");
+    check("legit loop line recorded", file_contains(loops_path, "2000 wu_b"));
+
+    // 3) deal_index with embedded junk -> rejected. Before this fix,
+    //    stringTo128() would have silently skipped the 'x' and stored 123.
+    track_result_line("wu_evil1", "finished,12x3,999,999\n");
+    check("junk deal_index rejected (record unchanged)",
+        file_contains(longest_path, "500 250 1000 wu_a"));
+    check("junk deal_index never written",
+        !file_contains(longest_path, "12x3") && !file_contains(longest_path, "123 999 999"));
+
+    // 4) out-of-range deal_index (MAX_INDEX + 1) -> rejected
+    track_result_line("wu_evil2", "finished,653534134886878245000,999999,999999\n");
+    check("out-of-range deal_index rejected",
+        file_contains(longest_path, "500 250 1000 wu_a"));
+
+    // 5) negative cards -> rejected
+    track_result_line("wu_evil3", "finished,3000,-5,2\n");
+    check("negative cards rejected", file_contains(longest_path, "500 250 1000 wu_a"));
+
+    // 6) tricks > cards -> rejected (the traced-through-engine.cpp invariant)
+    track_result_line("wu_evil4", "finished,4000,10,999\n");
+    check("tricks>cards rejected", file_contains(longest_path, "500 250 1000 wu_a"));
+
+    // 7) a genuinely better finished line -> DOES become the new record
+    //    (confirms the gate doesn't collaterally block legitimate updates)
+    track_result_line("wu_c", "finished,5000,600,300\n");
+    check("better legit record accepted", file_contains(longest_path, "600 300 5000 wu_c"));
+
+    // 8) a worse finished line -> still correctly ignored (pre-existing
+    //    maybe_update_longest_record() behavior, unaffected by this fix)
+    track_result_line("wu_d", "finished,6000,1,1\n");
+    check("worse legit record still ignored", file_contains(longest_path, "600 300 5000 wu_c"));
+
+    // 9) a second, independent loop -> appended alongside the first
+    track_result_line("wu_e", "loop,7000,20,10\n");
+    check("second loop appended", file_contains(loops_path, "7000 wu_e"));
+    check("first loop still present", file_contains(loops_path, "2000 wu_b"));
+    check("exactly 2 loop lines (evil lines never reached record_loop_found)",
+        file_line_count(loops_path) == 2);
+
+    remove(longest_path);
+    char longest_tmp_path[320];
+    snprintf(longest_tmp_path, sizeof(longest_tmp_path), "%s.tmp", longest_path);
+    remove(longest_tmp_path);
+    remove(loops_path);
+    rmdir(subdir);
+    rmdir(tmpdir);
+
+    if (failures == 0) {
+        printf("\nPASSED\n");
+        return 0;
+    }
+    printf("\nFAILED (%d)\n", failures);
+    return 1;
+}
+#endif
