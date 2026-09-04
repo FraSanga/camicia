@@ -17,6 +17,13 @@ using namespace std;
 #define INPUT_FILENAME "in"
 #define OUTPUT_FILENAME "out"
 
+// Camicia's declared permutation-index space: legal deal indices are
+// [0, MAX_INDEX], i.e. MAX_INDEX+1 distinct 52-card deals (4x A/K/Q/J +
+// 36 number cards). Same value work_generator.cpp already hardcodes
+// (kept as an independent copy here, not shared via a header, so this
+// fix doesn't touch that file's build).
+static const char* MAX_INDEX_STR = "653534134886878244999";
+
 // Test-only override: forces a checkpoint on every iteration instead of
 // waiting on BOINC's own (real-time-based) boinc_time_to_checkpoint(),
 // which a short-lived test process has no reliable way to trigger.
@@ -210,6 +217,38 @@ int main(int argc, char** argv) {
         state.currentIndex = state.startIndex;
         state.endIndex = stringTo128(endStr);
         fclose(in);
+    }
+
+    // CA-M2 fix: validate the index range before it ever reaches
+    // getNthPermutation(), whose live assert() would abort() the whole
+    // process on an out-of-range index instead of a clean boinc_finish(1)
+    // -- and would be a heap over-read (a <52-element deck, see
+    // worker.cpp's deck.begin()+26 split below) if that assert were ever
+    // compiled out. Also bounds currentIndex to [startIndex, endIndex+1]
+    // (closes CA-L6 alongside CA-M2 -- same missing check, same fix). The
+    // upper bound is endIndex+1, not endIndex: do_checkpoint() writes
+    // currentIndex+1 as the resumable "next index to process", so a WU
+    // that's already fully processed has a perfectly legitimate checkpoint
+    // with currentIndex == endIndex+1 (main()'s loop condition,
+    // currentIndex <= endIndex, then correctly does nothing) -- confirmed
+    // against a real checkpoint from a completed run on staging before
+    // settling on this bound. Reachable only via a crafted/corrupted `in`
+    // file or a hand-crafted checkpoint (both are local, client-side-
+    // writable); work_generator.cpp never emits an out-of-range range, so
+    // this never fires in normal operation.
+    int128 maxIndex = stringTo128(MAX_INDEX_STR);
+    if (state.startIndex < 0 || state.endIndex < 0
+        || state.startIndex > state.endIndex || state.endIndex > maxIndex
+        || state.currentIndex < state.startIndex || state.currentIndex > state.endIndex + 1
+    ) {
+        fprintf(stderr,
+            "Invalid index range: start=%s end=%s current=%s (valid range is [0, %s])\n",
+            int128ToString(state.startIndex).c_str(),
+            int128ToString(state.endIndex).c_str(),
+            int128ToString(state.currentIndex).c_str(),
+            MAX_INDEX_STR
+        );
+        boinc_finish(1);
     }
 
     int128 totalToProcess = state.endIndex - state.startIndex;

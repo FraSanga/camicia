@@ -127,6 +127,30 @@ echo "finished entries for the real [0,1] range: $mismatch_finished_for_real_ran
 rm -f in out camicia_state camicia_loops
 
 echo
+echo "=== CA-M2: fresh run with an out-of-range endIndex in \`in\` (MAX_INDEX + 1) ==="
+echo "    (before the fix, an out-of-range index reaches getNthPermutation()'s live assert()"
+echo "     and abort()s the process -- exit 134/SIGABRT -- instead of a clean boinc_finish(1),"
+echo "     exit 1. Using && / || around the call, not a bare invocation, so a nonzero exit"
+echo "     here doesn't trip this script's own \`set -e\`.)"
+echo "0 653534134886878245000" > in
+"$WORKER" && bad_range_rc=0 || bad_range_rc=$?
+echo "exit code for out-of-range endIndex: $bad_range_rc"
+rm -f in out camicia_state camicia_loops
+
+echo
+echo "=== CA-L6: checkpoint whose currentIndex is outside its own [start,end] ==="
+echo "    (start/end in the checkpoint DO match this WU's \`in\` file, so the mismatched-"
+echo "     checkpoint cross-check above doesn't catch this -- only currentIndex itself is bad.)"
+BAD_CUR=$(python3 -c "print($END + 5)")
+cat > camicia_state <<EOF
+$BAD_CUR $START $END 0 0 0
+EOF
+echo "$START $END" > in
+"$WORKER" && bad_current_rc=0 || bad_current_rc=$?
+echo "exit code for out-of-range currentIndex: $bad_current_rc"
+rm -f in out camicia_state camicia_loops
+
+echo
 pass=1
 if [ "$straight_loop_count" != "1" ]; then
     echo "❌ FAIL: straight-through run should find exactly 1 loop entry for MID, got $straight_loop_count"
@@ -165,14 +189,39 @@ if [ "$mismatch_finished_for_real_range" != "1" ]; then
     pass=0
 fi
 
+if [ "$bad_range_rc" = "1" ]; then
+    echo "✅ CA-M2: out-of-range endIndex cleanly rejected (exit 1, no assert/abort)"
+elif [ "$bad_range_rc" -gt 128 ] 2>/dev/null; then
+    echo "❌ FAIL: out-of-range endIndex still aborts (exit $bad_range_rc, signal $((bad_range_rc-128)))"
+    echo "   -- getNthPermutation()'s assert is still reachable; CA-M2 not fixed."
+    pass=0
+else
+    echo "❌ FAIL: out-of-range endIndex should cleanly boinc_finish(1) (exit 1), got exit $bad_range_rc"
+    pass=0
+fi
+
+if [ "$bad_current_rc" = "1" ]; then
+    echo "✅ CA-L6: out-of-range currentIndex (checkpoint only) cleanly rejected (exit 1)"
+elif [ "$bad_current_rc" -gt 128 ] 2>/dev/null; then
+    echo "❌ FAIL: out-of-range currentIndex still aborts (exit $bad_current_rc, signal $((bad_current_rc-128)))"
+    echo "   -- a checkpoint whose start/end match the WU but whose currentIndex doesn't is"
+    echo "   still trusted; CA-L6 not fixed."
+    pass=0
+else
+    echo "❌ FAIL: out-of-range currentIndex should cleanly boinc_finish(1) (exit 1), got exit $bad_current_rc"
+    pass=0
+fi
+
 if [ "$pass" = "1" ]; then
     echo "✅ PASS: current checkpoint semantics produce no duplicate under a normal resume,"
     echo "   the dedup guard correctly prevents a duplicate even when camicia_state and"
     echo "   camicia_loops are left inconsistent by a simulated crash between the two writes,"
     echo "   a genuinely orphaned camicia_loops file (camicia_state lost entirely) gets"
-    echo "   truncated rather than duplicated across a real second resume, and a checkpoint"
-    echo "   that doesn't actually belong to this WU (range mismatch against its own input"
-    echo "   file) is discarded rather than trusted."
+    echo "   truncated rather than duplicated across a real second resume, a checkpoint that"
+    echo "   doesn't actually belong to this WU (range mismatch against its own input file) is"
+    echo "   discarded rather than trusted, and an out-of-range index -- whether the WU's own"
+    echo "   endIndex or just a corrupted checkpoint currentIndex -- is cleanly rejected instead"
+    echo "   of reaching getNthPermutation()'s assert (CA-M2/CA-L6)."
     exit 0
 else
     exit 1
