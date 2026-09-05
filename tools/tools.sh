@@ -261,14 +261,6 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # a deploy published a broken app version and needs to stop it being
     # served.
     docker cp ./html/ops/deprecate_app_version.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/deprecate_app_version.php"
-    # Same html/ops/ placement/reason again -- byte-identical stock file
-    # plus initializing $letters_used before build_alpha_pages()'s own
-    # foreach loop, and resetting $did_page_head before each of this
-    # script's three page_head() calls (a global one-time guard, never
-    # reset between the many files this script generates per run --
-    # without it only the first generated page ever got a real <head>).
-    # See the file's own comments for both.
-    docker cp ./html/ops/update_profile_pages.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/update_profile_pages.php"
     # Same html/ops/ placement/reason again -- byte-identical stock file plus
     # a one-line PHP 8.1 strlen(null) deprecation-notice fix (same class of
     # fix as html/user/get_project_config.php etc.), found live on
@@ -293,6 +285,16 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # <task> that runs this (config.xml) stays deliberately disabled for
     # now regardless of this fix -- see the comment on that <task>.
     docker cp ./html/ops/team_import.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/team_import.php"
+    # Same html/ops/ placement/reason again -- byte-identical stock file
+    # plus initializing $letters_used before build_alpha_pages()'s own
+    # foreach loop. Stock only ever assigns it inside that loop, so with
+    # zero named profiles -- true for this project's first several daily
+    # runs, and true for every fresh BOINC project until someone actually
+    # has a profile -- the loop body never executes and it's genuinely
+    # undefined by the time build_alpha_summary_page() uses it. Confirmed
+    # live: "Undefined variable $letters_used" on every single run in
+    # update_profile_pages.out. Found during profiles testing.
+    docker cp ./html/ops/update_profile_pages.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/update_profile_pages.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
