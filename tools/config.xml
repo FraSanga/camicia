@@ -20,6 +20,16 @@
              backlog across many requests. -->
         <max_wus_in_progress>2</max_wus_in_progress>
         <daily_result_quota>500</daily_result_quota>
+        <!-- Profile pictures/text aren't shown to other users until an
+             admin approves them (camicia_ops/profile_screen_form.php).
+             Turned on 2026-09-01 after finding update_uotd.php's daily
+             cron task had been emailing UOTD_ADMIN_EMAIL every single day
+             since the crontab fix, forever, since verification never gets
+             set to 1 with no admin approval step happening; this alone
+             doesn't fix that (still needs a first screening pass once
+             real profiles exist), but is the actual feature this project
+             is supposed to gate on. -->
+        <profile_screening>1</profile_screening>
         <disable_account_creation>0</disable_account_creation>
         <disable_account_creation_rpc>0</disable_account_creation_rpc>
         <account_creation_rpc_require_consent>1</account_creation_rpc_require_consent>
