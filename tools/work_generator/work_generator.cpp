@@ -123,11 +123,24 @@ static int128 recover_cursor_from_workunits() {
     MYSQL_ROW row = mysql_fetch_row(rp);
     int128 result = 0;
     if (row && row[0]) {
-        // name format: simulator_<start>_<end> -> resume just past <end>
+        // CA-L4 fix: name format is simulator_<start>_<end>, optionally with
+        // a redispatch suffix appended (simulator_<start>_<end>_r<timestamp>,
+        // see redispatch_rejected_wus() below) -- <end> is always the field
+        // between the 2nd and 3rd underscore (or end-of-string, if there's
+        // no redispatch suffix), never the last field. Taking the last
+        // field (as this used to) grabs "r<timestamp>" instead of <end> for
+        // a redispatch name, recovering the cursor to ~a Unix timestamp
+        // instead of the real frontier.
         std::string name(row[0]);
-        size_t last_us = name.find_last_of('_');
-        if (last_us != std::string::npos) {
-            result = stringTo128(name.substr(last_us + 1)) + 1;
+        size_t first_us = name.find_first_of('_');
+        size_t second_us = (first_us == std::string::npos)
+            ? std::string::npos : name.find_first_of('_', first_us + 1);
+        if (second_us != std::string::npos) {
+            size_t third_us = name.find_first_of('_', second_us + 1);
+            std::string end_str = (third_us == std::string::npos)
+                ? name.substr(second_us + 1)
+                : name.substr(second_us + 1, third_us - second_us - 1);
+            result = stringTo128(end_str) + 1;
         }
     }
     mysql_free_result(rp);
@@ -195,8 +208,18 @@ static int create_wu_with_name(int128 start, int128 end, const char* name) {
     if (retval) return retval;
     FILE* f = fopen(path, "w");
     if (!f) return ERR_FOPEN;
-    fprintf(f, "%s %s\n", int128ToString(start).c_str(), int128ToString(end).c_str());
-    fclose(f);
+    // CA-L5 fix: fopen was checked but the following fprintf/fclose weren't
+    // -- a full disk mid-write silently yielded a truncated `in` file. The
+    // client-side download md5/size check (from create_work's own stamping)
+    // would eventually reject a truncated file, but only after being
+    // dispatched to a client; fail here instead, before it ever gets that
+    // far.
+    int print_ret = fprintf(f, "%s %s\n", int128ToString(start).c_str(), int128ToString(end).c_str());
+    int close_ret = fclose(f);
+    if (print_ret < 0 || close_ret != 0) {
+        remove(path);
+        return ERR_FWRITE;
+    }
 
     // end - start + 1, not range_size: the last WU in the space is
     // truncated to max_index (see main_loop() below) and is genuinely

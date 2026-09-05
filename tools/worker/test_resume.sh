@@ -151,6 +151,23 @@ echo "exit code for out-of-range currentIndex: $bad_current_rc"
 rm -f in out camicia_state camicia_loops
 
 echo
+echo "=== CA-L7: camicia_loops has more entries than this WU's range allows ==="
+echo "    (checkpoint's start/end match the WU's own \`in\` file and currentIndex is in-range,"
+echo "     so nothing else here rejects it -- only the loops-file entry count is bogus.)"
+cat > camicia_state <<EOF
+$START $START $END 0 0 0
+EOF
+python3 -c "
+start = $START
+for i in range(6):  # range is [START,END] = 5 deals; 6 lines exceeds the cap
+    print(f'{start + i} 1 1')
+" > camicia_loops
+echo "$START $END" > in
+"$WORKER" && too_many_loops_rc=0 || too_many_loops_rc=$?
+echo "exit code for oversized camicia_loops: $too_many_loops_rc"
+rm -f in out camicia_state camicia_loops
+
+echo
 pass=1
 if [ "$straight_loop_count" != "1" ]; then
     echo "❌ FAIL: straight-through run should find exactly 1 loop entry for MID, got $straight_loop_count"
@@ -212,6 +229,17 @@ else
     pass=0
 fi
 
+if [ "$too_many_loops_rc" = "1" ]; then
+    echo "✅ CA-L7: oversized camicia_loops cleanly rejected (exit 1)"
+elif [ "$too_many_loops_rc" -gt 128 ] 2>/dev/null; then
+    echo "❌ FAIL: oversized camicia_loops crashes (exit $too_many_loops_rc, signal $((too_many_loops_rc-128)))"
+    echo "   instead of cleanly boinc_finish(1)-ing; CA-L7 not fixed."
+    pass=0
+else
+    echo "❌ FAIL: oversized camicia_loops should cleanly boinc_finish(1) (exit 1), got exit $too_many_loops_rc"
+    pass=0
+fi
+
 if [ "$pass" = "1" ]; then
     echo "✅ PASS: current checkpoint semantics produce no duplicate under a normal resume,"
     echo "   the dedup guard correctly prevents a duplicate even when camicia_state and"
@@ -219,9 +247,10 @@ if [ "$pass" = "1" ]; then
     echo "   a genuinely orphaned camicia_loops file (camicia_state lost entirely) gets"
     echo "   truncated rather than duplicated across a real second resume, a checkpoint that"
     echo "   doesn't actually belong to this WU (range mismatch against its own input file) is"
-    echo "   discarded rather than trusted, and an out-of-range index -- whether the WU's own"
+    echo "   discarded rather than trusted, an out-of-range index -- whether the WU's own"
     echo "   endIndex or just a corrupted checkpoint currentIndex -- is cleanly rejected instead"
-    echo "   of reaching getNthPermutation()'s assert (CA-M2/CA-L6)."
+    echo "   of reaching getNthPermutation()'s assert (CA-M2/CA-L6), and a camicia_loops file with"
+    echo "   more entries than the WU's own range allows is cleanly rejected too (CA-L7)."
     exit 0
 else
     exit 1

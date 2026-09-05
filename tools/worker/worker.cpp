@@ -175,6 +175,17 @@ int main(int argc, char** argv) {
     // already relied on for a truncated final entry.
     size_t loopsAppended = 0;
     if (resumed) {
+        // CA-L7 fix: cap the reload -- this is the worker's own append-only
+        // output, but a corrupt/crafted LOOPS_FILE otherwise allocates one
+        // vector entry per line with no ceiling (~1:1 with file size). A WU
+        // can produce at most one loop line per deal in its own declared
+        // [startIndex, endIndex] range (already parsed from the checkpoint
+        // above), so that range's size is the natural hard ceiling here --
+        // a corrupted range that makes this ceiling nonsensical gets
+        // rejected moments later by the CA-M2 validation below regardless,
+        // so failing early on a bogus LOOPS_FILE in that case is still
+        // correct, just via a slightly different error path.
+        int128 maxLoops = state.endIndex - state.startIndex + 1;
         string loops_resolved;
         boinc_resolve_filename_s(LOOPS_FILE, loops_resolved);
         FILE* lf = boinc_fopen(loops_resolved.c_str(), "r");
@@ -182,6 +193,11 @@ int main(int argc, char** argv) {
             char lIdxStr[128];
             long long lCards, lTricks;
             while (fscanf(lf, "%127s %lld %lld", lIdxStr, &lCards, &lTricks) == 3) {
+                if ((int128)state.loops.size() >= maxLoops) {
+                    fprintf(stderr, "%s has more entries than this WU's range allows\n", LOOPS_FILE);
+                    fclose(lf);
+                    boinc_finish(1);
+                }
                 state.loops.push_back({stringTo128(lIdxStr), lCards, lTricks});
             }
             fclose(lf);
