@@ -45,21 +45,28 @@ const char* VERIFY_SAMPLE_BIN = "../bin/verify_sample";
 const char* VERIFY_CONFIDENCE = "0.9999";
 const char* VERIFY_DEFECT_RATE = "0.00001";
 
-// wu.name is always "simulator_<start>_<end>" (work_generator.cpp's own
-// naming, zero-padded decimal -- stringTo128()-compatible either way).
-// Split on the first/last underscore rather than assuming exactly one
-// field between them, matching the same defensive convention
-// work_generator.cpp's own resume-cursor logic already uses (find_last_of
-// for the end field).
+// wu.name is either "simulator_<start>_<end>" (work_generator.cpp's own
+// naming, zero-padded decimal -- stringTo128()-compatible either way) or,
+// for a redispatched WU, "simulator_<start>_<end>_r<timestamp>" (see
+// work_generator.cpp's redispatch_rejected_wus()). <start> is always the
+// field between the 1st and 2nd underscore, <end> always the field between
+// the 2nd and 3rd underscore (or end-of-string, if there's no redispatch
+// suffix) -- splitting on first/last underscore instead (as this used to)
+// grabs "<start>_<end>" as start and "r<timestamp>" as end for a
+// redispatched WU, since its last underscore comes after <end>, not before
+// it. Same bug class, and same fix, as work_generator.cpp's own
+// recover_cursor_from_workunits() (CA-L4).
 bool parse_wu_range(const char* wu_name, string& start, string& end) {
     string name(wu_name);
     size_t first_us = name.find_first_of('_');
-    size_t last_us = name.find_last_of('_');
-    if (first_us == string::npos || last_us == string::npos || first_us >= last_us) {
-        return false;
-    }
-    start = name.substr(first_us + 1, last_us - first_us - 1);
-    end = name.substr(last_us + 1);
+    if (first_us == string::npos) return false;
+    size_t second_us = name.find_first_of('_', first_us + 1);
+    if (second_us == string::npos) return false;
+    size_t third_us = name.find_first_of('_', second_us + 1);
+    start = name.substr(first_us + 1, second_us - first_us - 1);
+    end = (third_us == string::npos)
+        ? name.substr(second_us + 1)
+        : name.substr(second_us + 1, third_us - second_us - 1);
     return !start.empty() && !end.empty();
 }
 
@@ -516,6 +523,44 @@ static long long file_line_count(const char* path) {
 }
 
 int main() {
+    int failures_early = 0;
+    auto check_early = [&](const char* label, bool cond) {
+        printf("%s %s\n", cond ? "PASS" : "FAIL", label);
+        if (!cond) failures_early++;
+    };
+
+    // parse_wu_range() regression test: a redispatched WU's name
+    // (simulator_<start>_<end>_r<timestamp>) used to make this grab
+    // "<start>_<end>" as start and "r<timestamp>" as end (splitting on the
+    // first/last underscore, but the last underscore in a redispatch name
+    // comes after <end>, not before it) -- same bug class as
+    // work_generator.cpp's CA-L4.
+    {
+        string start, end;
+        bool ok = parse_wu_range(
+            "simulator_000000000000000000000_000000000000000001000000",
+            start, end
+        );
+        check_early("normal name parses", ok);
+        check_early("normal name: start field", start == "000000000000000000000");
+        check_early("normal name: end field", end == "000000000000000001000000");
+    }
+    {
+        string start, end;
+        bool ok = parse_wu_range(
+            "simulator_000000000000000000000_000000000000000001000000_r1756761234",
+            start, end
+        );
+        check_early("redispatch name parses", ok);
+        check_early("redispatch name: start field", start == "000000000000000000000");
+        check_early("redispatch name: end field is <end>, not the timestamp",
+            end == "000000000000000001000000");
+    }
+    if (failures_early > 0) {
+        printf("\nFAILED (%d, parse_wu_range)\n", failures_early);
+        return 1;
+    }
+
     char tmpl[] = "/tmp/camicia_ca_m1_test_XXXXXX";
     char* tmpdir = mkdtemp(tmpl);
     if (!tmpdir) {
