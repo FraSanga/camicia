@@ -22,11 +22,13 @@
 #
 # The worker app version is only actually republished when the source
 # that produces it changed -- see the "does the worker need republishing"
-# gate below. Assimilator/work_generator/antique_file_deleter still
-# recompile and redeploy unconditionally on every call: they're server
-# daemons with no BOINC "app version" concept, so there's no version-churn
-# cost to unconditional rebuilds the way there is for the client-shipped
-# worker. Pass --force to publish a new worker version regardless of
+# gate below. Assimilator/work_generator/antique_file_deleter/transitioner/
+# feeder/file_deleter/sample_bitwise_validator/db_purge/create_work/
+# update_versions/xadd/bin/start still recompile (or, for the three plain
+# scripts, re-sync) and redeploy unconditionally on every call: they're
+# server daemons/tools with no BOINC "app version" concept, so there's no
+# version-churn cost to unconditional rebuilds the way there is for the
+# client-shipped worker. Pass --force to publish a new worker version regardless of
 # whether the source changed (used by deploy_rollback.sh's --restore
 # path -- see the gate comment for why that path can't rely on the normal
 # git-diff check).
@@ -234,6 +236,166 @@ $PROJECT_DIR/worker/core/permutation.cpp \
 $PROJECT_DIR/worker/core/engine.cpp \
 -o $PROJECT_DIR/bin/verify_sample \
 -I$PROJECT_DIR/worker/core"
+
+# Every daemon below (plus bin/start further down) is stock, unmodified
+# upstream BOINC -- unlike assimilator/worker/work_generator, which are
+# genuinely Camicia's own modified copies living under tools/, so there's no
+# local customization here that a rebuild-from-pinned-source could ever
+# clobber. All of them were copied once by make_project at the original
+# bootstrap and never touched again by any subsequent deploy, so an upstream
+# fix to any of them (transitioner/feeder/file_deleter/
+# sample_bitwise_validator are real, continuously-running daemons) would
+# otherwise silently never reach the live project. Extends the
+# antique_file_deleter precedent above: rebuild fresh from
+# /usr/local/src/boinc on every deploy instead of letting a one-time copy
+# drift from whatever BOINC_COMMIT is currently pinned.
+echo "⚙️ Compiling transitioner..."
+# -I tools: transitioner.cpp #includes backend_lib.h, which lives in tools/
+# upstream rather than sched/ (same directory work_generator.cpp already
+# pulls headers from).
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/sched/transitioner.cpp \
+-o $PROJECT_DIR/bin/transitioner \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/local/src/boinc/tools \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl"
+
+echo "⚙️ Compiling feeder..."
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/sched/feeder.cpp \
+/usr/local/src/boinc/sched/hr.cpp \
+/usr/local/src/boinc/sched/hr_info.cpp \
+/usr/local/src/boinc/lib/synch.cpp \
+-o $PROJECT_DIR/bin/feeder \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl"
+
+echo "⚙️ Compiling file_deleter..."
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/sched/file_deleter.cpp \
+-o $PROJECT_DIR/bin/file_deleter \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl"
+
+echo "⚙️ Compiling sample_bitwise_validator..."
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/sched/credit.cpp \
+/usr/local/src/boinc/sched/validator.cpp \
+/usr/local/src/boinc/sched/validate_util.cpp \
+/usr/local/src/boinc/sched/validate_util2.cpp \
+/usr/local/src/boinc/sched/sample_bitwise_validator.cpp \
+-o $PROJECT_DIR/bin/sample_bitwise_validator \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl"
+
+echo "⚙️ Compiling db_purge..."
+# LDADD adds -lz upstream (db_purge.cpp gzips purged export files directly
+# via zlib) -- the only one of this batch that needs a link flag beyond the
+# usual SERVERLIBS set.
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/sched/db_purge.cpp \
+-o $PROJECT_DIR/bin/db_purge \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl -lz"
+
+echo "⚙️ Compiling create_work..."
+# Lives in tools/, not sched/, upstream -- same directory work_generator.cpp
+# already pulls -I/usr/local/src/boinc/tools from for backend_lib.h.
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "g++ -O3 \
+/usr/local/src/boinc/tools/create_work.cpp \
+/usr/local/src/boinc/tools/backend_lib.cpp \
+/usr/local/src/boinc/tools/process_result_template.cpp \
+/usr/local/src/boinc/tools/process_input_template.cpp \
+-o $PROJECT_DIR/bin/create_work \
+-I/usr/local/src/boinc \
+-I/usr/local/src/boinc/api \
+-I/usr/local/src/boinc/lib \
+-I/usr/local/src/boinc/sched \
+-I/usr/local/src/boinc/db \
+-I/usr/local/src/boinc/tools \
+-I/usr/include/mysql \
+-I/usr/include/mariadb \
+-L/usr/local/src/boinc/lib \
+-L/usr/local/src/boinc/sched \
+/usr/local/src/boinc/sched/libsched.a \
+/usr/local/src/boinc/lib/libboinc_crypt.a \
+/usr/local/src/boinc/api/libboinc_api.a \
+/usr/local/src/boinc/lib/libboinc.a \
+-lmysqlclient -lcrypto -lssl -pthread -ldl"
+
+echo "📄 Re-syncing update_versions, xadd, and bin/start from upstream..."
+# Not compiled -- upstream ships these as plain PHP scripts (update_versions,
+# xadd) and a Python script (start), unlike everything else in this batch.
+# Copied (not docker-cp'd from the host) since they already live in the same
+# in-container BOINC source tree everything else here compiles against.
+# Must land before the xadd/update_versions invocations later in this script
+# so this deploy itself already uses the freshly-synced copies.
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+    "cp /usr/local/src/boinc/tools/update_versions $PROJECT_DIR/bin/update_versions && chmod +x $PROJECT_DIR/bin/update_versions"
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+    "cp /usr/local/src/boinc/tools/xadd $PROJECT_DIR/bin/xadd && chmod +x $PROJECT_DIR/bin/xadd"
+docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c \
+    "cp /usr/local/src/boinc/sched/start $PROJECT_DIR/bin/start && chmod +x $PROJECT_DIR/bin/start"
 
 echo "🔄 Applying configuration changes (xadd)..."
 docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "cd $PROJECT_DIR && ./bin/xadd"
