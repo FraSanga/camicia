@@ -115,8 +115,17 @@ int run_verify_sample(
     close(pipefd[1]);
     char buf[4096];
     ssize_t n;
+    // CA-L2 fix: cap how much of the child's output actually gets kept --
+    // verify_sample's report isn't client-driven, so this isn't a real
+    // attacker lever, but a runaway verify_sample bug (e.g. a print-per-deal
+    // loop) could otherwise grow this string unboundedly and OOM the
+    // assimilator. Still drain the pipe past the cap so the child never
+    // blocks writing to a full pipe.
+    static const size_t OUTPUT_CAPTURE_CAP = 512 * 1024;
     while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
-        output_capture.append(buf, n);
+        if (output_capture.size() < OUTPUT_CAPTURE_CAP) {
+            output_capture.append(buf, n);
+        }
     }
     close(pipefd[0]);
 
@@ -174,7 +183,7 @@ void log_verify_rejection(
     WORKUNIT& wu, vector<RESULT>& results, bool loop_related
 ) {
     char path[1024];
-    sprintf(path, "%s/verify_rejections.log", outdir);
+    snprintf(path, sizeof(path), "%s/verify_rejections.log", outdir);
     FILE* f = fopen(path, "a");
     if (!f) return;
     fprintf(f, "%ld %s %s", (long)time(0), wu.name, loop_related ? "loop" : "best");
@@ -193,10 +202,10 @@ void log_verify_rejection(
 int write_verify_rejected(WORKUNIT &wu, const string& detail) {
     char batch_dir[1024];
     char path[1024];
-    sprintf(batch_dir, "%s/%d", outdir, wu.batch);
+    snprintf(batch_dir, sizeof(batch_dir), "%s/%d", outdir, wu.batch);
     int retval = boinc_mkdir(batch_dir);
     if (retval) return retval;
-    sprintf(path, "%s/%s_verify_rejected", batch_dir, wu.name);
+    snprintf(path, sizeof(path), "%s/%s_verify_rejected", batch_dir, wu.name);
     FILE* f = fopen(path, "a");
     if (!f) return ERR_FOPEN;
     fprintf(f, "%s", detail.c_str());
@@ -308,10 +317,10 @@ void track_result_line(const char* wu_name, const char* line) {
 int write_error(WORKUNIT &wu, char* p) {
     char batch_dir[1024];
     char path[1024];
-    sprintf(batch_dir, "%s/%d", outdir, wu.batch);
+    snprintf(batch_dir, sizeof(batch_dir), "%s/%d", outdir, wu.batch);
     int retval = boinc_mkdir(batch_dir);
     if (retval) return retval;
-    sprintf(path, "%s/%s_error", batch_dir, wu.name);
+    snprintf(path, sizeof(path), "%s/%s_error", batch_dir, wu.name);
     FILE* f = fopen(path, "a");
     if (!f) return ERR_FOPEN;
     fprintf(f, "%s", p);
@@ -350,7 +359,7 @@ int assimilate_handler(
         vector<OUTPUT_FILE_INFO> output_files;
         retval = get_output_file_infos(canonical_result, output_files);
         if (retval) {
-            sprintf(buf, "get_output_file_infos() failed: %d\n", retval);
+            snprintf(buf, sizeof(buf), "get_output_file_infos() failed: %d\n", retval);
             return write_error(wu, buf);
         }
 
@@ -370,12 +379,12 @@ int assimilate_handler(
         // "simulator_<start>_<end>" though, so these paths should never
         // actually trigger outside of a deeper bug worth surfacing anyway.
         if (output_files.empty()) {
-            sprintf(buf, "assimilate: canonical result has no output files\n");
+            snprintf(buf, sizeof(buf), "assimilate: canonical result has no output files\n");
             return write_error(wu, buf);
         }
         string wu_start, wu_end;
         if (!parse_wu_range(wu.name, wu_start, wu_end)) {
-            sprintf(buf, "assimilate: couldn't parse start/end from wu.name '%s'\n", wu.name);
+            snprintf(buf, sizeof(buf), "assimilate: couldn't parse start/end from wu.name '%s'\n", wu.name);
             return write_error(wu, buf);
         }
         string verify_output;
@@ -427,7 +436,7 @@ int assimilate_handler(
         // concurrent buffered fopen("a") writes from two processes can
         // interleave mid-flush and corrupt results.txt; switch to raw
         // O_APPEND writes or per-shard output files first.
-        sprintf(buf, "%s/results.txt", outdir);
+        snprintf(buf, sizeof(buf), "%s/results.txt", outdir);
         FILE* f_out = fopen(buf, "a");
         if (!f_out) {
             fprintf(stderr, "Error opening %s\n", buf);
@@ -459,7 +468,7 @@ int assimilate_handler(
         fclose(f_out);
     } else {
         char buf_err[1024];
-        sprintf(buf_err, "0x%x\n", wu.error_mask);
+        snprintf(buf_err, sizeof(buf_err), "0x%x\n", wu.error_mask);
         return write_error(wu, buf_err);
     }
 
