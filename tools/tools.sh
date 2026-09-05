@@ -209,6 +209,12 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # saved custom prefs. Found live on prefs.php.
     docker cp ./html/inc/prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
     docker cp ./html/inc/prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
+    # Byte-identical copy of BOINC's own file, with a fix to
+    # scale_image(): casts $destWidth/$destHeight to (int) right after
+    # they're computed via float division, before any GD call uses them
+    # -- PHP 8.1+ throws a real deprecation notice otherwise on every
+    # profile-picture upload. See the file's own comment.
+    docker cp ./html/inc/profile.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/profile.inc"
     # Byte-identical copy of BOINC's own file, with a targeted fix to the
     # SHORTCUT_ICON block (see util.inc's own comment): prepends $url_base
     # like STYLESHEET/STYLESHEET2 already do, and emits the real MIME type
