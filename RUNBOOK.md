@@ -27,6 +27,12 @@ to an incident without already holding all the context in their head.
   - [6. Re-run the ID-width migration](#6-re-run-the-id-width-migration)
   - [7. Create the forums](#7-create-the-forums)
   - [8. Verify, don't assume](#8-verify-dont-assume)
+- [Bumping the pinned BOINC_COMMIT](#bumping-the-pinned-boinc_commit)
+  - [1. Review the commit range before bumping](#1-review-the-commit-range-before-bumping)
+  - [2. Edit the pin and mirror to both branches](#2-edit-the-pin-and-mirror-to-both-branches)
+  - [3. Rebuild each environment](#3-rebuild-each-environment)
+  - [4. Resync anything the rebuild alone won't touch](#4-resync-anything-the-rebuild-alone-wont-touch)
+  - [5. Verify, don't assume](#5-verify-dont-assume)
 - [Restoring from a backup](#restoring-from-a-backup)
   - [Restoring the database](#restoring-the-database)
   - [Recovering a results segment](#recovering-a-results-segment)
@@ -596,6 +602,111 @@ The site loads at `<DOMAIN>` (behind Access), and `/camicia_cgi/*` / `/camicia/d
 `/camicia/get_project_config.php` / the bare `/camicia/` page still bypass it correctly, unaffected
 by this reset since Access configuration lives on Cloudflare's side, not in anything this
 procedure touches.
+
+## Bumping the pinned BOINC_COMMIT
+
+`images/server/Dockerfile`'s `ARG BOINC_COMMIT` pins the exact upstream BOINC source this project's
+image builds `assimilator`/`worker`/`work_generator` against, and is what `git clone`/`git fetch`
+inside the Dockerfile resolves. Bump it deliberately when a specific upstream fix or feature is
+wanted — not on a schedule, and never silently as a side effect of something else.
+
+### 1. Review the commit range before bumping
+
+Don't just take the newest upstream commit — check what's actually in between, the same way you'd
+review any other dependency bump:
+
+```bash
+gh api repos/BOINC/boinc/compare/<old-pin>...<new-pin> --jq '.commits[] | "\(.sha[0:9]) \(.commit.message | split("\n")[0])"'
+```
+
+Look for anything outside pure web/PHP or pure BOINC-Manager-desktop-client changes (this project
+doesn't build the Manager at all, so a Manager-only commit range is a safe no-op here) — a schema
+change, a daemon behavior change, anything that would need its own follow-up beyond the pin itself.
+
+### 2. Edit the pin and mirror to both branches
+
+```bash
+cd ~/camicia   # your own working clone, not either deployed host
+git checkout main && git pull
+git checkout -b bump-boinc-commit-<short-sha>
+# edit images/server/Dockerfile's ARG BOINC_COMMIT
+git commit -am "images/server/Dockerfile: bump pinned BOINC_COMMIT to <short-sha> (<n> commits)"
+git push origin bump-boinc-commit-<short-sha>
+```
+
+Mirror the same commit to `staging` via cherry-pick, not a merge — the established convention
+between these two branches (keeps their histories independent-but-matching, same as every other
+Camicia-side fix that lands on both):
+
+```bash
+git checkout main && git pull && git push origin main
+git checkout staging && git pull
+git cherry-pick <the-bump-commit-sha>
+git push origin staging
+```
+
+### 3. Rebuild each environment
+
+On each host (staging first, then production), from inside its own checkout:
+
+```bash
+git fetch origin <branch>
+git reset --hard origin/<branch>
+docker compose down
+docker compose up -d --build
+```
+
+Use `reset --hard`, not `pull` — a `pull` can fail with a divergent-branches error if that branch's
+history was ever rewritten (a force-pushed history scrub, for instance — see the security-disclosure
+process elsewhere in this repo's private tooling). A host's deploy checkout never has local commits
+of its own, so resetting to match `origin/<branch>` exactly is always safe here.
+
+### 4. Resync anything the rebuild alone won't touch
+
+**This is the step most likely to get skipped, and skipping it means the bump silently does
+nothing.** `docker compose up -d --build` only refreshes the image's own `/usr/local/src/boinc`
+checkout. The already-bootstrapped project directory (`<SERVER_VOLUME_PROJECTS_DIR>/camicia`) is a
+separate, persistent bind mount created once by `make_project` — it does **not** get re-copied from
+a fresh image build. Anything Camicia previously vendored a local fix for *specifically because* it
+was an upstream bug (a file removed from `tools/html/` on the assumption that the new pin now
+carries the fix) needs that fix re-synced into the live project tree by hand, from the freshly
+rebuilt image's own copy of the file:
+
+```bash
+docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c \
+    'cp /usr/local/src/boinc/<path/to/file> <SERVER_VOLUME_PROJECTS_DIR>/camicia/<path/to/file> && php -l <SERVER_VOLUME_PROJECTS_DIR>/camicia/<path/to/file>'
+```
+
+Confirm there's nothing left to resync (or that what's left is a genuine local customization, not a
+stale copy) with a diff, not a guess:
+
+```bash
+docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c \
+    'diff /usr/local/src/boinc/<path/to/file> <SERVER_VOLUME_PROJECTS_DIR>/camicia/<path/to/file> && echo IDENTICAL'
+```
+
+This is the exact same class of bug as `bin/start`'s: a file copied once at bootstrap, then never
+re-synced by anything, silently drifting from upstream forever after. `publish_version.sh` already
+handles this automatically for `bin/`'s own daemon binaries and `bin/start` (rebuilt/re-copied fresh
+on every `tools.sh` deploy, not just a BOINC_COMMIT bump) — this step is specifically for `html/`
+files that were never part of that daemon-sync list, because Camicia doesn't normally touch `html/`
+files that are unmodified stock BOINC.
+
+### 5. Verify, don't assume
+
+Confirm the container actually built against the new pin, not the old one still cached:
+
+```bash
+docker exec <SERVER_CONTAINER_NAME> bash -c 'cd /usr/local/src/boinc && git log -1 --format=%H'
+```
+
+should print the exact `<new-pin>` SHA. Then the usual health check:
+
+```bash
+docker compose ps
+```
+
+all services `healthy`, and an HTTP request to the site returns 200.
 
 ## Restoring from a backup
 
