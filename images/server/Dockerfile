@@ -79,7 +79,7 @@ RUN useradd -m -s /bin/bash ${PROJECTS_USER}
 # and supply-chain-hygiene gap otherwise, since this gets compiled with root
 # build privileges automatically on every rebuild). Bump deliberately when you
 # want a newer BOINC.
-ARG BOINC_COMMIT=f1c271cf53d9fdac1c807fb35383fc74aef9025b
+ARG BOINC_COMMIT=1eb2ef15edcc2f9ceb168e1b818e55f355b06ab5
 WORKDIR /usr/local/src
 RUN git init boinc && \
     cd boinc && \
