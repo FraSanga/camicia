@@ -203,7 +203,7 @@
         </task>
         <task>
             <!-- Camicia: total_credit tier ladder (bronze..emerald),
-                 permanent milestones -- separate from/complementary to
+                 permanent milestones, separate from/complementary to
                  badge_assign.php's RAC-percentile badges above. -->
             <period>24 hours</period>
             <output>badge_assign_credit.out</output>
