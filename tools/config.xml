@@ -230,6 +230,16 @@
             <disabled>0</disabled>
         </task>
         <task>
+            <!-- Camicia: one-off permanent badge for the first 100 real,
+                 email-verified users to register after this feature's own
+                 self-snapshot floor, so pre-launch test data never
+                 qualifies. -->
+            <period>24 hours</period>
+            <output>badge_assign_founder.out</output>
+            <cmd>run_in_ops ./badge_assign_founder.php</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
             <!-- Feeds html/user/progress_stats.json for the public
                  progress page (html/user/progress.php). 15 min: frequent
                  enough to feel alive, rare enough to keep the aggregate
