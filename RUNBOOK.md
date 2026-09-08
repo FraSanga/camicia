@@ -33,6 +33,11 @@ to an incident without already holding all the context in their head.
   - [3. Rebuild each environment](#3-rebuild-each-environment)
   - [4. Resync anything the rebuild alone won't touch](#4-resync-anything-the-rebuild-alone-wont-touch)
   - [5. Verify, don't assume](#5-verify-dont-assume)
+- [Activating the beta-tester badge](#activating-the-beta-tester-badge)
+  - [1. Curate the list](#1-curate-the-list)
+  - [2. Write `beta_testers.txt` directly on the server](#2-write-beta_testerstxt-directly-on-the-server)
+  - [3. Let the daily task pick it up, or run it once to test immediately](#3-let-the-daily-task-pick-it-up-or-run-it-once-to-test-immediately)
+  - [A mistake worth avoiding](#a-mistake-worth-avoiding)
 - [Restoring from a backup](#restoring-from-a-backup)
   - [Restoring the database](#restoring-the-database)
   - [Recovering a results segment](#recovering-a-results-segment)
@@ -707,6 +712,68 @@ docker compose ps
 ```
 
 all services `healthy`, and an HTTP request to the site returns 200.
+
+## Activating the beta-tester badge
+
+`html/ops/badge_assign_beta.php` hand-curates a one-off "Beta Tester" badge for real people who
+help test on staging before a public launch — deliberately **not** an algorithmic rule like every
+other badge script, since there's no DB field that can tell a genuine tester's account from an
+internal test account.
+
+The curated list is real people's email addresses — PII that must never enter this repo's git
+history. Camicia/camicia is public, and git history is effectively permanent and unredactable once
+pushed (the same reason this project has had to scrub other sensitive commits out of its history
+before). So the list is a plain-text file, `beta_testers.txt`, living at each server's own project
+root — **deployed by hand, never committed, never through `tools.sh`'s normal git-based pipeline.**
+The script itself contains zero real personal data and is safe to be public; only this file is
+sensitive, and it stays off GitHub entirely.
+
+### 1. Curate the list
+
+After a real beta-test period actually concludes, collect the real testers' email addresses by
+hand (however you choose to track who actually helped — this project doesn't do it
+algorithmically on purpose).
+
+### 2. Write `beta_testers.txt` directly on the server
+
+One email per line; blank lines and `#`-prefixed comment lines are ignored:
+
+```bash
+docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c '
+cat > <SERVER_VOLUME_PROJECTS_DIR>/camicia/beta_testers.txt <<EOF
+# real beta testers
+person1@example.com
+person2@example.com
+EOF
+'
+```
+
+Repeat separately for staging and production — this file is per-environment, like every other
+runtime state file (`badge_discovery_state.json`, `badge_founder_state.json`), not something that
+gets copied between them.
+
+### 3. Let the daily task pick it up, or run it once to test immediately
+
+The task is already scheduled (`config.xml`, 24 hours) and runs as a normal no-op while the file is
+missing or empty. To confirm it worked without waiting for the next scheduled run:
+
+```bash
+docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c \
+    'cd <SERVER_VOLUME_PROJECTS_DIR>/camicia/html/ops && php badge_assign_beta.php'
+```
+
+Each email needs a matching account **and** `email_validated=1` (the same real-person-behind-the-
+address check the founder badge uses) before it's awarded — a registered-but-unverified match logs
+as still pending, not an error. Most testers won't have a production account yet even right after
+launch (they tested on staging, not prod), so this genuinely can't be a one-time import: leave the
+file in place and the daily task keeps re-checking indefinitely, badging each person the moment
+they show up here with a verified email.
+
+### A mistake worth avoiding
+
+Never paste real testers' emails into a commit message, a PR description, an issue, or anywhere
+else this repo's git history or GitHub project can see them — the whole point of keeping this file
+off git is defeated if the same data leaks in through a different door.
 
 ## Restoring from a backup
 
