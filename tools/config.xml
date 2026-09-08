@@ -211,6 +211,15 @@
             <disabled>0</disabled>
         </task>
         <task>
+            <!-- Camicia: account-age tiers (newcomer..legend), gated on
+                 expavg_credit, so unlike badge_assign_credit.php this one
+                 is lost if activity drops long enough. -->
+            <period>24 hours</period>
+            <output>badge_assign_longevity.out</output>
+            <cmd>run_in_ops ./badge_assign_longevity.php</cmd>
+            <disabled>0</disabled>
+        </task>
+        <task>
             <!-- Feeds html/user/progress_stats.json for the public
                  progress page (html/user/progress.php). 15 min: frequent
                  enough to feel alive, rare enough to keep the aggregate
