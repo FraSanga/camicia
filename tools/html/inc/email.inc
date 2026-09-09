@@ -43,20 +43,30 @@ function send_email($user, $subject, $body, $body_html=null, $email_addr=null) {
         pclose($pipe);
         return true;
     } else if (function_exists("make_php_mailer")) {
-        // Camicia fix: stock BOINC never required PHPMailer's own
-        // Exception.php here, even though it's vendored right alongside
-        // PHPMailer.php/SMTP.php (tools/html/inc/PHPMailer/). That class
-        // is only touched when smtpConnect()/smtpSend()/postSend() hit a
-        // real connection/auth-level SMTP failure -- so this was invisible
-        // on the happy path. Confirmed live on staging 2026-09-06: a broken
-        // SMTP login turned a normal "$mail->Send() returns false" failure
-        // into an uncaught "Class PHPMailer\PHPMailer\Exception not found"
-        // fatal error, since PHP can't even construct the class PHPMailer
-        // tries to throw. That crashes the whole request (raw stack trace
-        // shown, since display_errors is on) instead of falling through to
-        // the `echo $mail->ErrorInfo; return false;` below -- affecting
-        // every caller of send_email(), not just the ones with their own
-        // separate bugs.
+        // Both fixes below are Camicia's own, now upstream as of
+        // BOINC/boinc#7285 (this file is otherwise byte-identical to
+        // stock, still vendored here purely for the styled-emails
+        // additions -- see send_auth_email()/send_changed_email()/
+        // send_confirm_delete_email() and email_greeting()/email_footer()
+        // further down):
+        //
+        // 1. Stock BOINC never required PHPMailer's own Exception.php
+        //    here, even though it's vendored right alongside PHPMailer.php/
+        //    SMTP.php (tools/html/inc/PHPMailer/). That class is only
+        //    touched when smtpConnect()/smtpSend()/postSend() hit a real
+        //    connection/auth-level SMTP failure -- so this was invisible on
+        //    the happy path. Confirmed live on staging 2026-09-06: a broken
+        //    SMTP login turned a normal "$mail->Send() returns false"
+        //    failure into an uncaught "Class PHPMailer\PHPMailer\Exception
+        //    not found" fatal error, since PHP can't even construct the
+        //    class PHPMailer tries to throw. That crashed the whole request
+        //    (raw stack trace shown, since display_errors is on) instead of
+        //    falling through to the graceful failure path below.
+        //
+        // 2. A failed send used to echo $mail->ErrorInfo straight into
+        //    whatever page was rendering -- raw SMTP/provider error detail
+        //    exposed to the end user (and, depending on caller, ahead of
+        //    any page_head() output too). Logs it server-side instead.
         if (file_exists("../inc/PHPMailer/src/PHPMailer.php") && file_exists("../inc/PHPMailer/src/SMTP.php") && file_exists("../inc/PHPMailer/src/Exception.php")) {
             require_once("../inc/PHPMailer/src/Exception.php");
             require_once("../inc/PHPMailer/src/PHPMailer.php");
@@ -78,7 +88,7 @@ function send_email($user, $subject, $body, $body_html=null, $email_addr=null) {
             $mail->Body = $body;
         }
         if (!$mail->Send()) {
-            echo $mail->ErrorInfo;
+            error_log("send_email() failed: ".$mail->ErrorInfo);
             return false;
         } else {
             return true;
