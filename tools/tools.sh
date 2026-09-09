@@ -146,7 +146,6 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # no need to cross-reference this list to know where a given file lands.
     docker cp ./html/project/project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project.inc"
     docker cp ./html/project/project_description.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_description.php"
-    docker cp ./html/project/project_specific_prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_specific_prefs.inc"
     docker cp ./html/user/about.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/about.php"
     docker cp ./html/user/privacy.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/privacy.php"
     # Certificate: restyled to match the site's felt/gold/cream identity,
@@ -179,36 +178,16 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # html/user/img/stat_icon_40.png --output-width 40 --output-height 40
     # (and update project_files.xml's md5_cksum/nbytes below if it changes).
     docker cp ./html/user/img/stat_icon_40.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/stat_icon_40.png"
-    # All four below are byte-identical copies of BOINC's own files, each
-    # with the same one-line-becomes-two-lines fix: get_cached_data() can
-    # return null on a cold/expired cache, and passing null to
-    # unserialize() is a deprecation notice as of PHP 8.1 -- found on
-    # server_status.php's live output, then found to be the same latent
-    # bug in these other three (not yet triggered there, same root cause).
-    docker cp ./html/user/server_status.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/server_status.php"
-    docker cp ./html/user/download_network.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/download_network.php"
+    # get_cached_data() can return null on a cold/expired cache, and passing
+    # null to unserialize() is a deprecation notice as of PHP 8.1 -- found on
+    # server_status.php's live output, then found to be the same latent bug
+    # here too (not yet triggered here, same root cause). server_status.php/
+    # download_network.php/team_members.php had the identical fix, but as of
+    # the BOINC_COMMIT bump to b4b1bad96f (which pulled in PR #7307) their
+    # stock copies now carry it too -- removed from tools/html/ entirely,
+    # this file is the one holdout still worth vendoring locally (see its
+    # own header comment for why).
     docker cp ./html/user/get_project_config.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/get_project_config.php"
-    docker cp ./html/user/team_members.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_members.php"
-    # Byte-identical copy of BOINC's own file, with one fix: create_forum()'s
-    # INSERT never sets orderID, which is NOT NULL with no default -- fine
-    # under a lenient SQL mode, an uncaught mysqli_sql_exception under
-    # STRICT_TRANS_TABLES (this DB's actual mode), the instant a team
-    # founder tries to create their team's message board. See the file's
-    # own comment; confirmed present verbatim in upstream at the exact
-    # BOINC commit this image builds from.
-    docker cp ./html/user/team_forum.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_forum.php"
-    # Same class of bug as team_forum.php just above: add_admin()'s INSERT
-    # never sets team_admin.rights, which is NOT NULL with no default --
-    # uncaught mysqli_sql_exception under STRICT_TRANS_TABLES the instant a
-    # founder tries to add a team admin. `rights` isn't read anywhere in
-    # this codebase or upstream's own team code, so 0 has no behavioral
-    # effect either way. See the file's own comment.
-    docker cp ./html/user/team_admins.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_admins.php"
-    # Same PHP 8.1 deprecation class, this time xml_parse(null,...) instead
-    # of unserialize(null) -- $prefs_xml is null for a user who's never
-    # saved custom prefs. Found live on prefs.php.
-    docker cp ./html/inc/prefs.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs.inc"
-    docker cp ./html/inc/prefs_project.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/prefs_project.inc"
     # Byte-identical copy of BOINC's own file, with a fix to
     # scale_image(): casts $destWidth/$destHeight to (int) right after
     # they're computed via float division, before any GD call uses them
@@ -486,7 +465,7 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
     # fix_permissions.sh had just set on it moments earlier, every single
     # run) and gui_urls.xml/run_state_*.xml, none of which are ever
     # docker-cp'd from outside and so never needed this fix at all.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/project/project_specific_prefs.inc $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/server_status.php $PROJECT_DIR/html/user/download_network.php $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/user/team_members.php $PROJECT_DIR/html/inc/prefs.inc $PROJECT_DIR/html/inc/prefs_project.inc $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
