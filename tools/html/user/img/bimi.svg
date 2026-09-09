@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" baseProfile="tiny-ps" version="1.2" viewBox="0 0 64 64">
+  <title>Camicia</title>
+  <circle cx="32" cy="32" r="30" fill="#16302a" stroke="#8c7a3e" stroke-width="2.5"/>
+  <path d="M 20,14 L 28,21 L 32,17.5 L 36,21 L 44,14 L 53,23 L 45,30 L 45,51 L 19,51 L 19,30 L 11,23 Z" fill="#ede3cb" stroke="#8c7a3e" stroke-width="1"/>
+  <path d="M 32,17 L 38,23 L 32,29 L 26,23 Z" fill="#a83349"/>
+  <circle cx="32" cy="36" r="2" fill="#c9a227"/>
+  <circle cx="32" cy="45" r="2" fill="#c9a227"/>
+</svg>
