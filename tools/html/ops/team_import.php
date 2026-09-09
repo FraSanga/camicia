@@ -101,8 +101,7 @@ function update_team($t, $team) {
     }
     $retval = $team->update($query);
     if (!$retval) {
-        echo "   update failed: $query\n";
-        exit;
+        throw new Exception("update failed: $query");
     }
 }
 
@@ -141,10 +140,7 @@ function insert_case($t, $user) {
         $t->description, $t->country
     );
     if (!$team) {
-        echo "   Can't make team $t->id\n";
-        echo BoincDb::error();
-        echo "\n";
-        exit;
+        throw new Exception("Can't make team $t->id: ".BoincDb::error());
     }
     $team->update("seti_id=$t->id");
     if ($user) {
@@ -251,53 +247,45 @@ function handle_team($f) {
     }
 }
 
-// Camicia additions to main(), both confirmed necessary by a real
-// production incident (2026-08-31 -- see the try/catch comment below):
-//
-// 1. An optional source-URL/path override as argv[1], defaulting to the
-//    real upstream feed. Lets this be pointed at a small local fixture
-//    file for testing (e.g. a deliberately crafted name collision)
-//    without hitting the real boinc.berkeley.edu list -- and, more to
-//    the point, without risking a real email to a real stranger while
-//    testing, since a genuine run creates real accounts for real people
-//    and emails them (see insert_case() above).
-//
-// 2. A try/catch around each team's handle_team() call. Stock upstream
-//    had none: make_user()/BoincUser::insert() can throw an uncaught
-//    mysqli_sql_exception on a genuine data collision, and this isn't
-//    hypothetical -- it happened on the very first real run. Two
-//    independent upstream teams' founders both registered the generic
-//    display name "Coordinador" on their original projects; user.name
-//    has a real unique constraint (db/constraints.sql), so the second
-//    account creation throws under this project's PHP 8.2/mysqli setup
-//    (throws instead of returning false -- the same underlying class of
-//    bug already fixed this session in team_forum.php/team_admins.php).
-//    With no try/catch, that exception was fatal and killed the whole
-//    run mid-list: every team after the colliding one was silently never
-//    processed, and since the collision recurs identically, it would
-//    have failed at the exact same point on every subsequent run,
-//    forever (confirmed against the real run's own log: one "Starting
-//    at" line, 329 teams successfully added, zero "Finished at" line).
-//    A team that itself collides on name will still fail every run --
-//    nothing here disambiguates the name -- but it's now an isolated,
-//    logged failure instead of a total outage blocking every team after it.
+// main() below is now byte-identical to stock: the per-team try/catch this
+// project added after a real production incident (2026-08-31 -- two
+// independent upstream teams' founders both registered "Coordinador" as
+// their display name, and user.name's unique constraint threw an uncaught
+// mysqli_sql_exception that killed the whole run mid-list) is upstream too
+// as of the BOINC_COMMIT bump that pulled in
+// https://github.com/BOINC/boinc/pull/7301 -- along with a real
+// improvement this project's original version didn't have: update_team()
+// and insert_case()'s own failure paths used to be a hard echo+exit, which
+// (being a real exit(), not a thrown exception) escaped the try/catch
+// entirely -- the exact same silent-mid-list-death bug the try/catch was
+// meant to prevent, just from a different trigger. Both now throw
+// Exception instead, and main() tracks a $failures count and exits 1 if
+// any team failed. This file's only remaining local customization is the
+// styled-emails wrap on insert_case()'s send_email() call above (see
+// html/inc/email.inc) -- an argv[1] source-URL test override used to live
+// here too, dropped once it was clear $dry_run already covers the "don't
+// email real people while testing" need on its own.
 function main() {
-    global $argv;
-    $source = $argv[1] ?? "http://boinc.berkeley.edu/boinc_teams.xml";
-    echo "------------ Starting at ".time_str(time())." (source: $source) -------\n";
-    $x = simplexml_load_file($source);
+    echo "------------ Starting at ".time_str(time())."-------\n";
+    $x = simplexml_load_file('http://boinc.berkeley.edu/boinc_teams.xml');
     if (!$x) {
         echo "Can't get teams file\n";
         exit;
     }
+    $failures = 0;
     foreach($x->team as $team) {
         try {
             handle_team($team);
         } catch (Throwable $e) {
             echo "   ERROR processing this team, skipping: ".$e->getMessage()."\n";
+            $failures++;
         }
     }
     echo "------------ Finished at ".time_str(time())."-------\n";
+    if ($failures) {
+        echo "$failures team(s) failed to import; see ERROR lines above.\n";
+        exit(1);
+    }
 }
 
 db_init();
