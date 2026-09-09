@@ -178,6 +178,30 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # html/user/img/stat_icon_40.png --output-width 40 --output-height 40
     # (and update project_files.xml's md5_cksum/nbytes below if it changes).
     docker cp ./html/user/img/stat_icon_40.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/stat_icon_40.png"
+    # Badge artwork -- credit tiers (bronze..emerald), longevity tiers
+    # (newcomer..legend), the two discovery badges (loop finder, longest
+    # game), founder, and beta tester. Deployed here rather than assumed to
+    # "come along" with the badge_assign_*.php scripts below: these are a
+    # separate get_badge()/assign_badge() image argument (html/user/img/),
+    # not something those scripts themselves reference by path, so nothing
+    # else in this script would ever copy them.
+    docker cp ./html/user/img/credit_bronze.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_bronze.png"
+    docker cp ./html/user/img/credit_silver.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_silver.png"
+    docker cp ./html/user/img/credit_gold.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_gold.png"
+    docker cp ./html/user/img/credit_ruby.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_ruby.png"
+    docker cp ./html/user/img/credit_sapphire.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_sapphire.png"
+    docker cp ./html/user/img/credit_amethyst.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_amethyst.png"
+    docker cp ./html/user/img/credit_turquoise.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_turquoise.png"
+    docker cp ./html/user/img/credit_emerald.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/credit_emerald.png"
+    docker cp ./html/user/img/longevity_newcomer.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/longevity_newcomer.png"
+    docker cp ./html/user/img/longevity_regular.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/longevity_regular.png"
+    docker cp ./html/user/img/longevity_veteran.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/longevity_veteran.png"
+    docker cp ./html/user/img/longevity_devoted.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/longevity_devoted.png"
+    docker cp ./html/user/img/longevity_legend.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/longevity_legend.png"
+    docker cp ./html/user/img/discovery_loop.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/discovery_loop.png"
+    docker cp ./html/user/img/discovery_longest.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/discovery_longest.png"
+    docker cp ./html/user/img/founder.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/founder.png"
+    docker cp ./html/user/img/beta_tester.png "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/img/beta_tester.png"
     # get_cached_data() can return null on a cold/expired cache, and passing
     # null to unserialize() is a deprecation notice as of PHP 8.1 -- found on
     # server_status.php's live output, then found to be the same latent bug
@@ -302,6 +326,21 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # Same html/ops/ placement/reason again -- byte-identical stock file
     # plus the same styled-emails treatment as html/inc/email.inc above.
     docker cp ./html/ops/notify.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/notify.php"
+    # Badge assignment scripts -- one per family (credit tiers, longevity
+    # tiers, discovery one-offs, founder, beta tester), each its own daily
+    # <task> (config.xml). Camicia-original, no stock counterpart. See the
+    # badge artwork block above (html/user/img/) -- these scripts reference
+    # that artwork by filename via get_badge(), so both halves need to be
+    # deployed together or a badge silently has no icon.
+    docker cp ./html/ops/badge_assign_credit.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/badge_assign_credit.php"
+    docker cp ./html/ops/badge_assign_longevity.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/badge_assign_longevity.php"
+    docker cp ./html/ops/badge_assign_discovery.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/badge_assign_discovery.php"
+    docker cp ./html/ops/badge_assign_founder.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/badge_assign_founder.php"
+    # Hand-curated, PII-sensitive list (beta_testers.txt) lives outside git
+    # entirely -- see this script's own header comment and RUNBOOK.md's
+    # "Activating the beta-tester badge" section. Only the script itself
+    # (containing zero personal data) is deployed here.
+    docker cp ./html/ops/badge_assign_beta.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/badge_assign_beta.php"
 
     # ntfy.sh topic for disk_space_check.sh/memory_check.sh push alerts --
     # optional, only written if NTFY_TOPIC is set in .env. Kept out of the
@@ -493,12 +532,17 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
     # fix_permissions.sh had just set on it moments earlier, every single
     # run) and gui_urls.xml/run_state_*.xml, none of which are ever
     # docker-cp'd from outside and so never needed this fix at all.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/html/inc/email.inc $PROJECT_DIR/html/inc/forum_email.inc $PROJECT_DIR/html/inc/friend.inc $PROJECT_DIR/html/inc/pm.inc $PROJECT_DIR/html/inc/uotd.inc $PROJECT_DIR/html/user/team_founder_transfer_action.php $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/img/credit_bronze.png $PROJECT_DIR/html/user/img/credit_silver.png $PROJECT_DIR/html/user/img/credit_gold.png $PROJECT_DIR/html/user/img/credit_ruby.png $PROJECT_DIR/html/user/img/credit_sapphire.png $PROJECT_DIR/html/user/img/credit_amethyst.png $PROJECT_DIR/html/user/img/credit_turquoise.png $PROJECT_DIR/html/user/img/credit_emerald.png $PROJECT_DIR/html/user/img/longevity_newcomer.png $PROJECT_DIR/html/user/img/longevity_regular.png $PROJECT_DIR/html/user/img/longevity_veteran.png $PROJECT_DIR/html/user/img/longevity_devoted.png $PROJECT_DIR/html/user/img/longevity_legend.png $PROJECT_DIR/html/user/img/discovery_loop.png $PROJECT_DIR/html/user/img/discovery_longest.png $PROJECT_DIR/html/user/img/founder.png $PROJECT_DIR/html/user/img/beta_tester.png $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/html/inc/email.inc $PROJECT_DIR/html/inc/forum_email.inc $PROJECT_DIR/html/inc/friend.inc $PROJECT_DIR/html/inc/pm.inc $PROJECT_DIR/html/inc/uotd.inc $PROJECT_DIR/html/user/team_founder_transfer_action.php $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/team_import.php && chmod +x $PROJECT_DIR/html/ops/team_import.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/notify.php && chmod +x $PROJECT_DIR/html/ops/notify.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_credit.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_credit.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_longevity.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_longevity.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_discovery.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_discovery.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_founder.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_founder.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_beta.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_beta.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/db_backup.sh && chmod +x $PROJECT_DIR/bin/db_backup.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/disk_space_check.sh && chmod +x $PROJECT_DIR/bin/disk_space_check.sh"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/bin/memory_check.sh && chmod +x $PROJECT_DIR/bin/memory_check.sh"
