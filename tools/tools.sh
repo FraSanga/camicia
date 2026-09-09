@@ -227,7 +227,27 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # entry in the Computing navbar menu linking to progress.php -- that
     # page had no link anywhere on the site otherwise.
     docker cp ./html/inc/bootstrap.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/bootstrap.inc"
+    # Styled emails: email_greeting()/email_footer() (email.inc) give every
+    # Camicia notification email a consistent "Hi <name>,"/signature-block
+    # wrapper instead of upstream's bare, inconsistent message bodies --
+    # applied here plus forum_email.inc/friend.inc/pm.inc/uotd.inc (the
+    # other files that build a notification body) and, elsewhere in this
+    # list, manage_user.php/team_import.php/notify.php/
+    # team_founder_transfer_action.php. email.inc also carries an
+    # unrelated but real fix: stock BOINC never required PHPMailer's own
+    # Exception.php here, even though it's vendored right alongside
+    # PHPMailer.php/SMTP.php -- invisible on the happy path, but a broken
+    # SMTP login turned a normal "send failed" into an uncaught fatal
+    # instead of the existing graceful failure path. Confirmed live on
+    # staging 2026-09-06.
+    docker cp ./html/inc/email.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/email.inc"
+    docker cp ./html/inc/forum_email.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/forum_email.inc"
+    docker cp ./html/inc/friend.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/friend.inc"
+    docker cp ./html/inc/pm.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/pm.inc"
+    docker cp ./html/inc/uotd.inc "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/inc/uotd.inc"
     docker cp ./html/user/signup.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/signup.php"
+    # Same styled-emails treatment as email.inc above.
+    docker cp ./html/user/team_founder_transfer_action.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/team_founder_transfer_action.php"
     docker cp ./terms_of_use.txt "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/terms_of_use.txt"
     # translation.inc is a byte-identical copy of BOINC's own file plus one
     # hook (see tools/html/inc/translation.inc's own header) that loads
@@ -274,7 +294,11 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # property assignment to null instead of PHP <8's silent auto-vivify),
     # found live on camicia_ops/manage_user.php: every single suspend/
     # unsuspend crashed after the DB update committed but before either
-    # notification email went out.
+    # notification email went out. Also carries the styled-emails treatment
+    # (see html/inc/email.inc above) -- and, since this page emails both the
+    # suspended user and the admin distribution list, a separate admin-
+    # facing body (third person, no "Hi <name>,") rather than reusing the
+    # user's own greeting for both.
     docker cp ./html/ops/manage_user.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/manage_user.php"
     # Same html/ops/ placement/reason again -- byte-identical stock file
     # plus a try/catch around each team's processing in main(), and an
@@ -286,7 +310,8 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # one silently never processed, every single time this ran. See the
     # comment above main() in the file itself for the full story. The
     # <task> that runs this (config.xml) stays deliberately disabled for
-    # now regardless of this fix -- see the comment on that <task>.
+    # now regardless of this fix -- see the comment on that <task>. Also
+    # carries the styled-emails treatment (see html/inc/email.inc above).
     docker cp ./html/ops/team_import.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/team_import.php"
     # Same html/ops/ placement/reason again -- byte-identical stock file
     # plus initializing $letters_used before build_alpha_pages()'s own
@@ -298,6 +323,9 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     # live: "Undefined variable $letters_used" on every single run in
     # update_profile_pages.out. Found during profiles testing.
     docker cp ./html/ops/update_profile_pages.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/update_profile_pages.php"
+    # Same html/ops/ placement/reason again -- byte-identical stock file
+    # plus the same styled-emails treatment as html/inc/email.inc above.
+    docker cp ./html/ops/notify.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/ops/notify.php"
     # Badge assignment scripts -- one per family (credit tiers, longevity
     # tiers, discovery one-offs, founder, beta tester), each its own daily
     # <task> (config.xml). Camicia-original, no stock counterpart. See the
@@ -504,11 +532,12 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
     # fix_permissions.sh had just set on it moments earlier, every single
     # run) and gui_urls.xml/run_state_*.xml, none of which are ever
     # docker-cp'd from outside and so never needed this fix at all.
-    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/img/credit_bronze.png $PROJECT_DIR/html/user/img/credit_silver.png $PROJECT_DIR/html/user/img/credit_gold.png $PROJECT_DIR/html/user/img/credit_ruby.png $PROJECT_DIR/html/user/img/credit_sapphire.png $PROJECT_DIR/html/user/img/credit_amethyst.png $PROJECT_DIR/html/user/img/credit_turquoise.png $PROJECT_DIR/html/user/img/credit_emerald.png $PROJECT_DIR/html/user/img/longevity_newcomer.png $PROJECT_DIR/html/user/img/longevity_regular.png $PROJECT_DIR/html/user/img/longevity_veteran.png $PROJECT_DIR/html/user/img/longevity_devoted.png $PROJECT_DIR/html/user/img/longevity_legend.png $PROJECT_DIR/html/user/img/discovery_loop.png $PROJECT_DIR/html/user/img/discovery_longest.png $PROJECT_DIR/html/user/img/founder.png $PROJECT_DIR/html/user/img/beta_tester.png $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown -R $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/assimilator $PROJECT_DIR/worker $PROJECT_DIR/work_generator $PROJECT_DIR/verify_sample $PROJECT_DIR/templates $PROJECT_DIR/project.xml $PROJECT_DIR/db_dump_spec.xml $PROJECT_DIR/html/project/project.inc $PROJECT_DIR/html/project/project_description.php $PROJECT_DIR/html/user/signup.php $PROJECT_DIR/html/user/about.php $PROJECT_DIR/html/user/privacy.php $PROJECT_DIR/html/user/progress.php $PROJECT_DIR/html/user/cert1.php $PROJECT_DIR/html/user/cert_team.php $PROJECT_DIR/html/inc/cert.inc $PROJECT_DIR/html/user/verify_cert.php $PROJECT_DIR/html/user/img/camicia_banner.svg $PROJECT_DIR/html/user/img/favicon.svg $PROJECT_DIR/html/user/img/credit_bronze.png $PROJECT_DIR/html/user/img/credit_silver.png $PROJECT_DIR/html/user/img/credit_gold.png $PROJECT_DIR/html/user/img/credit_ruby.png $PROJECT_DIR/html/user/img/credit_sapphire.png $PROJECT_DIR/html/user/img/credit_amethyst.png $PROJECT_DIR/html/user/img/credit_turquoise.png $PROJECT_DIR/html/user/img/credit_emerald.png $PROJECT_DIR/html/user/img/longevity_newcomer.png $PROJECT_DIR/html/user/img/longevity_regular.png $PROJECT_DIR/html/user/img/longevity_veteran.png $PROJECT_DIR/html/user/img/longevity_devoted.png $PROJECT_DIR/html/user/img/longevity_legend.png $PROJECT_DIR/html/user/img/discovery_loop.png $PROJECT_DIR/html/user/img/discovery_longest.png $PROJECT_DIR/html/user/img/founder.png $PROJECT_DIR/html/user/img/beta_tester.png $PROJECT_DIR/html/user/get_project_config.php $PROJECT_DIR/html/inc/util.inc $PROJECT_DIR/html/inc/bootstrap.inc $PROJECT_DIR/html/inc/email.inc $PROJECT_DIR/html/inc/forum_email.inc $PROJECT_DIR/html/inc/friend.inc $PROJECT_DIR/html/inc/pm.inc $PROJECT_DIR/html/inc/uotd.inc $PROJECT_DIR/html/user/team_founder_transfer_action.php $PROJECT_DIR/terms_of_use.txt $PROJECT_DIR/html/inc/PHPMailer $PROJECT_DIR/html/inc/translation.inc $PROJECT_DIR/html/languages/compiled/translation_fixes.inc $PROJECT_DIR/html/ops/login_form.php $PROJECT_DIR/html/ops/manage_user.php 2>/dev/null"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/create_forums.php && chmod +x $PROJECT_DIR/html/ops/create_forums.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/generate_progress_stats.php && chmod +x $PROJECT_DIR/html/ops/generate_progress_stats.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/deprecate_app_version.php && chmod +x $PROJECT_DIR/html/ops/deprecate_app_version.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/team_import.php && chmod +x $PROJECT_DIR/html/ops/team_import.php"
+    docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/notify.php && chmod +x $PROJECT_DIR/html/ops/notify.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_credit.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_credit.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_longevity.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_longevity.php"
     docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $PROJECT_DIR/html/ops/badge_assign_discovery.php && chmod +x $PROJECT_DIR/html/ops/badge_assign_discovery.php"
