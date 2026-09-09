@@ -70,8 +70,23 @@ PUBLISHED_COMMIT_FILE="$BACKUP_DIR/published_version_commit"
 # against the one the worker was last built from, restricted to the paths
 # that actually feed the compiled binary: worker.cpp + core/ (headers
 # included -- they're #included into the compile even though not passed
-# to g++ directly), and this script itself (a flag/platform-list change
-# here is an app-relevant change even with every .cpp byte-identical).
+# to g++ directly), this script itself (a flag/platform-list change here
+# is an app-relevant change even with every .cpp byte-identical), and
+# images/server/Dockerfile's ARG BOINC_COMMIT -- the worker statically
+# links against libboinc.a/libboinc_api.a, which get rebuilt from whatever
+# upstream source that pin resolves to, so a pin bump can change the
+# worker's actual compiled bytes without touching a single line under
+# worker/ itself. Missed this the first time the pin was ever bumped after
+# this gate existed: the bump correctly updated /usr/local/src/boinc
+# inside the image, but this check saw no diff in its old path list and
+# silently skipped republishing, leaving the worker built against the
+# stale pin indefinitely with no error or warning. That specific bump
+# turned out to be harmless (the new upstream commits were all guarded/
+# platform-specific, byte-identical Linux output either way) but the gate
+# itself had no way to know that in advance -- it just got lucky. Treating
+# any Dockerfile change as "must republish" is deliberately conservative:
+# some version churn on a rare, human-triggered pin bump is a much safer
+# default than silently serving a binary built against a stale pin.
 # Deliberately NOT all of worker/ -- worker/test_resume.sh lives there too
 # and has no bearing on the compiled binary's bytes.
 #
@@ -85,7 +100,7 @@ if [ "$FORCE_PUBLISH" -eq 1 ]; then
     echo "🔧 --force: publishing a new worker version regardless of source changes."
 elif [ -f "$PUBLISHED_COMMIT_FILE" ]; then
     LAST_PUBLISHED_SHA=$(cat "$PUBLISHED_COMMIT_FILE")
-    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core publish_version.sh 2>/dev/null; then
+    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core publish_version.sh ../images/server/Dockerfile 2>/dev/null; then
         SKIP_WORKER_PUBLISH=1
         echo "⏭️  Worker app unchanged since $LAST_PUBLISHED_SHA -- skipping compile/version bump/re-signing. Use --force to publish anyway."
     fi
