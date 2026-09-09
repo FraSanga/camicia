@@ -151,11 +151,13 @@ function insert_case($t, $user) {
         $user->update("teamid=$team->id");
 
         send_email($user, "Team created on ".PROJECT,
-        "An instance of the BOINC-wide team '$t->name'
+        email_greeting($user)."
+An instance of the BOINC-wide team '$t->name'
 has been created on the project:
 name: ".PROJECT."
 URL: $master_url
 "
+        . email_footer()
         );
     }
 }

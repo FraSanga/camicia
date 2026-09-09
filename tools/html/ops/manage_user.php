@@ -111,12 +111,21 @@ function handle_suspend($user) {
             $q = "UPDATE forum_preferences SET banished_until=$t WHERE userid=$user->id";
             _mysql_query($q);
 
-            // Send suspension e-mail to user and administrators
-
+            // Send suspension e-mail to user and administrators -- a
+            // personal copy to the user, a separate third-person summary
+            // to the admins.
+            //
             if ($dt>0) {
                 $subject = PROJECT." posting privileges suspended for ". $user->name;
-                $body = "
+                $body = email_greeting($user)."
 Forum posting privileges for the " .PROJECT. " user \"".$user->name."\"
+have been suspended for " .time_diff($dt). " by ".$g_logged_in_user->name.".
+The reason given was:
+
+$reason
+
+The suspension will end at " .time_str($t)."\n";
+                $admin_body = "Forum posting privileges for the " .PROJECT. " user \"".$user->name."\"
 have been suspended for " .time_diff($dt). " by ".$g_logged_in_user->name.".
 The reason given was:
 
@@ -125,13 +134,18 @@ $reason
 The suspension will end at " .time_str($t)."\n";
             } else {
                 $subject = PROJECT." user ". $user->name. " unsuspended";
-                $body = "
+                $body = email_greeting($user)."
 Forum posting privileges for the " .PROJECT. " user \"".$user->name."\"
+have been restored by ".$g_logged_in_user->name."\n";
+                $admin_body = "Forum posting privileges for the " .PROJECT. " user \"".$user->name."\"
 have been restored by ".$g_logged_in_user->name."\n";
                 if ($reason) {
                     $body.="The reason given was:\n\n   $reason\n";
+                    $admin_body.="The reason given was:\n\n   $reason\n";
                 }
             }
+            $body .= email_footer();
+            $admin_body .= email_footer(false);
 
             send_email($user, $subject, $body);
 
@@ -150,7 +164,7 @@ have been restored by ".$g_logged_in_user->name."\n";
                 $admin = new stdClass();
                 $admin->email_addr = $email;
                 $admin->name = '';
-                send_email($admin, $subject, $body);
+                send_email($admin, $subject, $admin_body);
             }
         }
     }
