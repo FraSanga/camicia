@@ -7,10 +7,10 @@ By creating an account on Camicia ("the Project"), you agree to the following te
 1. What this Project does
 
 Camicia is a volunteer distributed-computing project, built on BOINC, that exhaustively searches
-permutations of a 52-card deck to find games of Beggar-My-Neighbour (known in Italy as "Camicia," the
-game this Project is named after) that loop forever, or that run unusually long before eventually
-ending. When you attach a computer to this Project, it will download work units, run computations
-using your computer's processor and memory, and return the results.
+permutations of a 52-card deck to find games of Beggar-My-Neighbour (this Project is named after the
+Italian card game in the same family, though the two differ in rules) that loop forever, or that run
+unusually long before eventually ending. When you attach a computer to this Project, it will download
+work units, run computations using your computer's processor and memory, and return the results.
 
 2. Participation is voluntary and unpaid
 

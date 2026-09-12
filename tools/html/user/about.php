@@ -16,7 +16,7 @@ check_get_args(array());
 page_head(tra("About %1", PROJECT));
 
 echo "
-<p>".tra("%1 is a %2BOINC%3 distributed-computing project. It exhaustively searches every distinct deal of a 52-card deck, looking for games of Beggar-My-Neighbour, known in Italy as %1, that loop forever, or that take unusually long to end.", PROJECT, "<a href=\"https://boinc.berkeley.edu\">", "</a>")."
+<p>".tra("%1 is a %2BOINC%3 distributed-computing project. It exhaustively searches every distinct deal of a 52-card deck, looking for games of Beggar-My-Neighbour that loop forever, or that take unusually long to end. It's named after the Italian card game in the same family, though the two differ in rules.", PROJECT, "<a href=\"https://boinc.berkeley.edu\">", "</a>")."
 
 <h3>".tra("Why search for this?")."</h3>
 <p>".tra("Beggar-My-Neighbour looks like a simple children's game, but whether every possible deal is guaranteed to eventually end is an open question in mathematics. %1 checks every distinct deal exactly once, distributing the work across volunteers' computers, to help find out.", PROJECT)."
