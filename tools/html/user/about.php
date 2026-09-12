@@ -19,7 +19,7 @@ echo "
 <p>".tra("%1 is a %2BOINC%3 distributed-computing project. It exhaustively searches every distinct deal of a 52-card deck, looking for games of Beggar-My-Neighbour that loop forever, or that take unusually long to end. It's named after the Italian card game in the same family, though the two differ in rules.", PROJECT, "<a href=\"https://boinc.berkeley.edu\">", "</a>")."
 
 <h3>".tra("Why search for this?")."</h3>
-<p>".tra("Beggar-My-Neighbour looks like a simple children's game, but whether every possible deal is guaranteed to eventually end is an open question in mathematics. %1 checks every distinct deal exactly once, distributing the work across volunteers' computers, to help find out.", PROJECT)."
+<p>".tra("Beggar-My-Neighbour looks like a simple children's game, but its long-run behavior isn't fully understood: across the roughly 6.5x10^20 distinct ways a deck can be dealt, nobody knows how many of them loop forever instead of ending, or what the longest possible finite game looks like. %1 checks every distinct deal exactly once, distributing the work across volunteers' computers, to help find out.", PROJECT)."
 
 <h3>".tra("What we've found so far")."</h3>
 <p>".tra("Most deals finish, some taking thousands of tricks. Whether any deal loops forever at all was confirmed for the first time in 2024, when a deal that returns to an identical board state after 474 cards played was documented elsewhere -- proof that some games truly never end. %1 uses that exact deal to verify its own simulation engine is correct, and is now searching the rest of the deck for its own first discovery.", PROJECT)."
