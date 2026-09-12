@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Camicia -- Not Found</title>
+<meta name="description" content="This page isn't in the deck." />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<style>
+  :root {
+    --felt: #0f1f1a;
+    --felt-2: #16302a;
+    --felt-line: #1d3a32;
+    --gold: #c9a227;
+    --gold-dim: #8c7a3e;
+    --cream: #ede3cb;
+    --cream-dim: #b7ae95;
+    --ruby: #a83349;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--felt);
+    color: var(--cream);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 6vh 1.5rem;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* faint diamond lattice, like the reverse of a card */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 34px),
+      repeating-linear-gradient(-45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 34px);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 0%, transparent 40%, var(--felt) 100%);
+    pointer-events: none;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 34rem;
+    text-align: center;
+  }
+
+  .frame {
+    border: 1px solid var(--gold-dim);
+    border-radius: 2px;
+    padding: 3rem 2.25rem 2.5rem;
+    background: linear-gradient(180deg, rgba(201, 162, 39, 0.05), transparent 40%);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.75rem, 9vw, 4.25rem);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: var(--gold);
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    margin: 0.35rem 0 0;
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--cream-dim);
+    letter-spacing: 0.01em;
+  }
+
+  .suits {
+    margin: 1.75rem 0;
+    font-size: 1.3rem;
+    letter-spacing: 0.9em;
+    text-indent: 0.9em;
+  }
+
+  .suits .red { color: var(--ruby); }
+  .suits .black { color: var(--cream); }
+
+  .rule {
+    width: 5rem;
+    height: 1px;
+    margin: 0 auto 1.75rem;
+    background: var(--gold-dim);
+    border: none;
+  }
+
+  p.lede {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--cream-dim);
+    max-width: 30rem;
+    margin: 0 auto;
+  }
+
+  .home-link {
+    margin-top: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    border: 1px solid var(--felt-line);
+    padding: 0.65rem 1.4rem;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .home-link:hover,
+  .home-link:focus-visible {
+    color: var(--gold);
+    border-color: var(--gold-dim);
+  }
+
+  .home-link:focus-visible {
+    outline: 1px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  footer {
+    margin-top: 2.25rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--gold-dim);
+    opacity: 0.8;
+  }
+
+  footer a {
+    color: inherit;
+    text-decoration-color: var(--felt-line);
+    text-underline-offset: 0.2em;
+  }
+
+  footer a:hover,
+  footer a:focus-visible {
+    color: var(--gold);
+    text-decoration-color: var(--gold);
+  }
+
+  footer a:focus-visible {
+    outline: 1px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 480px) {
+    body { padding: 8vh 1rem; }
+
+    .frame { padding: 2rem 1.25rem 1.75rem; }
+
+    .suits {
+      font-size: 1.15rem;
+      letter-spacing: 0.5em;
+      text-indent: 0.5em;
+    }
+
+    .lede { font-size: 0.92rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="frame">
+    <h1>No Such Deal</h1>
+    <p class="subtitle">This page isn't in the deck</p>
+
+    <div class="suits">
+      <span class="black">&spades;</span><span class="red">&hearts;</span><span class="red">&diams;</span><span class="black">&clubs;</span>
+    </div>
+
+    <hr class="rule" />
+
+    <p class="lede">
+      Whatever you were looking for, it wasn't among the deals we've dealt.
+      Head back and try again.
+    </p>
+
+    <a class="home-link" href="/">&larr; Back to Camicia</a>
+  </div>
+
+  <footer>a <a href="https://boinc.berkeley.edu/">BOINC</a> project</footer>
+</main>
+</body>
+</html>

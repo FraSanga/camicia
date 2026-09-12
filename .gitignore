@@ -7,3 +7,7 @@ projects/*
 # never on the host), this one transiently lands in the tracked working
 # tree first.
 tools/worker/worker_app_macos
+
+# wrangler's own local cache/build state for landing/'s Cloudflare Workers
+# deploy -- ephemeral and machine-specific, not meant for version control.
+landing/.wrangler/
