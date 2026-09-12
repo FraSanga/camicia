@@ -148,6 +148,7 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     docker cp ./html/project/project_description.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/project/project_description.php"
     docker cp ./html/user/about.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/about.php"
     docker cp ./html/user/privacy.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/privacy.php"
+    docker cp ./html/user/error_404.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/error_404.php"
     # Certificate: restyled to match the site's felt/gold/cream identity,
     # plus a verification code/link -- see html/inc/cert.inc.
     docker cp ./html/user/cert1.php "$SERVER_CONTAINER_NAME":"$PROJECT_DIR/html/user/cert1.php"
