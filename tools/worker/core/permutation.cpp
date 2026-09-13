@@ -1,6 +1,5 @@
 #include "permutation.hpp"
 #include <cassert>
-#include <map>
 
 typedef __int128_t int128;
 
@@ -18,12 +17,11 @@ static void init_table() {
     table_initialized = true;
 }
 
-static int128 fast_multinomial(int counts[5]) {
-    int n = 0;
-    for (int i = 0; i < 5; ++i) n += counts[i];
+static inline int128 fast_multinomial(const int counts[5]) {
+    int current_n = counts[0] + counts[1] + counts[2] + counts[3] + counts[4];
     int128 res = 1;
-    int current_n = n;
-    for (int i = 0; i < 5; ++i) {
+    // The 5th count (counts[4]) has nCr(c4, c4) == 1, so we only need to multiply first 4 terms
+    for (int i = 0; i < 4; ++i) {
         if (counts[i] > 0) {
             res *= nCr_table[current_n][counts[i]];
             current_n -= counts[i];
@@ -32,10 +30,10 @@ static int128 fast_multinomial(int counts[5]) {
     return res;
 }
 
-std::vector<std::string> getNthPermutation(int128 n) {
+void getNthPermutation(int128 n, Card* out) {
     init_table();
     int counts[5] = {4, 4, 4, 4, 36}; // A, K, Q, J, -
-    const char symbols[] = {'A', 'K', 'Q', 'J', '-'};
+    const Card symbols[] = {Card::ACE, Card::KING, Card::QUEEN, Card::JACK, Card::NUMBER};
 
     {
         int total_counts[5] = {4, 4, 4, 4, 36};
@@ -43,24 +41,47 @@ std::vector<std::string> getNthPermutation(int128 n) {
         assert(n >= 0 && n < total_permutations &&
                "getNthPermutation: index out of range of the 52-card permutation space");
     }
-    std::vector<std::string> result;
-    result.reserve(52);
-    
+
     for (int i = 0; i < 52; ++i) {
+        // Fast-path: once all 16 face cards are placed, the rest are guaranteed to be NUMBER cards
+        if (counts[0] == 0 && counts[1] == 0 && counts[2] == 0 && counts[3] == 0) {
+            for (int j = i; j < 52; ++j) out[j] = Card::NUMBER;
+            return;
+        }
+
         for (int s = 0; s < 5; ++s) {
             if (counts[s] == 0) continue;
-            
+
             counts[s]--;
             int128 num = fast_multinomial(counts);
-            
+
             if (n < num) {
-                if (symbols[s] == '-') result.push_back("2");
-                else result.push_back(std::string(1, symbols[s]));
+                out[i] = symbols[s];
                 break;
             } else {
                 n -= num;
                 counts[s]++;
             }
+        }
+    }
+}
+
+void getNthPermutation(int128 n, std::array<Card, 52>& out) {
+    getNthPermutation(n, out.data());
+}
+
+std::vector<std::string> getNthPermutation(int128 n) {
+    Card cards[52];
+    getNthPermutation(n, cards);
+    std::vector<std::string> result;
+    result.reserve(52);
+    for (int i = 0; i < 52; ++i) {
+        switch (cards[i]) {
+            case Card::ACE: result.push_back("A"); break;
+            case Card::KING: result.push_back("K"); break;
+            case Card::QUEEN: result.push_back("Q"); break;
+            case Card::JACK: result.push_back("J"); break;
+            default: result.push_back("2"); break;
         }
     }
     return result;
