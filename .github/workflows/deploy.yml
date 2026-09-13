@@ -96,10 +96,11 @@ jobs:
           # dlopen/dlsym are part of libSystem on macOS, no separate libdl
           # to link (same reason the Windows build already omits it).
           clang++ -O3 \
-            tools/worker/worker.cpp tools/worker/core/*.cpp \
+            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
             -o worker_app_macos \
             -I boinc-macos/api -I boinc-macos/lib \
             -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
             boinc-macos/api/libboinc_api.a boinc-macos/lib/libboinc.a \
             -pthread
 

@@ -62,10 +62,11 @@ jobs:
       - name: Compile Worker (macOS arm64)
         run: |
           clang++ -O3 \
-            tools/worker/worker.cpp tools/worker/core/*.cpp \
+            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
             -o worker_app_macos \
             -I boinc-macos/api -I boinc-macos/lib \
             -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
             boinc-macos/api/libboinc_api.a boinc-macos/lib/libboinc.a \
             -pthread
 
