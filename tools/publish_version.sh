@@ -100,7 +100,7 @@ if [ "$FORCE_PUBLISH" -eq 1 ]; then
     echo "🔧 --force: publishing a new worker version regardless of source changes."
 elif [ -f "$PUBLISHED_COMMIT_FILE" ]; then
     LAST_PUBLISHED_SHA=$(cat "$PUBLISHED_COMMIT_FILE")
-    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core publish_version.sh ../images/server/Dockerfile 2>/dev/null; then
+    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core worker/opencl publish_version.sh ../images/server/Dockerfile 2>/dev/null; then
         SKIP_WORKER_PUBLISH=1
         echo "⏭️  Worker app unchanged since $LAST_PUBLISHED_SHA -- skipping compile/version bump/re-signing. Use --force to publish anyway."
     fi
@@ -140,11 +140,14 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
+$PROJECT_DIR/worker/opencl/*.cpp \
 -o $PROJECT_DIR/worker/worker_app \
 -I/usr/local/src/boinc/api \
 -I/usr/local/src/boinc/lib \
 -I$PROJECT_DIR/worker \
 -I$PROJECT_DIR/worker/core \
+-I$PROJECT_DIR/worker/opencl \
+-I$PROJECT_DIR/worker/opencl/include \
 /usr/local/src/boinc/api/libboinc_api.a \
 /usr/local/src/boinc/lib/libboinc.a \
 -pthread -ldl"
@@ -159,11 +162,14 @@ $PROJECT_DIR/worker/core/*.cpp \
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && x86_64-w64-mingw32-g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
+$PROJECT_DIR/worker/opencl/*.cpp \
 -o $PROJECT_DIR/worker/worker_app.exe \
 -I/usr/local/src/boinc-win/api \
 -I/usr/local/src/boinc-win/lib \
 -I$PROJECT_DIR/worker \
 -I$PROJECT_DIR/worker/core \
+-I$PROJECT_DIR/worker/opencl \
+-I$PROJECT_DIR/worker/opencl/include \
 /usr/local/src/boinc-win/api/libboinc_api.a \
 /usr/local/src/boinc-win/lib/libboinc.a \
 -pthread"
@@ -177,11 +183,14 @@ $PROJECT_DIR/worker/core/*.cpp \
     docker exec --user "$PROJECTS_USER" "$SERVER_CONTAINER_NAME" bash -c "shopt -s nullglob && aarch64-linux-gnu-g++ -O3 -static \
 $PROJECT_DIR/worker/worker.cpp \
 $PROJECT_DIR/worker/core/*.cpp \
+$PROJECT_DIR/worker/opencl/*.cpp \
 -o $PROJECT_DIR/worker/worker_app_arm64 \
 -I/usr/local/src/boinc-arm64/api \
 -I/usr/local/src/boinc-arm64/lib \
 -I$PROJECT_DIR/worker \
 -I$PROJECT_DIR/worker/core \
+-I$PROJECT_DIR/worker/opencl \
+-I$PROJECT_DIR/worker/opencl/include \
 /usr/local/src/boinc-arm64/api/libboinc_api.a \
 /usr/local/src/boinc-arm64/lib/libboinc.a \
 -pthread -ldl"
@@ -439,13 +448,33 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
     # platforms per version, and means the existing code-signing step (already
     # unconditional) signs both files with no per-platform logic needed.
     echo "📦 Staging new app version..."
-    for ENTRY in "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION"; do
+    for ENTRY in \
+        "x86_64-pc-linux-gnu:worker_app:worker_app_$NEW_VERSION" \
+        "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" \
+        "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" \
+        "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION" \
+        "windows_x86_64:worker_app.exe:worker_app_win_opencl_nvidia_$NEW_VERSION.exe:opencl_nvidia" \
+        "windows_x86_64:worker_app.exe:worker_app_win_opencl_ati_$NEW_VERSION.exe:opencl_ati" \
+        "windows_x86_64:worker_app.exe:worker_app_win_opencl_intel_$NEW_VERSION.exe:opencl_intel_gpu" \
+        "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_nvidia_$NEW_VERSION:opencl_nvidia" \
+        "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_ati_$NEW_VERSION:opencl_ati" \
+        "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_intel_$NEW_VERSION:opencl_intel_gpu"; do
         PLATFORM="${ENTRY%%:*}"
         REST="${ENTRY#*:}"
         SOURCE_BINARY="${REST%%:*}"
-        PHYSICAL_NAME="${REST#*:}"
-        VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
-        echo "   -> $PLATFORM: $VERSION_DIR/$PHYSICAL_NAME"
+        REST2="${REST#*:}"
+        if [[ "$REST2" == *":"* ]]; then
+            PHYSICAL_NAME="${REST2%%:*}"
+            PLAN_CLASS="${REST2#*:}"
+            VERSION_DIR="$APP_DIR/$NEW_VERSION/${PLATFORM}__${PLAN_CLASS}"
+            PLAN_CLASS_XML="    <plan_class>$PLAN_CLASS</plan_class>"
+        else
+            PHYSICAL_NAME="$REST2"
+            PLAN_CLASS=""
+            VERSION_DIR="$APP_DIR/$NEW_VERSION/$PLATFORM"
+            PLAN_CLASS_XML=""
+        fi
+        echo "   -> $PLATFORM ${PLAN_CLASS:+($PLAN_CLASS)}: $VERSION_DIR/$PHYSICAL_NAME"
 
         # BOINC treats download/<physical_name> as immutable once a client has
         # fetched it: update_versions refuses to re-stage a same-named file
@@ -465,6 +494,7 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
         <physical_name>$PHYSICAL_NAME</physical_name>
         <main_program/>
     </file>
+$PLAN_CLASS_XML
 </version>
 EOF"
     done

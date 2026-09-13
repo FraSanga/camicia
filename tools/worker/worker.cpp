@@ -4,11 +4,49 @@
 #include <vector>
 #include <algorithm>
 #include <cstdio>
+#ifndef CAMICIA_STANDALONE
 #include "boinc_api.h"
+#include "filesys.h"
+#else
+#include <cstring>
+#include <cstdlib>
+struct APP_INIT_DATA {
+    int gpu_device_num = -1;
+    int gpu_opencl_dev_index = -1;
+    char gpu_type[64] = "";
+};
+inline int boinc_init() { return 0; }
+inline int boinc_finish(int code) { exit(code); }
+inline int boinc_get_init_data(APP_INIT_DATA&) { return -1; }
+inline int boinc_time_to_checkpoint() { return 0; }
+inline void boinc_checkpoint_completed() {}
+inline double boinc_fraction_done(double) { return 0; }
+inline FILE* boinc_fopen(const char* path, const char* mode) { return fopen(path, mode); }
+inline int boinc_rename(const char* oldname, const char* newname) {
+#if defined(_WIN32)
+    remove(newname);
+#endif
+    return rename(oldname, newname);
+}
+inline int boinc_resolve_filename(const char* in, char* out, int len) {
+    std::strncpy(out, in, len);
+    return 0;
+}
+inline int boinc_resolve_filename_s(const std::string& in, std::string& out) {
+    out = in;
+    return 0;
+}
+#endif
 #include "engine.hpp"
 #include "permutation.hpp"
 #include "int128_io.hpp"
-#include "filesys.h"
+#if __has_include("opencl_dispatch.hpp")
+#include "opencl_dispatch.hpp"
+#include "kernel_source.hpp"
+#elif __has_include("opencl/opencl_dispatch.hpp")
+#include "opencl/opencl_dispatch.hpp"
+#include "opencl/kernel_source.hpp"
+#endif
 
 using namespace std;
 
@@ -272,6 +310,135 @@ int main(int argc, char** argv) {
 
     StateTracker stateTracker;
     Card deck[52];
+
+    bool useGpu = false;
+    int targetDevice = -1;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--gpu") {
+            useGpu = true;
+        } else if (arg == "--cpu") {
+            useGpu = false;
+        } else if ((arg == "--device" || arg == "-device") && i + 1 < argc) {
+            useGpu = true;
+            targetDevice = std::atoi(argv[++i]);
+        }
+    }
+
+    if (!useGpu && targetDevice < 0) {
+        APP_INIT_DATA aid;
+        if (boinc_get_init_data(aid) == 0) {
+            if (aid.gpu_opencl_dev_index >= 0) {
+                useGpu = true;
+                targetDevice = aid.gpu_opencl_dev_index;
+            } else if (strlen(aid.gpu_type) > 0 && aid.gpu_device_num >= 0) {
+                useGpu = true;
+                targetDevice = aid.gpu_device_num;
+            }
+        }
+    }
+
+    OpenCLDispatcher dispatcher;
+    bool gpuReady = false;
+
+    if (useGpu) {
+        std::string err;
+        if (dispatcher.initLoader(err)) {
+            auto devices = dispatcher.listDevices();
+            if (targetDevice < 0) {
+                for (size_t i = 0; i < devices.size(); ++i) {
+                    if (devices[i].isGpu) {
+                        targetDevice = (int)i;
+                        break;
+                    }
+                }
+                if (targetDevice < 0 && !devices.empty()) {
+                    targetDevice = 0;
+                }
+            }
+
+            if (targetDevice >= 0 && targetDevice < (int)devices.size()) {
+                std::string kernelSrc = getEmbeddedKernelSource();
+                if (dispatcher.initDevice(targetDevice, kernelSrc, err)) {
+                    gpuReady = true;
+                    fprintf(stderr, "Using OpenCL GPU device [%d]: %s (%s)\n",
+                            targetDevice, devices[targetDevice].deviceName.c_str(),
+                            devices[targetDevice].deviceVendor.c_str());
+                } else {
+                    fprintf(stderr, "Failed to compile OpenCL kernel on device %d: %s\n", targetDevice, err.c_str());
+                }
+            } else {
+                fprintf(stderr, "Requested OpenCL device %d not available (found %zu devices)\n",
+                        targetDevice, devices.size());
+            }
+        } else {
+            fprintf(stderr, "OpenCL runtime loader unavailable: %s\n", err.c_str());
+        }
+
+        if (!gpuReady) {
+            fprintf(stderr, "Falling back to CPU zero-allocation engine.\n");
+        }
+    }
+
+    if (gpuReady) {
+        const uint32_t BATCH_SIZE = 65536;
+        std::string batchErr;
+
+        while (state.currentIndex <= state.endIndex) {
+            int128 remaining = state.endIndex - state.currentIndex + 1;
+            uint32_t currentBatch = (remaining < (int128)BATCH_SIZE) ? (uint32_t)remaining : BATCH_SIZE;
+
+            std::vector<GpuDealOutcome> outcomes;
+            if (!dispatcher.runBatch(state.currentIndex, currentBatch, outcomes, batchErr)) {
+                fprintf(stderr, "OpenCL batch failed at index %s: %s. Falling back to CPU for remainder of workunit.\n",
+                        int128ToString(state.currentIndex).c_str(), batchErr.c_str());
+                gpuReady = false;
+                break;
+            }
+
+            for (uint32_t i = 0; i < currentBatch; ++i) {
+                int128 dealIdx = state.currentIndex + i;
+                if (outcomes[i].status == 0) {
+                    if (outcomes[i].cards > state.bestFinished.cards) {
+                        state.bestFinished.cards = outcomes[i].cards;
+                        state.bestFinished.tricks = outcomes[i].tricks;
+                        state.bestFinished.index = dealIdx;
+                    }
+                } else if (outcomes[i].status == 1) {
+                    if (state.loops.empty() || dealIdx > state.loops.back().index) {
+                        state.loops.push_back({dealIdx, outcomes[i].cards, outcomes[i].tricks});
+                    }
+                } else if (outcomes[i].status == 2) {
+                    Card d[52];
+                    getNthPermutation(dealIdx, d);
+                    GameResult res = CamiciaGame::simulate(d, 26, d + 26, 26, stateTracker);
+                    if (res.status == "finished") {
+                        if (res.cards > state.bestFinished.cards) {
+                            state.bestFinished.cards = res.cards;
+                            state.bestFinished.tricks = res.tricks;
+                            state.bestFinished.index = dealIdx;
+                        }
+                    } else if (res.status == "loop") {
+                        if (state.loops.empty() || dealIdx > state.loops.back().index) {
+                            state.loops.push_back({dealIdx, res.cards, res.tricks});
+                        }
+                    }
+                }
+            }
+
+            state.currentIndex += currentBatch - 1;
+
+            if (should_checkpoint()) {
+                do_checkpoint(state, loopsAppended);
+            }
+
+            double fraction = (double)(state.currentIndex - state.startIndex) / (double)totalToProcess;
+            boinc_fraction_done(fraction);
+
+            state.currentIndex++;
+        }
+    }
 
     for (; state.currentIndex <= state.endIndex; state.currentIndex++) {
         getNthPermutation(state.currentIndex, deck);
