@@ -154,16 +154,14 @@ struct Anomaly {
     string detail;
 };
 
-static GameResult simulate_deal(int128 index) {
-    vector<string> deck = getNthPermutation(index);
-    vector<string> a(deck.begin(), deck.begin() + 26);
-    vector<string> b(deck.begin() + 26, deck.end());
-    CamiciaGame game(a, b);
-    return game.simulate();
+static GameResult simulate_deal(int128 index, StateTracker& tracker) {
+    Card deck[52];
+    getNthPermutation(index, deck);
+    return CamiciaGame::simulate(deck, 26, deck + 26, 26, tracker);
 }
 
-static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anomaly>& anomalies) {
-    GameResult res = simulate_deal(index);
+static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anomaly>& anomalies, StateTracker& tracker) {
+    GameResult res = simulate_deal(index, tracker);
     string idxStr = int128ToString(index);
 
     if (res.status == "loop") {
@@ -180,22 +178,23 @@ static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anom
     if (!recorded.best.has_value()) {
         anomalies.push_back({index,
             "true outcome is 'finished' (cards=" + to_string(res.cards) +
-            ") but the WU recorded no finished line at all"});
+            ") but the result file has no 'finished,...' line at all"});
         return;
     }
-    if (index == recorded.best->index) {
+
+    if (res.cards > recorded.best->cards) {
+        anomalies.push_back({index,
+            "sampled deal (" + idxStr + ") finished in " + to_string(res.cards) +
+            " cards / " + to_string(res.tricks) + " tricks, which beats the recorded best (" +
+            int128ToString(recorded.best->index) + ", " + to_string(recorded.best->cards) +
+            " cards) -- the recorded best is not the actual maximum"});
+    } else if (index == recorded.best->index) {
         if (res.cards != recorded.best->cards || res.tricks != recorded.best->tricks) {
             anomalies.push_back({index,
                 "recorded best-finished value mismatch: recorded cards=" +
                 to_string(recorded.best->cards) + " tricks=" + to_string(recorded.best->tricks) +
                 ", true cards=" + to_string(res.cards) + " tricks=" + to_string(res.tricks)});
         }
-    } else if (res.cards > recorded.best->cards) {
-        anomalies.push_back({index,
-            "true outcome is 'finished' with cards=" + to_string(res.cards) +
-            ", which beats the recorded best (cards=" + to_string(recorded.best->cards) +
-            " at index " + int128ToString(recorded.best->index) +
-            ") -- the recorded best is not actually the maximum"});
     }
 }
 
@@ -212,13 +211,13 @@ static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anom
 // itself. Reuses check_deal() for the best index -- same logic, same
 // message, just guaranteed to run instead of only running if the random
 // sample happens to land on it.
-static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly>& anomalies) {
+static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly>& anomalies, StateTracker& tracker) {
     if (recorded.best.has_value()) {
-        check_deal(recorded.best->index, recorded, anomalies);
+        check_deal(recorded.best->index, recorded, anomalies, tracker);
     }
     for (const string& idxStr : recorded.loopIndices) {
         int128 index = stringTo128(idxStr);
-        GameResult res = simulate_deal(index);
+        GameResult res = simulate_deal(index, tracker);
         if (res.status != "loop") {
             anomalies.push_back({index,
                 "recorded as a loop, but the true outcome is 'finished' (cards=" +
@@ -363,13 +362,14 @@ int main(int argc, char** argv) {
     }
 
     vector<Anomaly> anomalies;
+    StateTracker tracker;
     // Always exhaustive, regardless of sample size -- see this function's
     // own comment for why the random sample alone can't be trusted to
     // catch a false or omitted claim about the one specific best index or
     // the (usually very few) specific recorded loop indices.
-    check_recorded_claims(recorded, anomalies);
+    check_recorded_claims(recorded, anomalies, tracker);
     for (uint64_t off : offsets) {
-        check_deal(start + (int128)off, recorded, anomalies);
+        check_deal(start + (int128)off, recorded, anomalies, tracker);
     }
 
     printf("Checked %llu / %s deals (%.4f%%)%s, plus an exhaustive re-check of the recorded "

@@ -1,15 +1,56 @@
 #include "engine.hpp"
 #include <algorithm>
+#include <cstring>
 #ifdef CAMICIA_TESTING
 #include <cassert>
 #endif
+
+StateTracker::StateTracker()
+    : table(std::make_unique<Entry[]>(CAP)), currentEpoch(1), count(0) {}
+
+void StateTracker::clear() noexcept {
+    count = 0;
+    if (!overflowSet.empty()) {
+        overflowSet.clear();
+    }
+    currentEpoch++;
+    if (currentEpoch == 0) {
+        std::memset(table.get(), 0, sizeof(Entry) * CAP);
+        currentEpoch = 1;
+    }
+}
+
+bool StateTracker::insert(GameStateFingerprint s) {
+    size_t idx = (s.hi ^ (s.lo >> 32)) & (CAP - 1);
+    while (table[idx].epoch == currentEpoch) {
+        if (table[idx].hi == s.hi && table[idx].lo == s.lo) {
+            return false;
+        }
+        idx = (idx + 1) & (CAP - 1);
+    }
+
+    if (count >= MAX_FLAT) {
+        return overflowSet.insert(s).second;
+    }
+
+    table[idx].hi = s.hi;
+    table[idx].lo = s.lo;
+    table[idx].epoch = currentEpoch;
+    count++;
+    return true;
+}
 
 CamiciaGame::CamiciaGame(const std::vector<std::string>& playerA, const std::vector<std::string>& playerB) {
     for (const auto& s : playerA) deckA.push_back(stringToCard(s));
     for (const auto& s : playerB) deckB.push_back(stringToCard(s));
 }
 
-Card CamiciaGame::stringToCard(const std::string& s) {
+CamiciaGame::CamiciaGame(const Card* playerA, size_t sizeA, const Card* playerB, size_t sizeB) {
+    for (size_t i = 0; i < sizeA; ++i) deckA.push_back(playerA[i]);
+    for (size_t i = 0; i < sizeB; ++i) deckB.push_back(playerB[i]);
+}
+
+Card CamiciaGame::stringToCard(const std::string& s) noexcept {
     if (s == "A") return Card::ACE;
     if (s == "K") return Card::KING;
     if (s == "Q") return Card::QUEEN;
@@ -17,7 +58,7 @@ Card CamiciaGame::stringToCard(const std::string& s) {
     return Card::NUMBER;
 }
 
-int CamiciaGame::getPenalty(Card card) {
+int CamiciaGame::getPenalty(Card card) noexcept {
     switch (card) {
         case Card::ACE: return 4;
         case Card::KING: return 3;
@@ -27,13 +68,9 @@ int CamiciaGame::getPenalty(Card card) {
     }
 }
 
-// FNV-1a 64-bit, computed twice with different seeds over the same byte
-// sequence (turn, then every card of deckA, a separator, then every card
-// of deckB) to produce two independent 64-bit words -- see the State
-// comment in engine.hpp for why a hash instead of exact bit-packing.
 CamiciaGame::State CamiciaGame::fingerprintState(
-    int turn, const std::deque<Card>& a, const std::deque<Card>& b
-) {
+    int turn, const CardQueue& a, const CardQueue& b
+) noexcept {
     static constexpr uint64_t FNV_PRIME = 1099511628211ULL;
     static constexpr uint64_t SEED_HI = 0xcbf29ce484222325ULL; // FNV-1a 64-bit offset basis
     static constexpr uint64_t SEED_LO = 0x9E3779B97F4A7C15ULL; // distinct odd constant (2^64/phi)
@@ -44,14 +81,36 @@ CamiciaGame::State CamiciaGame::fingerprintState(
         lo = (lo ^ byte) * FNV_PRIME;
     };
     mix(static_cast<uint64_t>(turn));
-    for (Card c : a) mix(static_cast<uint64_t>(c));
+    for (uint8_t i = 0, idx = a.head; i < a.count; ++i, idx = (idx + 1) & 63) {
+        mix(static_cast<uint64_t>(a.data[idx]));
+    }
     mix(0xFFu); // separator: guarantees distinct (a, b) splits can't collide by shifting cards across it
-    for (Card c : b) mix(static_cast<uint64_t>(c));
+    for (uint8_t i = 0, idx = b.head; i < b.count; ++i, idx = (idx + 1) & 63) {
+        mix(static_cast<uint64_t>(b.data[idx]));
+    }
     return {hi, lo};
 }
 
 GameResult CamiciaGame::simulate() {
-    std::unordered_set<State, StateHash> seenStates;
+    StateTracker tracker;
+    return simulate(tracker);
+}
+
+GameResult CamiciaGame::simulate(StateTracker& tracker) {
+    Card a[64], b[64];
+    size_t sizeA = deckA.size();
+    size_t sizeB = deckB.size();
+    for (size_t i = 0; i < sizeA; ++i) a[i] = deckA.data[(deckA.head + i) & 63];
+    for (size_t i = 0; i < sizeB; ++i) b[i] = deckB.data[(deckB.head + i) & 63];
+    return simulate(a, sizeA, b, sizeB, tracker);
+}
+
+GameResult CamiciaGame::simulate(const Card* playerA, size_t sizeA, const Card* playerB, size_t sizeB, StateTracker& seenStates) {
+    CardQueue deckA, deckB, pile;
+    for (size_t i = 0; i < sizeA; ++i) deckA.push_back(playerA[i]);
+    for (size_t i = 0; i < sizeB; ++i) deckB.push_back(playerB[i]);
+
+    seenStates.clear();
     long long totalCardsPlayed = 0;
     long long totalTricks = 0;
     
@@ -61,30 +120,21 @@ GameResult CamiciaGame::simulate() {
 
     while (true) {
 #ifdef CAMICIA_TESTING
-        // Only compiled into test builds (-DCAMICIA_TESTING) -- zero cost in
-        // the production worker binary. Every card must be in exactly one of
-        // the two decks or the pile at all times.
         assert(deckA.size() + deckB.size() + pile.size() == 52);
 #endif
         if (penaltyRemaining == 0 && pile.empty()) {
-            // The rule "not counting number cards" is interpreted here as:
-            // The position of number cards matters, but their specific value doesn't.
-            // deckA/deckB already store all 2-10 as the single NUMBER value,
-            // so the fingerprint below reflects that automatically.
             State currentState = fingerprintState(turn, deckA, deckB);
-
-            if (!seenStates.insert(currentState).second) {
+            if (!seenStates.insert(currentState)) {
                 return {"loop", totalCardsPlayed, totalTricks};
             }
         }
 
-        std::deque<Card>& activeDeck = (turn == 0) ? deckA : deckB;
-        std::deque<Card>& opponentDeck = (turn == 0) ? deckB : deckA;
+        CardQueue& activeDeck = (turn == 0) ? deckA : deckB;
+        CardQueue& opponentDeck = (turn == 0) ? deckB : deckA;
 
         if (activeDeck.empty()) {
             if (pile.empty()) return {"finished", totalCardsPlayed, totalTricks};
-            for (Card c : pile) opponentDeck.push_back(c);
-            pile.clear();
+            while (!pile.empty()) opponentDeck.push_back(pile.pop_front());
             totalTricks++;
             if (opponentDeck.size() == 52) return {"finished", totalCardsPlayed, totalTricks};
             turn = 1 - turn;
@@ -93,8 +143,7 @@ GameResult CamiciaGame::simulate() {
             continue;
         }
 
-        Card playedCard = activeDeck.front();
-        activeDeck.pop_front();
+        Card playedCard = activeDeck.pop_front();
         pile.push_back(playedCard);
         totalCardsPlayed++;
 
@@ -107,9 +156,8 @@ GameResult CamiciaGame::simulate() {
             if (penaltyRemaining > 0) {
                 penaltyRemaining--;
                 if (penaltyRemaining == 0) {
-                    std::deque<Card>& winnerDeck = (lastPaymentPlayer == 0) ? deckA : deckB;
-                    for (Card c : pile) winnerDeck.push_back(c);
-                    pile.clear();
+                    CardQueue& winnerDeck = (lastPaymentPlayer == 0) ? deckA : deckB;
+                    while (!pile.empty()) winnerDeck.push_back(pile.pop_front());
                     totalTricks++;
                     if (winnerDeck.size() == 52) return {"finished", totalCardsPlayed, totalTricks};
                     turn = lastPaymentPlayer;

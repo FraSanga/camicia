@@ -4,10 +4,10 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <deque>
+#include <memory>
 #include <unordered_set>
 
-enum class Card {
+enum class Card : uint8_t {
     ACE = 1,
     KING = 13,
     QUEEN = 12,
@@ -21,43 +21,94 @@ struct GameResult {
     long long tricks;
 };
 
-class CamiciaGame {
+// Fixed-capacity ring buffer for zero heap allocations.
+// Maximum cards in play in standard Beggar-My-Neighbour is 52 (so 64 capacity is always sufficient).
+struct CardQueue {
+    Card data[64];
+    uint8_t head = 0;
+    uint8_t tail = 0;
+    uint8_t count = 0;
+
+    inline bool empty() const noexcept { return count == 0; }
+    inline uint8_t size() const noexcept { return count; }
+    inline void clear() noexcept { head = tail = count = 0; }
+
+    inline void push_back(Card c) noexcept {
+        data[tail] = c;
+        tail = (tail + 1) & 63;
+        count++;
+    }
+
+    inline Card pop_front() noexcept {
+        Card c = data[head];
+        head = (head + 1) & 63;
+        count--;
+        return c;
+    }
+
+    inline Card front() const noexcept {
+        return data[head];
+    }
+};
+
+struct GameStateFingerprint {
+    uint64_t hi, lo;
+    inline bool operator==(const GameStateFingerprint& other) const noexcept {
+        return hi == other.hi && lo == other.lo;
+    }
+};
+
+struct GameStateHash {
+    inline size_t operator()(const GameStateFingerprint& s) const noexcept {
+        return static_cast<size_t>(s.hi);
+    }
+};
+
+// Reusable state tracker for cycle detection.
+// Uses an epoch-indexed open-addressing flat hash table (O(1) clear, zero per-deal allocations)
+// with fallback to an unordered_set for rare pathologically long games (>3000 tricks).
+class StateTracker {
 public:
-    CamiciaGame(const std::vector<std::string>& playerA, const std::vector<std::string>& playerB);
-    GameResult simulate();
+    static constexpr size_t CAP = 4096;
+    static constexpr size_t MAX_FLAT = 3072; // 75% load factor
+
+    StateTracker();
+    void clear() noexcept;
+    bool insert(GameStateFingerprint s);
 
 private:
-    std::deque<Card> deckA;
-    std::deque<Card> deckB;
-    std::deque<Card> pile;
-
-    Card stringToCard(const std::string& s);
-    int getPenalty(Card card);
-
-    // A game state used to be stored as-is (two std::vector<Card>, up to 26
-    // elements each, plus turn) in a std::set -- ~300+ bytes and 3 heap
-    // allocations per entry, with an O(n) comparison on every tree
-    // operation. This instead stores two independent 64-bit FNV-1a
-    // fingerprints of the same state (turn + full deckA + full deckB) --
-    // a fixed 16 bytes, zero heap allocations, O(1) equality/hash. Exact
-    // bit-packing without any collision risk would need a 256-bit integer
-    // (up to 26 cards x 2 hands x 3 bits, plus lengths, is 167 bits), so
-    // this trades an astronomically small chance of a false "already seen"
-    // (~n^2/2^129 for n states recorded in one deal) for a large,
-    // consistent win in memory and speed. See fingerprintState() in
-    // engine.cpp.
-    struct State {
-        uint64_t hi, lo;
-        bool operator==(const State& other) const {
-            return hi == other.hi && lo == other.lo;
-        }
+    struct Entry {
+        uint64_t hi = 0;
+        uint64_t lo = 0;
+        uint32_t epoch = 0;
     };
-    struct StateHash {
-        size_t operator()(const State& s) const noexcept {
-            return static_cast<size_t>(s.hi);
-        }
-    };
-    static State fingerprintState(int turn, const std::deque<Card>& a, const std::deque<Card>& b);
+    std::unique_ptr<Entry[]> table;
+    uint32_t currentEpoch = 1;
+    size_t count = 0;
+    std::unordered_set<GameStateFingerprint, GameStateHash> overflowSet;
+};
+
+class CamiciaGame {
+public:
+    using State = GameStateFingerprint;
+    using StateHash = GameStateHash;
+
+    CamiciaGame(const std::vector<std::string>& playerA, const std::vector<std::string>& playerB);
+    CamiciaGame(const Card* playerA, size_t sizeA, const Card* playerB, size_t sizeB);
+
+    GameResult simulate();
+    GameResult simulate(StateTracker& tracker);
+
+    // High-performance static simulation avoiding object instantiation
+    static GameResult simulate(const Card* playerA, size_t sizeA, const Card* playerB, size_t sizeB, StateTracker& tracker);
+
+    static Card stringToCard(const std::string& s) noexcept;
+    static int getPenalty(Card card) noexcept;
+    static State fingerprintState(int turn, const CardQueue& a, const CardQueue& b) noexcept;
+
+private:
+    CardQueue deckA;
+    CardQueue deckB;
 };
 
 #endif

@@ -270,13 +270,12 @@ int main(int argc, char** argv) {
     int128 totalToProcess = state.endIndex - state.startIndex;
     if (totalToProcess == 0) totalToProcess = 1;
 
+    StateTracker stateTracker;
+    Card deck[52];
+
     for (; state.currentIndex <= state.endIndex; state.currentIndex++) {
-        std::vector<std::string> deck = getNthPermutation(state.currentIndex);
-        std::vector<std::string> a(deck.begin(), deck.begin() + 26);
-        std::vector<std::string> b(deck.begin() + 26, deck.end());
-        
-        CamiciaGame game(a, b);
-        GameResult res = game.simulate();
+        getNthPermutation(state.currentIndex, deck);
+        GameResult res = CamiciaGame::simulate(deck, 26, deck + 26, 26, stateTracker);
 
         if (res.status == "finished") {
             if (res.cards > state.bestFinished.cards) {
