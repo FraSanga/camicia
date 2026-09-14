@@ -70,7 +70,7 @@ jobs:
           # shim dir so the unprefixed names resolve.
           echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
 
-      - name: Build BOINC lib/api (macOS universal: arm64 + x86_64)
+      - name: "Build BOINC lib/api (macOS universal: arm64 + x86_64)"
         if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
         run: |
           git init boinc-src
@@ -108,7 +108,7 @@ jobs:
           lipo -info boinc-macos/api/libboinc_api.a
           lipo -info boinc-macos/lib/libboinc.a
 
-      - name: Compile Worker (macOS universal: arm64 + x86_64)
+      - name: "Compile Worker (macOS universal: arm64 + x86_64)"
         run: |
           # No -static: Apple doesn't support fully static executables
           # (no crt0.o to link against libSystem statically). No -ldl:
