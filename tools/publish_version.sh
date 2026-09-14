@@ -100,7 +100,7 @@ if [ "$FORCE_PUBLISH" -eq 1 ]; then
     echo "🔧 --force: publishing a new worker version regardless of source changes."
 elif [ -f "$PUBLISHED_COMMIT_FILE" ]; then
     LAST_PUBLISHED_SHA=$(cat "$PUBLISHED_COMMIT_FILE")
-    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core worker/opencl publish_version.sh ../images/server/Dockerfile 2>/dev/null; then
+    if git diff --quiet "$LAST_PUBLISHED_SHA" HEAD -- worker/worker.cpp worker/core worker/opencl worker/metal publish_version.sh ../images/server/Dockerfile 2>/dev/null; then
         SKIP_WORKER_PUBLISH=1
         echo "⏭️  Worker app unchanged since $LAST_PUBLISHED_SHA -- skipping compile/version bump/re-signing. Use --force to publish anyway."
     fi
@@ -454,6 +454,7 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
         "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" \
         "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION" \
         "x86_64-apple-darwin:worker_app_macos:worker_app_macos_intel_$NEW_VERSION" \
+        "arm64-apple-darwin:worker_app_macos:worker_app_macos_apple_gpu_$NEW_VERSION:apple_gpu" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_nvidia_$NEW_VERSION.exe:opencl_nvidia" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_ati_$NEW_VERSION.exe:opencl_ati" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_intel_$NEW_VERSION.exe:opencl_intel_gpu" \
