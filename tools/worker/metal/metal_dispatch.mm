@@ -130,10 +130,11 @@ bool MetalDispatcher::initDevice(int deviceIndex, const std::string& kernelSourc
             return false;
         }
 
-        uint64_t nCr_table[53 * 53];
+        uint64_t nCr_table[53 * 53] = {0};
         for (int n = 0; n <= 52; ++n) {
-            for (int r = 0; r <= 52; ++r) {
-                nCr_table[n * 53 + r] = (uint64_t)nCr(n, r);
+            nCr_table[n * 53 + 0] = 1;
+            for (int r = 1; r <= n; ++r) {
+                nCr_table[n * 53 + r] = nCr_table[(n - 1) * 53 + (r - 1)] + nCr_table[(n - 1) * 53 + r];
             }
         }
         m->nCrBuffer = [selectedDevice newBufferWithBytes:nCr_table length:sizeof(nCr_table) options:MTLResourceStorageModeShared];
