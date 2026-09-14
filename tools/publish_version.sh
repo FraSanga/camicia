@@ -458,7 +458,10 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_intel_$NEW_VERSION.exe:opencl_intel_gpu" \
         "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_nvidia_$NEW_VERSION:opencl_nvidia" \
         "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_ati_$NEW_VERSION:opencl_ati" \
-        "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_intel_$NEW_VERSION:opencl_intel_gpu"; do
+        "x86_64-pc-linux-gnu:worker_app:worker_app_linux_opencl_intel_$NEW_VERSION:opencl_intel_gpu" \
+        "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_opencl_nvidia_$NEW_VERSION:opencl_nvidia" \
+        "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_opencl_ati_$NEW_VERSION:opencl_ati" \
+        "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_opencl_intel_$NEW_VERSION:opencl_intel_gpu"; do
         PLATFORM="${ENTRY%%:*}"
         REST="${ENTRY#*:}"
         SOURCE_BINARY="${REST%%:*}"
