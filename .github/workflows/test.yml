@@ -39,3 +39,41 @@ jobs:
           /tmp/test_engine_small_deck
       - name: Build and run verify_sample integration test
         run: bash tests/test_verify_sample.sh
+
+  macos-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Build and run permutation tests (arm64 & x86_64)"
+        run: |
+          clang++ -std=c++17 -O2 -arch arm64 tests/test_permutation.cpp tools/worker/core/permutation.cpp \
+            -o /tmp/test_perm_arm64 -I tools/worker/core
+          /tmp/test_perm_arm64
+
+          clang++ -std=c++17 -O2 -arch x86_64 tests/test_permutation.cpp tools/worker/core/permutation.cpp \
+            -o /tmp/test_perm_x86_64 -I tools/worker/core
+          arch -x86_64 /tmp/test_perm_x86_64
+
+      - name: "Build and run engine tests (arm64 & x86_64)"
+        run: |
+          clang++ -std=c++17 -O2 -arch arm64 -DCAMICIA_TESTING tests/test_engine.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_eng_arm64 -I tools/worker/core
+          /tmp/test_eng_arm64
+
+          clang++ -std=c++17 -O2 -arch x86_64 -DCAMICIA_TESTING tests/test_engine.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_eng_x86_64 -I tools/worker/core
+          arch -x86_64 /tmp/test_eng_x86_64
+
+      - name: "Build and run engine property tests (arm64 & x86_64)"
+        run: |
+          clang++ -std=c++17 -O2 -arch arm64 -DCAMICIA_TESTING tests/test_engine_properties.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_props_arm64 -I tools/worker/core
+          /tmp/test_props_arm64
+
+          clang++ -std=c++17 -O2 -arch x86_64 -DCAMICIA_TESTING tests/test_engine_properties.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_props_x86_64 -I tools/worker/core
+          arch -x86_64 /tmp/test_props_x86_64

@@ -99,6 +99,28 @@ jobs:
           lipo -info worker_app_macos
           file worker_app_macos
 
+      - name: "Test Worker Execution (arm64 native & x86_64 Rosetta)"
+        run: |
+          echo "=== 1. Testing native arm64 execution ==="
+          echo "0 1000" > in
+          ./worker_app_macos --cpu
+          cp out out_arm64
+          echo "arm64 output:"
+          cat out_arm64
+
+          echo "=== 2. Testing x86_64 execution under Rosetta ==="
+          rm -f out checkpoint.txt loops.txt
+          echo "0 1000" > in
+          arch -x86_64 ./worker_app_macos --cpu
+          cp out out_x86_64
+          echo "x86_64 output:"
+          cat out_x86_64
+
+          echo "=== 3. Verifying deterministic results match across architectures ==="
+          diff -u out_arm64 out_x86_64
+          echo "PASS: arm64 and x86_64 outputs match byte-for-byte!"
+          rm -f in out out_arm64 out_x86_64 checkpoint.txt loops.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: worker_app_macos
