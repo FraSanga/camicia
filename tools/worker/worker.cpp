@@ -47,6 +47,13 @@ inline int boinc_resolve_filename_s(const std::string& in, std::string& out) {
 #include "opencl/opencl_dispatch.hpp"
 #include "opencl/kernel_source.hpp"
 #endif
+#if __has_include("metal_dispatch.hpp")
+#include "metal_dispatch.hpp"
+#include "metal_kernel_source.hpp"
+#elif __has_include("metal/metal_dispatch.hpp")
+#include "metal/metal_dispatch.hpp"
+#include "metal/metal_kernel_source.hpp"
+#endif
 
 using namespace std;
 
@@ -339,41 +346,61 @@ int main(int argc, char** argv) {
         }
     }
 
-    OpenCLDispatcher dispatcher;
+    enum GpuBackend { BACKEND_NONE, BACKEND_OPENCL, BACKEND_METAL };
+    GpuBackend activeBackend = BACKEND_NONE;
+    OpenCLDispatcher openclDispatcher;
+    MetalDispatcher metalDispatcher;
     bool gpuReady = false;
 
     if (useGpu) {
-        std::string err;
-        if (dispatcher.initLoader(err)) {
-            auto devices = dispatcher.listDevices();
-            if (targetDevice < 0) {
-                for (size_t i = 0; i < devices.size(); ++i) {
-                    if (devices[i].isGpu) {
-                        targetDevice = (int)i;
-                        break;
+#if defined(__APPLE__)
+        std::string metalErr;
+        std::string metalKernelSrc = getEmbeddedMetalKernelSource();
+        int metalDevIdx = (targetDevice >= 0) ? targetDevice : 0;
+        if (metalDispatcher.initDevice(metalDevIdx, metalKernelSrc, metalErr)) {
+            gpuReady = true;
+            activeBackend = BACKEND_METAL;
+            fprintf(stderr, "Using Apple Metal GPU device [%d]: %s\n",
+                    metalDevIdx, metalDispatcher.getDeviceName().c_str());
+        } else {
+            fprintf(stderr, "Metal GPU initialization failed: %s\n", metalErr.c_str());
+        }
+#endif
+
+        if (!gpuReady) {
+            std::string err;
+            if (openclDispatcher.initLoader(err)) {
+                auto devices = openclDispatcher.listDevices();
+                if (targetDevice < 0) {
+                    for (size_t i = 0; i < devices.size(); ++i) {
+                        if (devices[i].isGpu) {
+                            targetDevice = (int)i;
+                            break;
+                        }
+                    }
+                    if (targetDevice < 0 && !devices.empty()) {
+                        targetDevice = 0;
                     }
                 }
-                if (targetDevice < 0 && !devices.empty()) {
-                    targetDevice = 0;
-                }
-            }
 
-            if (targetDevice >= 0 && targetDevice < (int)devices.size()) {
-                std::string kernelSrc = getEmbeddedKernelSource();
-                if (dispatcher.initDevice(targetDevice, kernelSrc, err)) {
-                    gpuReady = true;
-                    fprintf(stderr, "Using OpenCL GPU device [%d]: %s (%s)\n",
-                            targetDevice, devices[targetDevice].deviceName.c_str(),
-                            devices[targetDevice].deviceVendor.c_str());
+                if (targetDevice >= 0 && targetDevice < (int)devices.size()) {
+                    std::string kernelSrc = getEmbeddedKernelSource();
+                    if (openclDispatcher.initDevice(targetDevice, kernelSrc, err)) {
+                        gpuReady = true;
+                        activeBackend = BACKEND_OPENCL;
+                        fprintf(stderr, "Using OpenCL GPU device [%d]: %s (%s)\n",
+                                targetDevice, devices[targetDevice].deviceName.c_str(),
+                                devices[targetDevice].deviceVendor.c_str());
+                    } else {
+                        fprintf(stderr, "Failed to compile OpenCL kernel on device %d: %s\n", targetDevice, err.c_str());
+                    }
                 } else {
-                    fprintf(stderr, "Failed to compile OpenCL kernel on device %d: %s\n", targetDevice, err.c_str());
+                    fprintf(stderr, "Requested OpenCL device %d not available (found %zu devices)\n",
+                            targetDevice, devices.size());
                 }
             } else {
-                fprintf(stderr, "Requested OpenCL device %d not available (found %zu devices)\n",
-                        targetDevice, devices.size());
+                fprintf(stderr, "OpenCL runtime loader unavailable: %s\n", err.c_str());
             }
-        } else {
-            fprintf(stderr, "OpenCL runtime loader unavailable: %s\n", err.c_str());
         }
 
         if (!gpuReady) {
@@ -390,8 +417,21 @@ int main(int argc, char** argv) {
             uint32_t currentBatch = (remaining < (int128)BATCH_SIZE) ? (uint32_t)remaining : BATCH_SIZE;
 
             std::vector<GpuDealOutcome> outcomes;
-            if (!dispatcher.runBatch(state.currentIndex, currentBatch, outcomes, batchErr)) {
-                fprintf(stderr, "OpenCL batch failed at index %s: %s. Falling back to CPU for remainder of workunit.\n",
+            bool batchOk = false;
+            if (activeBackend == BACKEND_METAL) {
+                std::vector<MetalDealOutcome> mOutcomes;
+                if (metalDispatcher.runBatch(state.currentIndex, currentBatch, mOutcomes, batchErr)) {
+                    batchOk = true;
+                    outcomes.resize(currentBatch);
+                    static_assert(sizeof(GpuDealOutcome) == sizeof(MetalDealOutcome), "Outcome size mismatch");
+                    std::memcpy(outcomes.data(), mOutcomes.data(), currentBatch * sizeof(GpuDealOutcome));
+                }
+            } else if (activeBackend == BACKEND_OPENCL) {
+                batchOk = openclDispatcher.runBatch(state.currentIndex, currentBatch, outcomes, batchErr);
+            }
+
+            if (!batchOk) {
+                fprintf(stderr, "GPU batch failed at index %s: %s. Falling back to CPU for remainder of workunit.\n",
                         int128ToString(state.currentIndex).c_str(), batchErr.c_str());
                 gpuReady = false;
                 break;

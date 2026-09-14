@@ -110,17 +110,23 @@ jobs:
 
       - name: "Compile Worker (macOS universal: arm64 + x86_64)"
         run: |
+          echo "=== Validating Metal Shading Language kernel syntax ==="
+          xcrun -sdk macosx metal -c tools/worker/metal/camicia_kernel.metal -o /tmp/camicia_kernel.air
+          echo "Metal kernel syntax OK!"
+
           # No -static: Apple doesn't support fully static executables
           # (no crt0.o to link against libSystem statically). No -ldl:
           # dlopen/dlsym are part of libSystem on macOS, no separate libdl
           # to link (same reason the Windows build already omits it).
           clang++ -O3 -arch arm64 -arch x86_64 \
-            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp tools/worker/metal/*.mm \
             -o worker_app_macos \
             -I boinc-macos/api -I boinc-macos/lib \
             -I tools/worker -I tools/worker/core \
             -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
             boinc-macos/api/libboinc_api.a boinc-macos/lib/libboinc.a \
+            -framework Metal -framework Foundation \
             -pthread
 
           lipo -info worker_app_macos
@@ -128,9 +134,9 @@ jobs:
 
       - name: "Test Worker Execution (arm64 native & x86_64 Rosetta)"
         run: |
-          echo "=== 1. Testing native arm64 execution ==="
+          echo "=== 1. Testing native arm64 execution (with GPU flag) ==="
           echo "0 1000" > in
-          ./worker_app_macos --cpu
+          ./worker_app_macos --gpu
           cp out out_arm64
           echo "arm64 output:"
           cat out_arm64
