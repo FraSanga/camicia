@@ -453,6 +453,7 @@ if [ "$SKIP_WORKER_PUBLISH" -eq 0 ]; then
         "windows_x86_64:worker_app.exe:worker_app_$NEW_VERSION.exe" \
         "aarch64-unknown-linux-gnu:worker_app_arm64:worker_app_arm64_$NEW_VERSION" \
         "arm64-apple-darwin:worker_app_macos:worker_app_macos_$NEW_VERSION" \
+        "x86_64-apple-darwin:worker_app_macos:worker_app_macos_intel_$NEW_VERSION" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_nvidia_$NEW_VERSION.exe:opencl_nvidia" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_ati_$NEW_VERSION.exe:opencl_ati" \
         "windows_x86_64:worker_app.exe:worker_app_win_opencl_intel_$NEW_VERSION.exe:opencl_intel_gpu" \

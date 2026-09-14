@@ -15,6 +15,10 @@
         <name>arm64-apple-darwin</name>
         <user_friendly_name>macOS Apple Silicon (arm64)</user_friendly_name>
     </platform>
+    <platform>
+        <name>x86_64-apple-darwin</name>
+        <user_friendly_name>macOS 64-bit Intel</user_friendly_name>
+    </platform>
     <app>
         <name>simulator</name>
         <user_friendly_name>Simulation of the game called Camicia</user_friendly_name>

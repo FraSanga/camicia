@@ -53,6 +53,7 @@ bool OpenCLDispatcher::initLoader(std::string& errorMsg) {
         "libOpenCL.so",
         "/usr/lib/x86_64-linux-gnu/libOpenCL.so.1",
         "/usr/lib/wsl/lib/libOpenCL.so.1",
+        "/System/Library/Frameworks/OpenCL.framework/OpenCL",
         nullptr
     };
     for (int i = 0; candidates[i]; ++i) {
@@ -62,7 +63,7 @@ bool OpenCLDispatcher::initLoader(std::string& errorMsg) {
 #endif
 
     if (!libHandle) {
-        errorMsg = "OpenCL runtime library not found (libOpenCL.so.1 or OpenCL.dll).";
+        errorMsg = "OpenCL runtime library not found (libOpenCL.so.1, OpenCL.dll, or OpenCL.framework).";
         return false;
     }
 
