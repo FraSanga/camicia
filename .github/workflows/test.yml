@@ -39,6 +39,11 @@ jobs:
           /tmp/test_engine_small_deck
       - name: Build and run verify_sample integration test
         run: bash tests/test_verify_sample.sh
+      - name: Build and run simulation engine benchmark
+        run: |
+          g++ -std=c++17 -O3 tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o /tmp/camicia_bench -I tools/worker -I tools/worker/core -I tools/worker/opencl -I tools/worker/opencl/include -I tools/worker/metal -pthread -ldl
+          /tmp/camicia_bench --count 100000 --all
 
   macos-tests:
     runs-on: macos-latest
@@ -77,3 +82,20 @@ jobs:
             tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
             -o /tmp/test_props_x86_64 -I tools/worker/core
           arch -x86_64 /tmp/test_props_x86_64
+
+      - name: "Build and run simulation engine benchmark (Apple Silicon & Rosetta)"
+        run: |
+          clang++ -std=c++17 -O3 -arch arm64 -arch x86_64 \
+            tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp tools/worker/metal/*.mm \
+            -o /tmp/camicia_bench \
+            -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
+            -framework Metal -framework Foundation \
+            -pthread
+
+          echo "=== 1. Native arm64 CPU & Metal GPU Benchmark (100,000 deals) ==="
+          /tmp/camicia_bench --count 100000 --all --sweep
+
+          echo "=== 2. Rosetta x86_64 CPU Benchmark (100,000 deals) ==="
+          arch -x86_64 /tmp/camicia_bench --count 100000 --cpu
