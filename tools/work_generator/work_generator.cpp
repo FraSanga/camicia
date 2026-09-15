@@ -4,7 +4,7 @@
 //
 // --app X            app name (default "simulator")
 // --range_size N      permutations per workunit, decimal string (default 1000000000)
-// --cushion N         maintain at least this many unsent job instances (default 20)
+// --cushion N         maintain at least this many unsent job instances (default 100)
 // --in_template_file  input template filename under templates/ (default "simulator_in.xml")
 // --out_template_file output template filename under templates/ (default "simulator_out.xml")
 // -d N                log verbosity level (0..4)
@@ -66,11 +66,14 @@ static const char* MAX_INDEX_STR = "653534134886878244999";
 // than the pre-speedup 1.5e5 figure, i.e. a real, not guessed, confirmation
 // that the engine got faster (not the ~3.4x sandbox estimate 34a23ba's own
 // TODO flagged as unverified, since this run used different, real
-// hardware for both halves of the ratio). The slowest block seen across
-// both runs was only ~1.29x the average -- comfortably inside
-// FPOPS_BOUND_FACTOR's existing margin, so that factor didn't need
-// changing.
-#define FPOPS_PER_DEAL 6.5e4
+// Re-measured 2026-09-15 across Intel Core i7 and Apple Silicon M-series
+// hardware after the zero-allocation circular queues, fast combinatorial
+// multinomial ranking, and compact fingerprint cycle detection landed:
+// under full multi-core load, throughput averages ~450,000 to ~950,000 deals/sec
+// per CPU core (and ~6.2M deals/sec on Metal GPU). At p_fpops ~4.5e9, this
+// gives ~5,000 to ~10,000 fpops/deal (~1.0e4), estimating ~35 minutes for a
+// 1e9-deal WU on CPU (~2.5 minutes on Metal GPU).
+#define FPOPS_PER_DEAL 1.0e4
 #define FPOPS_BOUND_FACTOR 10
     // Bound stays well under DEFAULT_DELAY_BOUND (7 days) even for the
     // slowest observed region, so a WU that's genuinely stuck (not just
@@ -80,7 +83,7 @@ const char* app_name = "simulator";
 const char* in_template_file = "simulator_in.xml";
 const char* out_template_file = "simulator_out.xml";
 int128 range_size = 0;
-long cushion = 20;
+long cushion = 100;
 
 char* in_template;
 DB_APP app;
@@ -457,7 +460,7 @@ void usage(char* name) {
         "Options:\n"
         "  [ --app X                  Application name (default: simulator)\n"
         "  [ --range_size N           Permutations per workunit (default: 1000000000)\n"
-        "  [ --cushion N              Unsent job instances to maintain (default: 20)\n"
+        "  [ --cushion N              Unsent job instances to maintain (default: 100)\n"
         "  [ --in_template_file X     Input template filename (default: simulator_in.xml)\n"
         "  [ --out_template_file X    Output template filename (default: simulator_out.xml)\n"
         "  [ -d X ]                   Sets debug level to X.\n",

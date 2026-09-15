@@ -1,0 +1,127 @@
+name: benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      deal_count:
+        description: "Number of deals to simulate"
+        type: string
+        default: "1000000"
+      sweep_batch:
+        description: "Sweep GPU batch sizes (16k..256k)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark-macos:
+    name: "macOS Apple Silicon Benchmark"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "System Information"
+        run: |
+          echo "=== macOS Hardware Specs ==="
+          echo "CPU Brand: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Unknown')"
+          echo "Logical Cores: $(sysctl -n hw.logicalcpu)"
+          echo "Physical Cores: $(sysctl -n hw.physicalcpu)"
+          echo "Memory (GB): $(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))"
+          sw_vers
+
+      - name: "Compile Benchmark Tool (Universal: arm64 + x86_64)"
+        run: |
+          clang++ -std=c++17 -O3 -arch arm64 -arch x86_64 \
+            tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp tools/worker/metal/*.mm \
+            -o camicia_benchmark \
+            -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
+            -framework Metal -framework Foundation \
+            -pthread
+
+          lipo -info camicia_benchmark
+
+      - name: "Run Native arm64 CPU Benchmark"
+        run: |
+          echo "### Native arm64 CPU Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          ./camicia_benchmark --count "${{ inputs.deal_count }}" --cpu | tee -a bench_arm64.txt
+          cat bench_arm64.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: "Run Rosetta x86_64 CPU Benchmark"
+        run: |
+          echo "### Rosetta x86_64 CPU Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          arch -x86_64 ./camicia_benchmark --count "${{ inputs.deal_count }}" --cpu | tee -a bench_x86_64.txt
+          cat bench_x86_64.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: "Run Apple Metal GPU Benchmark"
+        run: |
+          echo "### Apple Metal GPU Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          SWEEP_FLAG=""
+          if [ "${{ inputs.sweep_batch }}" = "true" ]; then
+            SWEEP_FLAG="--sweep"
+          fi
+          ./camicia_benchmark --count "${{ inputs.deal_count }}" --metal $SWEEP_FLAG | tee -a bench_metal.txt || true
+          cat bench_metal.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: "Run Comprehensive Comparison"
+        run: |
+          echo "### Full Comparison Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          SWEEP_FLAG=""
+          if [ "${{ inputs.sweep_batch }}" = "true" ]; then
+            SWEEP_FLAG="--sweep"
+          fi
+          ./camicia_benchmark --count "${{ inputs.deal_count }}" --all $SWEEP_FLAG | tee -a bench_all.txt
+          cat bench_all.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-benchmark-results
+          path: bench_*.txt
+          retention-days: 7
+
+  benchmark-linux:
+    name: "Linux Cloud Runner Benchmark"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "System Information"
+        run: |
+          echo "=== Linux Hardware Specs ==="
+          lscpu | grep -E "Model name|Socket|Thread|NUMA|CPU\(s\):" || true
+          free -h
+
+      - name: "Compile Benchmark Tool"
+        run: |
+          g++ -std=c++17 -O3 \
+            tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o camicia_benchmark \
+            -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
+            -pthread -ldl
+
+      - name: "Run Linux CPU Benchmark"
+        run: |
+          echo "### Linux Cloud Runner CPU Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          ./camicia_benchmark --count "${{ inputs.deal_count }}" --all | tee -a bench_linux.txt
+          cat bench_linux.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-benchmark-results
+          path: bench_linux.txt
+          retention-days: 7
