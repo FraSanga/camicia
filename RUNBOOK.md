@@ -161,7 +161,7 @@ actually survived, and that changes what you do next.
   - Physical access to the offline `.env` USB stick (see
     [Rotating/losing a secret or key](#rotatinglosing-a-secret-or-key) below for the mount recipe)
   - A Google account able to sign in to the Google Drive holding the offsite backup
-  - The local `backup1tb` USB drive, if it physically survived
+  - A local backup drive (`backup1tb` or `storage500gb`), if either physically survived
 
 You do not need all three; see step 2's branches.
 
@@ -229,13 +229,14 @@ tools/backup_env_to_usb.sh /mnt/env_backup
 Two independent sources; use whichever survived. Both need to end up populated with
 `code_sign_private.gpg`, `code_sign_public`, `upload_private.gpg`, `upload_public`.
 
-- **From the local `backup1tb` USB drive**: no credentials needed.
+- **From a local backup drive (`/mnt/backup1tb` or `/mnt/storage500gb`)**: no credentials needed.
 
   ```bash
   lsblk
   sudo mkdir -p /mnt/backup1tb
   sudo mount -o ro /dev/<device> /mnt/backup1tb
   cp -r /mnt/backup1tb/keys ./keys
+  # (or use /mnt/storage500gb if restoring from the Seagate drive)
   ```
 
 - **From Google Drive**, if it didn't survive: see "Setting up rclone access to Google Drive"
@@ -287,7 +288,7 @@ generating new ones. `--delete_prev_inst` wipes and recreates the entire `<SERVE
 `db_backups/` lives inside the project tree, at `<SERVER_VOLUME_PROJECTS>/camicia/db_backups/`,
 not at the repo root. Get the newest `*.sql.gz` in there, whichever source has it:
 
-- **From the local `backup1tb` USB drive**: no credentials needed.
+- **From a local backup drive (`/mnt/backup1tb` or `/mnt/storage500gb`)**: no credentials needed.
 
   ```bash
   lsblk
@@ -295,6 +296,7 @@ not at the repo root. Get the newest `*.sql.gz` in there, whichever source has i
   sudo mount -o ro /dev/<device> /mnt/backup1tb
   mkdir -p <SERVER_VOLUME_PROJECTS>/camicia/db_backups
   cp /mnt/backup1tb/db_backups/<newest>.sql.gz <SERVER_VOLUME_PROJECTS>/camicia/db_backups/
+  # (or use /mnt/storage500gb/db_backups/<newest>.sql.gz if restoring from the Seagate drive)
   ```
 
 - **From Google Drive**, if it didn't survive: see "Setting up rclone access to Google Drive"
@@ -316,13 +318,14 @@ zcat <SERVER_VOLUME_PROJECTS>/camicia/db_backups/<newest>.sql.gz | docker exec -
 Same as `db_backups/` above: this lives at `<SERVER_VOLUME_PROJECTS>/camicia/results/`, not the
 repo root. Plain files, no restore process needed, just get the newest copy in there:
 
-- **From the local `backup1tb` USB drive**: no credentials needed.
+- **From a local backup drive (`/mnt/backup1tb` or `/mnt/storage500gb`)**: no credentials needed.
 
   ```bash
   lsblk
   sudo mkdir -p /mnt/backup1tb
   sudo mount -o ro /dev/<device> /mnt/backup1tb
   cp -r /mnt/backup1tb/results <SERVER_VOLUME_PROJECTS>/camicia/results
+  # (or use /mnt/storage500gb/results if restoring from the Seagate drive)
   ```
 
 - **From Google Drive**, if it didn't survive: see "Setting up rclone access to Google Drive"
@@ -407,10 +410,11 @@ it attaches.
 
 ### 10. Setting up rclone access to Google Drive
 
-Referenced from steps 2, 4, and 5 above whenever the local `backup1tb` copy didn't survive and
-Google Drive is the only remaining source. `rclone` is only installed *inside* the `boinc_server`
-container image, not on the host, so a fresh host needs it installed here first (official install
-script, same one `images/server/Dockerfile` uses to build the container image itself):
+Referenced from steps 2, 4, and 5 above whenever neither local backup copy (`backup1tb` or
+`storage500gb`) survived and Google Drive is the only remaining source. `rclone` is only installed
+*inside* the `boinc_server` container image, not on the host, so a fresh host needs it installed here
+first (official install script, same one `images/server/Dockerfile` uses to build the container image
+itself):
 
 ```bash
 curl -fsSL https://rclone.org/install.sh | sudo bash
@@ -437,11 +441,11 @@ After that, every `rclone ... --config keys/rclone.conf camicia-gdrive:camicia-b
 in steps 2, 4, and 5 above works normally.
 
 **If `rclone.conf` and `rclone_config_pass` are also lost** (e.g. they only ever existed on the lost
-box, and the local `backup1tb` copy didn't survive either): rebuild both from scratch. You need
-access to the Google Cloud Console project this project's Drive backups use, but not the exact
-original OAuth client credentials: Google Drive tracks file access at the Cloud Console project
-level, not per individual client, so a freshly created client under the same project can still see
-the existing `camicia-backup` folder.
+box, and neither local backup copy survived either): rebuild both from scratch. You need access to the
+Google Cloud Console project this project's Drive backups use, but not the exact original OAuth client
+credentials: Google Drive tracks file access at the Cloud Console project level, not per individual
+client, so a freshly created client under the same project can still see the existing
+`camicia-backup` folder.
 
 Create a new OAuth 2.0 Client ID in that Cloud Console project (APIs & Services > Credentials), or
 reuse an existing one if you still have its client ID and secret.
@@ -839,6 +843,7 @@ instead of the whole directory:
 
 ```bash
 cp /mnt/backup1tb/results/results.txt <SERVER_VOLUME_PROJECTS>/camicia/results/results.txt
+# (or from /mnt/storage500gb/results/results.txt)
 ```
 
 or

@@ -15,6 +15,7 @@ services:
       SERVER_VOLUME_PROJECTS_DIR: ${SERVER_VOLUME_PROJECTS_DIR}
       SERVER_VOLUME_KEYS_DIR: ${SERVER_VOLUME_KEYS_DIR}
       BACKUP_DRIVE_DIR: ${BACKUP_DRIVE_DIR:-/mnt/backup1tb}
+      BACKUP_STORAGE_DIR: ${BACKUP_STORAGE_DIR:-/mnt/storage500gb}
       PROJECTS_USER: ${PROJECTS_USER}
       SERVER_HOSTNAME: ${SERVER_HOSTNAME}
       DOMAIN: ${DOMAIN}
@@ -23,13 +24,14 @@ services:
     volumes:
       - ${SERVER_VOLUME_PROJECTS}:${SERVER_VOLUME_PROJECTS_DIR}
       - ${SERVER_VOLUME_KEYS}:${SERVER_VOLUME_KEYS_DIR}
-      # Second local backup copy (tools/backup_usb.sh) -- optional, only real
-      # on production. BACKUP_DRIVE defaults to a throwaway /tmp path so
-      # local dev (which never has this drive) doesn't need to set anything;
-      # rsync-ing local dev's own test data into a scratch dir on the same
-      # machine is harmless, so the script itself doesn't need to detect
-      # "is this the real drive" either.
+      # Local backup copies (tools/backup_usb.sh) -- physically separate
+      # drives mirroring keys/db_backups/results/archives, completing a 3-2-1
+      # backup strategy alongside offsite Google Drive (backup_offsite_gdrive.sh).
+      # Defaults to throwaway /tmp stubs so local dev/CI doesn't need to set
+      # anything. On production, point them at the host mount points (e.g.
+      # /mnt/backup1tb and /mnt/storage500gb).
       - ${BACKUP_DRIVE:-/tmp/camicia_backup_drive_stub}:${BACKUP_DRIVE_DIR:-/mnt/backup1tb}
+      - ${BACKUP_STORAGE:-/tmp/camicia_backup_storage_stub}:${BACKUP_STORAGE_DIR:-/mnt/storage500gb}
     networks:
       - database_network
     depends_on:
