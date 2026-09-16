@@ -378,19 +378,30 @@ if docker exec "$SERVER_CONTAINER_NAME" bash -c "[ -d \"$PROJECT_DIR\" ]"; then
     fi
 
     # SMTP credentials for make_php_mailer() (see project.inc) -- optional,
-    # only written if SMTP_HOST is set in .env. Kept out of the repo the same
-    # way NTFY_TOPIC/OPS_PASS are; piped over stdin (not passed as a docker
-    # exec argument) so the password doesn't appear in `docker top`/process
-    # listings while this runs.
-    if [ -n "$SMTP_HOST" ]; then
+    # written if SMTP_HOST or SMTP_SECONDARY_HOST is set in .env. Kept out of
+    # the repo the same way NTFY_TOPIC/OPS_PASS are; piped over stdin (not passed
+    # as a docker exec argument) so passwords don't appear in process listings.
+    if [ -n "$SMTP_HOST" ] || [ -n "$SMTP_SECONDARY_HOST" ]; then
         docker exec -i "$SERVER_CONTAINER_NAME" bash -c "cat > $PROJECT_DIR/smtp_credentials.inc.php" <<EOF
 <?php
+$(if [ -n "$SMTP_HOST" ]; then cat <<PRIMEOF
 define('SMTP_HOST', '$SMTP_HOST');
 define('SMTP_PORT', $SMTP_PORT);
 define('SMTP_USERNAME', '$SMTP_USERNAME');
 define('SMTP_PASSWORD', '$SMTP_PASSWORD');
 define('SMTP_FROM_EMAIL', '$SMTP_FROM_EMAIL');
 define('SMTP_FROM_NAME', '$SMTP_FROM_NAME');
+PRIMEOF
+fi)
+$(if [ -n "$SMTP_SECONDARY_HOST" ]; then cat <<SECONDEOF
+define('SMTP_SECONDARY_HOST', '$SMTP_SECONDARY_HOST');
+define('SMTP_SECONDARY_PORT', ${SMTP_SECONDARY_PORT:-587});
+define('SMTP_SECONDARY_USERNAME', '$SMTP_SECONDARY_USERNAME');
+define('SMTP_SECONDARY_PASSWORD', '$SMTP_SECONDARY_PASSWORD');
+define('SMTP_SECONDARY_FROM_EMAIL', '${SMTP_SECONDARY_FROM_EMAIL:-$SMTP_FROM_EMAIL}');
+define('SMTP_SECONDARY_FROM_NAME', '${SMTP_SECONDARY_FROM_NAME:-$SMTP_FROM_NAME}');
+SECONDEOF
+fi)
 EOF
     fi
 
@@ -571,7 +582,7 @@ tree.write('/tmp/config_new.xml.tmp', encoding='utf-8', xml_declaration=False)
     if [ -n "$RCLONE_CONFIG_PASS" ]; then
         docker exec "$SERVER_CONTAINER_NAME" bash -c "chown $PROJECTS_USER:$PROJECTS_USER $KEY_DIR/rclone_config_pass && chmod 600 $KEY_DIR/rclone_config_pass"
     fi
-    if [ -n "$SMTP_HOST" ]; then
+    if [ -n "$SMTP_HOST" ] || [ -n "$SMTP_SECONDARY_HOST" ]; then
         # www-data needs group-read: project.inc's make_php_mailer() runs as
         # www-data and require_once()s this file directly (same treatment as
         # config.xml, for the same reason).

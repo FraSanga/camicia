@@ -1167,8 +1167,10 @@ something depending on one breaks, check that service's own dashboard first, not
 - **Site unreachable externally, but `docker compose ps` and every daemon are healthy**: check the
   Cloudflare dashboard for the Tunnel's own connection status and the Access policy, not just this
   host; the failure could be entirely on Cloudflare's side, or a revoked `CLOUDFLARE_TUNNEL_TOKEN`.
-- **Users report never receiving an email**: check your SMTP provider's own delivery dashboard/logs;
-  nothing on this box logs a failed send.
+- **Users report never receiving an email**: check your primary (and secondary, if configured)
+  SMTP provider's delivery dashboard/logs; confirm `SMTP_*` (and `SMTP_SECONDARY_*`) in `.env` match;
+  confirm SPF/DKIM/DMARC records are set up on the sending domain. Failed sends and automatic failover
+  attempts are logged to Apache's error log (`docker logs <SERVER_CONTAINER_NAME>`).
 - **Nobody can create an account, or account creation seems to hang rather than fail outright**:
   check the Google reCAPTCHA admin console for the key's status.
 - **Forum or profile spam suddenly increases**: check your Akismet account for the key's status.

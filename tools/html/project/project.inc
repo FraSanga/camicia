@@ -108,9 +108,9 @@ define('MAX_CPUS_PREF', false);
 
 // Real SMTP credentials are kept out of this (git-tracked) file. tools.sh
 // writes them into smtp_credentials.inc.php at the project root -- generated
-// from SMTP_* in .env, same pattern as ntfy_topic -- and vendors the
-// PHPMailer library itself (tools/phpmailer/) into html/inc/PHPMailer/. If
-// that credentials file isn't present (e.g. a dev/test deploy with no SMTP
+// from SMTP_* and SMTP_SECONDARY_* in .env, same pattern as ntfy_topic -- and
+// vendors the PHPMailer library itself (tools/phpmailer/) into html/inc/PHPMailer/.
+// If that credentials file isn't present (e.g. a dev/test deploy with no SMTP
 // configured), make_php_mailer() is deliberately left undefined so
 // send_email() (html/inc/email.inc) falls back to PHP's mail() -- which
 // silently no-ops here since there's no local MTA, same as before SMTP was
@@ -118,17 +118,42 @@ define('MAX_CPUS_PREF', false);
 $smtp_credentials_file = __DIR__ . "/../../smtp_credentials.inc.php";
 if (file_exists($smtp_credentials_file)) {
     require_once($smtp_credentials_file);
-    function make_php_mailer() {
+
+    function has_secondary_smtp() {
+        return defined('SMTP_SECONDARY_HOST') && !empty(SMTP_SECONDARY_HOST);
+    }
+
+    function make_php_mailer($provider = 1) {
         $mail = new \PHPMailer\PHPMailer\PHPMailer();
         $mail->isSMTP();
         $mail->SMTPAuth = true;
-        $mail->SMTPSecure = "tls";
-        $mail->Host = SMTP_HOST;
-        $mail->Port = SMTP_PORT;
-        $mail->Username = SMTP_USERNAME;
-        $mail->Password = SMTP_PASSWORD;
-        $mail->setFrom(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
-        $mail->addReplyTo(SMTP_FROM_EMAIL, SMTP_FROM_NAME);
+
+        if ($provider === 2 && has_secondary_smtp()) {
+            $port = defined('SMTP_SECONDARY_PORT') ? (int)SMTP_SECONDARY_PORT : 587;
+            $mail->SMTPSecure = ($port === 465) ? "ssl" : "tls";
+            $mail->Host = SMTP_SECONDARY_HOST;
+            $mail->Port = $port;
+            $mail->Username = SMTP_SECONDARY_USERNAME;
+            $mail->Password = SMTP_SECONDARY_PASSWORD;
+            $from_email = defined('SMTP_SECONDARY_FROM_EMAIL') && !empty(SMTP_SECONDARY_FROM_EMAIL)
+                ? SMTP_SECONDARY_FROM_EMAIL : (defined('SMTP_FROM_EMAIL') ? SMTP_FROM_EMAIL : '');
+            $from_name = defined('SMTP_SECONDARY_FROM_NAME') && !empty(SMTP_SECONDARY_FROM_NAME)
+                ? SMTP_SECONDARY_FROM_NAME : (defined('SMTP_FROM_NAME') ? SMTP_FROM_NAME : 'Camicia');
+            $mail->setFrom($from_email, $from_name);
+            $mail->addReplyTo($from_email, $from_name);
+        } else if (defined('SMTP_HOST') && !empty(SMTP_HOST)) {
+            $port = defined('SMTP_PORT') ? (int)SMTP_PORT : 587;
+            $mail->SMTPSecure = ($port === 465) ? "ssl" : "tls";
+            $mail->Host = SMTP_HOST;
+            $mail->Port = $port;
+            $mail->Username = SMTP_USERNAME;
+            $mail->Password = SMTP_PASSWORD;
+            $from_email = defined('SMTP_FROM_EMAIL') ? SMTP_FROM_EMAIL : '';
+            $from_name = defined('SMTP_FROM_NAME') ? SMTP_FROM_NAME : 'Camicia';
+            $mail->setFrom($from_email, $from_name);
+            $mail->addReplyTo($from_email, $from_name);
+        }
+
         return $mail;
     }
 }

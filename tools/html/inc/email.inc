@@ -88,7 +88,27 @@ function send_email($user, $subject, $body, $body_html=null, $email_addr=null) {
             $mail->Body = $body;
         }
         if (!$mail->Send()) {
-            error_log("send_email() failed: ".$mail->ErrorInfo);
+            $primary_error = $mail->ErrorInfo;
+            if (function_exists("has_secondary_smtp") && has_secondary_smtp()) {
+                error_log("send_email() primary SMTP failed: " . $primary_error . "; attempting secondary SMTP failover");
+                $mail2 = make_php_mailer(2);
+                $mail2->AddAddress($email_addr, $user->name);
+                $mail2->Subject = $subject;
+                if ($body_html) {
+                    $mail2->AltBody = $body;
+                    $mail2->Body = $body_html;
+                    $mail2->IsHTML(true);
+                } else {
+                    $mail2->Body = $body;
+                }
+                if ($mail2->Send()) {
+                    error_log("send_email() secondary SMTP failover succeeded for recipient: " . $email_addr);
+                    return true;
+                }
+                error_log("send_email() secondary SMTP failover also failed: " . $mail2->ErrorInfo);
+            } else {
+                error_log("send_email() failed: " . $primary_error);
+            }
             return false;
         } else {
             return true;
