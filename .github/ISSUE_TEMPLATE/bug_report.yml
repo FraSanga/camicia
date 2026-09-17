@@ -1,0 +1,62 @@
+name: Bug Report
+description: Report an issue, crash, or unexpected behavior in Camicia
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug!
+        If you are reporting a security vulnerability, please refer to our [Security Policy](https://github.com/FraSanga/camicia/blob/main/SECURITY.md) instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: What happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - Worker / Simulation Engine
+        - BOINC Server / Web Interface
+        - GPU Compute (OpenCL / Apple Metal)
+        - Build / Compilation / Scripts
+        - Documentation / Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps or input parameters (e.g. deal index, command line) to reproduce the behavior.
+      placeholder: |
+        1. Run worker with deal range '...'
+        2. Execute command '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment / System Info
+      description: Operating System, Architecture (x86_64, arm64), CPU / GPU model, BOINC client version.
+      placeholder: e.g., macOS Sonoma (M2 Max), Metal backend, BOINC client 7.24.1
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Please copy and paste any relevant logs, terminal output, or stack traces.
+      render: shell
