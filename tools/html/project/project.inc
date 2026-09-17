@@ -41,7 +41,7 @@ define("LANGUAGE_FILE", "languages.txt");
 define("SYS_ADMIN_EMAIL", "admin@camicia.dev");
 define("UOTD_ADMIN_EMAIL", "admin@camicia.dev");
     // who gets emails about user of the day pool running low?
-define("POST_REPORT_EMAILS", "moderator@camicia.dev");
+define("POST_REPORT_EMAILS", "moderators@camicia.dev");
     // Email addresses separated by pipe ( | ) that will receive user reports
     // of offensive forum posts.
 

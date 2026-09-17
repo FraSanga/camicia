@@ -124,4 +124,10 @@ cat out
 3. Include a clear summary of your changes, the rationale behind them, and confirmation that all local tests pass.
 4. Maintainers will review the PR, test it in an isolated staging environment, and coordinate merging.
 
+---
+
+## 📜 Code of Conduct
+
+All contributors and participants are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md). Please report any unacceptable behavior to [moderators@camicia.dev](mailto:moderators@camicia.dev).
+
 Thank you for helping push the frontiers of distributed computing! 🃏
