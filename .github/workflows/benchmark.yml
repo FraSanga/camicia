@@ -125,3 +125,36 @@ jobs:
           name: linux-benchmark-results
           path: bench_linux.txt
           retention-days: 7
+
+  benchmark-windows:
+    name: "Windows Cloud Runner Benchmark"
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Compile Benchmark Tool"
+        run: |
+          g++ -std=c++17 -O3 \
+            tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o camicia_benchmark.exe \
+            -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
+            -pthread
+
+      - name: "Run Windows CPU Benchmark"
+        run: |
+          echo "### Windows Cloud Runner CPU Benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          ./camicia_benchmark.exe --count "${{ inputs.deal_count }}" --cpu | tee -a bench_windows.txt
+          cat bench_windows.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-benchmark-results
+          path: bench_windows.txt
+          retention-days: 7
