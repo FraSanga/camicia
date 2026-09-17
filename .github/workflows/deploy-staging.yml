@@ -2,15 +2,23 @@ name: deploy-staging
 
 # Auto-deploys on every push to `staging`, unlike deploy.yml which is
 # workflow_dispatch-only. Staging is meant for fast iteration before merging
-# into main, so it should redeploy the instant something lands here, no
-# separate manual trigger step. Runs on its own dedicated self-hosted runner
-# (label "staging", not "production") registered on the same box as
-# production's runner, with its own checkout directory (~/camicia-staging),
-# so a push here can never be routed to production's runner or vice versa.
+# into main, so it redeploys the instant something lands here. Runs on its own
+# dedicated self-hosted runner (label "staging", not "production") registered on
+# the same box as production's runner, with its own checkout directory (~/camicia-staging).
 on:
   push:
     branches:
       - staging
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: "Run test suite before deploying to staging (optional)"
+        type: boolean
+        default: false
+      run_benchmarks:
+        description: "Run performance benchmarks (optional)"
+        type: boolean
+        default: false
 
 # Least privilege: this workflow builds/deploys the project but never
 # writes to the repo, a PR, or anything else on GitHub itself.
@@ -18,11 +26,11 @@ permissions:
   contents: read
 
 jobs:
-  # Same reasoning as deploy.yml's own build-macos job: cross-compiling the
-  # worker for macOS needs a real Apple SDK, so it's built here on ephemeral,
-  # GitHub-hosted infrastructure and handed to the deploy job below as an
-  # artifact.
+  # Cross-compiling the worker for macOS needs a real Apple SDK, so it's
+  # built here on ephemeral, GitHub-hosted infrastructure and handed to the
+  # deploy job below as an artifact.
   build-macos:
+    name: "Build macOS Universal Worker"
     runs-on: macos-latest
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -105,36 +113,166 @@ jobs:
           lipo -info worker_app_macos
           file worker_app_macos
 
-      - name: "Test Worker Execution (arm64 native & x86_64 Rosetta)"
-        run: |
-          echo "=== 1. Testing native arm64 execution (with GPU flag) ==="
-          echo "0 1000" > in
-          ./worker_app_macos --gpu
-          cp out out_arm64
-          echo "arm64 output:"
-          cat out_arm64
-
-          echo "=== 2. Testing x86_64 execution under Rosetta ==="
-          rm -f out checkpoint.txt loops.txt
-          echo "0 1000" > in
-          arch -x86_64 ./worker_app_macos --cpu
-          cp out out_x86_64
-          echo "x86_64 output:"
-          cat out_x86_64
-
-          echo "=== 3. Verifying deterministic results match across architectures ==="
-          diff -u out_arm64 out_x86_64
-          echo "PASS: arm64 and x86_64 outputs match byte-for-byte!"
-          rm -f in out out_arm64 out_x86_64 checkpoint.txt loops.txt
-
       - uses: actions/upload-artifact@v4
         with:
           name: worker_app_macos
           path: worker_app_macos
           retention-days: 1
 
-  deploy:
+  test-macos:
+    name: "Test macOS Worker (Optional)"
     needs: build-macos
+    if: ${{ inputs.run_tests }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS worker artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: worker_app_macos
+
+      - name: "Test Worker Execution (arm64 native & x86_64 Rosetta)"
+        run: |
+          chmod +x worker_app_macos
+          echo "=== 1. Testing native arm64 execution (with GPU flag) ==="
+          echo "0 1000" > in
+          ./worker_app_macos --gpu
+          cp out out_arm64_gpu
+
+          echo "=== 2. Testing native arm64 execution (CPU) ==="
+          rm -f out checkpoint.txt loops.txt
+          echo "0 1000" > in
+          ./worker_app_macos --cpu
+          cp out out_arm64_cpu
+
+          echo "=== 3. Testing x86_64 execution under Rosetta ==="
+          rm -f out checkpoint.txt loops.txt
+          echo "0 1000" > in
+          arch -x86_64 ./worker_app_macos --cpu
+          cp out out_x86_64
+
+          echo "=== 4. Verifying deterministic results match across architectures ==="
+          diff -u out_arm64_gpu out_arm64_cpu
+          diff -u out_arm64_cpu out_x86_64
+          echo "PASS: arm64 GPU, arm64 CPU, and x86_64 Rosetta match byte-for-byte!"
+          rm -f in out out_arm64_gpu out_arm64_cpu out_x86_64 checkpoint.txt loops.txt
+
+      - name: "Optional macOS Benchmark"
+        if: ${{ inputs.run_benchmarks }}
+        run: |
+          clang++ -std=c++17 -O3 -arch arm64 -arch x86_64 \
+            tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp tools/worker/metal/*.mm \
+            -o camicia_bench \
+            -I tools/worker -I tools/worker/core \
+            -I tools/worker/opencl -I tools/worker/opencl/include \
+            -I tools/worker/metal \
+            -framework Metal -framework Foundation \
+            -pthread
+          ./camicia_bench --count 100000 --all --sweep
+
+  test-linux:
+    name: "Test Linux Worker (Optional)"
+    if: ${{ inputs.run_tests }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run Core Unit Tests"
+        run: |
+          g++ -std=c++17 -O2 tests/test_permutation.cpp tools/worker/core/permutation.cpp \
+            -o /tmp/test_permutation -I tools/worker/core
+          /tmp/test_permutation
+
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_engine -I tools/worker/core
+          /tmp/test_engine
+
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine_properties.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o /tmp/test_engine_properties -I tools/worker/core
+          /tmp/test_engine_properties
+
+          g++ -std=c++17 -O2 tests/test_engine_small_deck.cpp \
+            tools/worker/core/engine.cpp \
+            -o /tmp/test_engine_small_deck -I tools/worker/core
+          /tmp/test_engine_small_deck
+
+          bash tests/test_verify_sample.sh
+
+      - name: "Compile and Test Linux Worker Execution"
+        run: |
+          g++ -std=c++17 -O3 -DCAMICIA_STANDALONE \
+            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o /tmp/worker_linux \
+            -I tools/worker -I tools/worker/core -I tools/worker/opencl -I tools/worker/opencl/include \
+            -pthread -ldl
+          echo "0 1000" > in
+          /tmp/worker_linux
+          cat out
+          rm -f in out checkpoint.txt loops.txt
+
+      - name: "Optional Linux Benchmark"
+        if: ${{ inputs.run_benchmarks }}
+        run: |
+          g++ -std=c++17 -O3 tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o /tmp/camicia_bench \
+            -I tools/worker -I tools/worker/core -I tools/worker/opencl -I tools/worker/opencl/include -I tools/worker/metal \
+            -pthread -ldl
+          /tmp/camicia_bench --count 100000 --all
+
+  test-windows:
+    name: "Test Windows Worker (Optional)"
+    if: ${{ inputs.run_tests }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run Core Unit Tests on Windows"
+        run: |
+          g++ -std=c++17 -O2 tests/test_permutation.cpp tools/worker/core/permutation.cpp \
+            -o test_permutation.exe -I tools/worker/core
+          ./test_permutation.exe
+
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o test_engine.exe -I tools/worker/core
+          ./test_engine.exe
+
+          g++ -std=c++17 -O2 -DCAMICIA_TESTING tests/test_engine_properties.cpp \
+            tools/worker/core/permutation.cpp tools/worker/core/engine.cpp \
+            -o test_engine_properties.exe -I tools/worker/core
+          ./test_engine_properties.exe
+
+      - name: "Compile and Test Windows Worker Execution"
+        run: |
+          g++ -std=c++17 -O3 -DCAMICIA_STANDALONE \
+            tools/worker/worker.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o worker_windows.exe \
+            -I tools/worker -I tools/worker/core -I tools/worker/opencl -I tools/worker/opencl/include \
+            -pthread
+          echo "0 1000" > in
+          ./worker_windows.exe
+          cat out
+          rm -f in out checkpoint.txt loops.txt
+
+      - name: "Optional Windows Benchmark"
+        if: ${{ inputs.run_benchmarks }}
+        run: |
+          g++ -std=c++17 -O3 tests/benchmark.cpp tools/worker/core/*.cpp tools/worker/opencl/*.cpp \
+            -o camicia_bench.exe \
+            -I tools/worker -I tools/worker/core -I tools/worker/opencl -I tools/worker/opencl/include -I tools/worker/metal \
+            -pthread
+          ./camicia_bench.exe --count 100000 --cpu
+
+  deploy:
+    name: "Deploy to Staging"
+    needs: [build-macos, test-macos, test-linux, test-windows]
+    if: always() && needs.build-macos.result == 'success' && (needs.test-macos.result == 'success' || needs.test-macos.result == 'skipped') && (needs.test-linux.result == 'success' || needs.test-linux.result == 'skipped') && (needs.test-windows.result == 'success' || needs.test-windows.result == 'skipped')
     runs-on: [self-hosted, staging]
     # No `environment:` block, unlike deploy.yml: staging deliberately skips
     # CODE_SIGN_KEY_PASSPHRASE/UPLOAD_KEY_PASSPHRASE entirely (see STAGING.md
