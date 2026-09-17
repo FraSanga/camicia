@@ -2,10 +2,15 @@ name: test
 
 on:
   push:
-  pull_request:
+    branches:
+      - main
+      - staging
+  workflow_call:
+  workflow_dispatch:
 
-# Least privilege: this workflow only compiles and runs local test binaries,
-# never writes to the repo, a PR, or anything else on GitHub.
+# Least privilege: this workflow only compiles and runs local test binaries on
+# GitHub-hosted ephemeral runners. External pull requests do NOT trigger this
+# workflow automatically to prevent untrusted execution.
 permissions:
   contents: read
 
