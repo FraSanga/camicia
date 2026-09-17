@@ -44,17 +44,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # If neither the worker sources nor Dockerfile (BOINC commit) changed,
+      # reuse the previously compiled macOS universal binary directly (~33s saved).
+      - name: Cache Compiled macOS Worker
+        id: cache-worker-macos
+        uses: actions/cache@v4
+        with:
+          path: worker_app_macos
+          key: worker-app-macos-${{ hashFiles('tools/worker/**', 'images/server/Dockerfile') }}-min${{ env.MACOSX_DEPLOYMENT_TARGET }}
+
       # BOINC's own lib/api rarely changes (only when BOINC_COMMIT is
       # deliberately bumped in images/server/Dockerfile), unlike worker.cpp
       # which can change on every deploy -- rebuilding it from source is
       # ~2 minutes of this job's ~2.5, so it's cached separately, keyed on
-      # that commit, from the actual worker compile below (a few seconds).
+      # that commit, from the actual worker compile below.
       - name: Get pinned BOINC commit
+        if: steps.cache-worker-macos.outputs.cache-hit != 'true'
         id: boinc_commit
         run: |
           echo "commit=$(grep -oE 'ARG BOINC_COMMIT=[0-9a-f]+' images/server/Dockerfile | cut -d= -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Cache BOINC lib/api (macOS universal)
+        if: steps.cache-worker-macos.outputs.cache-hit != 'true'
         id: cache-boinc-macos
         uses: actions/cache@v4
         with:
@@ -62,7 +73,7 @@ jobs:
           key: boinc-macos-universal-${{ steps.boinc_commit.outputs.commit }}-min${{ env.MACOSX_DEPLOYMENT_TARGET }}
 
       - name: Install autotools (not preinstalled on macos-14 runners)
-        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
+        if: steps.cache-worker-macos.outputs.cache-hit != 'true' && steps.cache-boinc-macos.outputs.cache-hit != 'true'
         run: |
           brew install autoconf automake libtool pkg-config
           # BOINC's _autosetup expects GNU-named libtool/libtoolize, but
@@ -72,7 +83,7 @@ jobs:
           echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: "Build BOINC lib/api (macOS universal: arm64 + x86_64)"
-        if: steps.cache-boinc-macos.outputs.cache-hit != 'true'
+        if: steps.cache-worker-macos.outputs.cache-hit != 'true' && steps.cache-boinc-macos.outputs.cache-hit != 'true'
         run: |
           git init boinc-src
           cd boinc-src
@@ -110,6 +121,7 @@ jobs:
           lipo -info boinc-macos/lib/libboinc.a
 
       - name: "Compile Worker (macOS universal: arm64 + x86_64)"
+        if: steps.cache-worker-macos.outputs.cache-hit != 'true'
         run: |
           echo "=== Validating Metal Shading Language kernel syntax ==="
           xcrun -sdk macosx metal -c tools/worker/metal/camicia_kernel.metal -o /tmp/camicia_kernel.air
