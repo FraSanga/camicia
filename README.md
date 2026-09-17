@@ -124,3 +124,9 @@ docker logs -f linux_user
 - [`SECURITY.md`](SECURITY.md): the project's security posture and private vulnerability reporting.
 - [`RUNBOOK.md`](RUNBOOK.md): operational reference, disaster recovery, and what to do when
   something breaks.
+
+## Contact & Support
+
+- **General Inquiries & Research**: [info@camicia.dev](mailto:info@camicia.dev)
+- **Security Disclosures**: [admin@camicia.dev](mailto:admin@camicia.dev) (see [`SECURITY.md`](SECURITY.md))
+- **Community Moderation**: [moderators@camicia.dev](mailto:moderators@camicia.dev) (see [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md))

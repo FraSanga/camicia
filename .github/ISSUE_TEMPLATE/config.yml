@@ -3,3 +3,6 @@ contact_links:
   - name: Report a Security Vulnerability
     url: https://github.com/FraSanga/camicia/blob/main/SECURITY.md
     about: Please report security vulnerabilities privately to admin@camicia.dev rather than opening a public issue.
+  - name: General Inquiries & Research
+    url: mailto:info@camicia.dev
+    about: For general questions, research inquiries, or off-GitHub communication.
