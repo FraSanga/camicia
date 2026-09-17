@@ -117,8 +117,10 @@ docker exec linux_user boinccmd --project http://<DOMAIN>/camicia update
 docker logs -f linux_user
 ```
 
-## Documentation
+## Documentation & Community
 
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): local development setup, running unit test suites, and pull request guidelines.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md): community pledge and standards (Contributor Covenant 2.0).
+- [`SECURITY.md`](SECURITY.md): the project's security posture and private vulnerability reporting.
 - [`RUNBOOK.md`](RUNBOOK.md): operational reference, disaster recovery, and what to do when
   something breaks.
-- [`SECURITY.md`](SECURITY.md): the project's security posture and how to report a vulnerability.
