@@ -1,0 +1,40 @@
+name: Feature / Optimization Proposal
+description: Suggest an enhancement, mathematical optimization, or new feature
+title: "[Proposal]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to improve performance, card simulation speed, or project infrastructure? We'd love to hear it!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Motivation / Problem Statement
+      description: What problem does this solve, or what opportunity does this address?
+      placeholder: A clear and concise description of the motivation.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Design
+      description: Describe the technical or algorithmic approach you have in mind.
+      placeholder: Detailed description of the proposed changes.
+    validations:
+      required: true
+  - type: textarea
+    id: performance
+    attributes:
+      label: Expected Performance Impact
+      description: If this is an optimization (e.g. SIMD, OpenCL, Metal, or bitwise algorithms), what is the estimated or measured speedup?
+      placeholder: e.g. ~15% increase in deals/second on Apple Silicon
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs or implementations you've considered.
+    validations:
+      required: false

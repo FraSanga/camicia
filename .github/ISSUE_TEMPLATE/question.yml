@@ -1,0 +1,24 @@
+name: Question / Community Support
+description: Ask a question about running Camicia, setup, or Beggar-My-Neighbour mathematics
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about Camicia, setup, or Beggar-My-Neighbour mathematics? Ask away!
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like help with or clarification on?
+      placeholder: Ask your question here...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any relevant details (operating system, client version, logs, etc.).
+    validations:
+      required: false
