@@ -10,6 +10,11 @@ on:
     branches:
       - staging
   workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: "Build worker binaries only -- skip the actual staging deploy"
+        type: boolean
+        default: false
 
 # Least privilege: this workflow builds/deploys the project but never
 # writes to the repo, a PR, or anything else on GitHub itself.
@@ -123,6 +128,7 @@ jobs:
   deploy:
     name: "Deploy to Staging"
     needs: build-macos
+    if: ${{ !inputs.skip_deploy }}
     runs-on: [self-hosted, staging]
     # No `environment:` block, unlike deploy.yml: staging deliberately skips
     # CODE_SIGN_KEY_PASSPHRASE/UPLOAD_KEY_PASSPHRASE entirely (see STAGING.md
