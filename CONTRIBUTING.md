@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to **Camicia**! 
 
-Camicia is an open-source distributed computing research project running on the [BOINC](https://boinc.berkeley.edu/) platform. Volunteer computers simulate billions of games of the card game *Camicia* (also known as *Beggar-My-Neighbour*) to discover record-length games, non-terminating infinite loops, and statistical distribution patterns.
+Camicia is a [BOINC](https://boinc.berkeley.edu/) distributed-computing project exhaustively searching every deal of Beggar-My-Neighbour for games that loop forever, and for the longest game that ever ends.
 
 ---
 
