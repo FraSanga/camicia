@@ -317,7 +317,7 @@ page_head(tra("Search progress"));
         <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("%1 tricks", number_format($longest['tricks'])); ?></span>
       </p>
       <div class="discovery-meta" id="vizMeta">
-        <span id="vizMetaDate"><?php echo tra("Confirmed on %1", date('F j, Y', $longest['found_at'])); ?></span>
+        <span id="vizMetaDate"><?php echo tra("Confirmed on %1", date('d/m/Y', $longest['found_at'])); ?></span>
         <span id="vizMetaDeal" style="word-break:break-all"><?php echo tra("Deal #%1", $longest['deal_index']); ?></span>
         <span id="vizMetaAuthor" <?php if (empty($longest['user_html'])) echo 'style="display:none"'; ?>><?php echo tra("Discovered by %1", $longest['user_html'] ?? ''); ?></span>
       </div>
@@ -334,12 +334,12 @@ page_head(tra("Search progress"));
       </p>
 <?php if ($longest): ?>
       <div class="game-table" id="gameTable"></div>
-      <div class="status-line" id="gameStatus">Ready. Press Play to watch it, or step through it one move at a time.</div>
+      <div class="status-line" id="gameStatus"><?php echo tra("Ready. Press Play to watch it, or step through it one move at a time."); ?></div>
       <div class="game-controls">
-        <button class="ctrl-btn" id="resetBtn" title="Back to the start">&#9198; Reset</button>
-        <button class="ctrl-btn" id="backBtn" title="One step back">&#9664; Back</button>
-        <button class="ctrl-btn play-btn" id="playBtn" title="Play / Pause">&#9654; Play</button>
-        <button class="ctrl-btn" id="fwdBtn" title="One step forward">Forward &#9654;</button>
+        <button class="ctrl-btn" id="resetBtn" title="<?php echo tra("Back to the start"); ?>">&#9198; <?php echo tra("Reset"); ?></button>
+        <button class="ctrl-btn" id="backBtn" title="<?php echo tra("One step back"); ?>">&#9664; <?php echo tra("Back"); ?></button>
+        <button class="ctrl-btn play-btn" id="playBtn" title="<?php echo tra("Play / Pause"); ?>">&#9654; <?php echo tra("Play"); ?></button>
+        <button class="ctrl-btn" id="fwdBtn" title="<?php echo tra("One step forward"); ?>"><?php echo tra("Forward"); ?> &#9654;</button>
       </div>
       <p class="legend-note">
         <?php echo tra("Only aces, kings, queens and jacks determine the outcome of the game -- suit never matters either, only rank."); ?>
@@ -367,7 +367,7 @@ page_head(tra("Search progress"));
           <tbody>
 <?php foreach ($longest_history as $rec): ?>
             <tr>
-              <td><?php echo date('F j, Y', $rec['found_at']); ?></td>
+              <td><?php echo date('d/m/Y', $rec['found_at']); ?></td>
               <td><b><?php echo number_format($rec['cards']); ?></b></td>
               <td><?php echo number_format($rec['tricks']); ?></td>
               <td><span class="deal-id-cell"><?php echo htmlspecialchars($rec['deal_index']); ?></span></td>
@@ -378,7 +378,7 @@ page_head(tra("Search progress"));
                   data-type="longest"
                   data-cards="<?php echo (int)$rec['cards']; ?>"
                   data-tricks="<?php echo (int)$rec['tricks']; ?>"
-                  data-date="<?php echo date('F j, Y', $rec['found_at']); ?>"
+                  data-date="<?php echo date('d/m/Y', $rec['found_at']); ?>"
                   data-author="<?php echo htmlspecialchars($rec['user_html'] ?? ''); ?>"
                   data-wr="<?php echo !empty($rec['is_world_record']) ? '1' : '0'; ?>"
                   title="<?php echo tra("Load into visualizer"); ?>"
@@ -405,7 +405,7 @@ page_head(tra("Search progress"));
       <p class="move-count"><?php echo tra("474 moves, then enters a cycle of 66 deals"); ?></p>
       <div class="discovery-meta">
         <span><?php echo tra("Discovered by %1", "Brayden Casella"); ?></span>
-        <span><?php echo tra("February 10, 2024"); ?></span>
+        <span>10/02/2024</span>
       </div>
       <div class="deal-static" id="dealVizCasella"></div>
       <p class="source-note">
@@ -431,7 +431,7 @@ page_head(tra("Search progress"));
           <tbody>
 <?php foreach ($loops_found as $loop): ?>
             <tr>
-              <td><?php echo date('F j, Y', $loop['found_at']); ?></td>
+              <td><?php echo date('d/m/Y', $loop['found_at']); ?></td>
               <td><span class="deal-id-cell"><?php echo htmlspecialchars($loop['deal_index']); ?></span></td>
               <td><?php echo !empty($loop['user_html']) ? $loop['user_html'] : tra("Anonymous"); ?></td>
               <td style="text-align:right">
@@ -440,7 +440,7 @@ page_head(tra("Search progress"));
                   data-type="loop"
                   data-cards="0"
                   data-tricks="0"
-                  data-date="<?php echo date('F j, Y', $loop['found_at']); ?>"
+                  data-date="<?php echo date('d/m/Y', $loop['found_at']); ?>"
                   data-author="<?php echo htmlspecialchars($loop['user_html'] ?? ''); ?>"
                   data-wr="0"
                   title="<?php echo tra("Load into visualizer"); ?>"
@@ -496,8 +496,8 @@ page_head(tra("Search progress"));
   var casellaA = [].concat('---K---Q-KQAJ-----AAJ--J--'.split('')).map(function(c) { return c === '-' ? null : c; });
   var casellaB = [].concat('----------Q----KQ-J-----KA'.split('')).map(function(c) { return c === '-' ? null : c; });
   document.getElementById('dealVizCasella').innerHTML =
-    '<div class="deal-row-label">Hand A</div><div class="deal-row">' + renderHand(casellaA) + '</div>' +
-    '<div class="deal-row-label" style="margin-top:8px">Hand B</div><div class="deal-row">' + renderHand(casellaB) + '</div>';
+    '<div class="deal-row-label">' + <?php echo json_encode(tra("Hand A")); ?> + '</div><div class="deal-row">' + renderHand(casellaA) + '</div>' +
+    '<div class="deal-row-label" style="margin-top:8px">' + <?php echo json_encode(tra("Hand B")); ?> + '</div><div class="deal-row">' + renderHand(casellaB) + '</div>';
 
   // ---- Playable animation, driven by the exact same rules as
   // tools/worker/core/engine.cpp's CamiciaGame::simulate().
@@ -629,9 +629,9 @@ page_head(tra("Search progress"));
 
   function renderGameTable(state) {
     document.getElementById('gameTable').innerHTML =
-      '<div class="zone-col ' + (state.turn === 0 ? 'active' : '') + '"><p class="zone-label">Player A</p><p class="zone-count">' + state.deckA.length + '</p><div class="card-slots">' + renderSlots(state.deckA) + '</div></div>' +
-      '<div class="zone-col pile"><p class="zone-label">On the table</p><p class="zone-count">' + state.pile.length + '</p><div class="card-slots">' + renderSlots(state.pile) + '</div></div>' +
-      '<div class="zone-col ' + (state.turn === 1 ? 'active' : '') + '"><p class="zone-label">Player B</p><p class="zone-count">' + state.deckB.length + '</p><div class="card-slots">' + renderSlots(state.deckB) + '</div></div>';
+      '<div class="zone-col ' + (state.turn === 0 ? 'active' : '') + '"><p class="zone-label">' + <?php echo json_encode(tra("Player A")); ?> + '</p><p class="zone-count">' + state.deckA.length + '</p><div class="card-slots">' + renderSlots(state.deckA) + '</div></div>' +
+      '<div class="zone-col pile"><p class="zone-label">' + <?php echo json_encode(tra("On the table")); ?> + '</p><p class="zone-count">' + state.pile.length + '</p><div class="card-slots">' + renderSlots(state.pile) + '</div></div>' +
+      '<div class="zone-col ' + (state.turn === 1 ? 'active' : '') + '"><p class="zone-label">' + <?php echo json_encode(tra("Player B")); ?> + '</p><p class="zone-count">' + state.deckB.length + '</p><div class="card-slots">' + renderSlots(state.deckB) + '</div></div>';
   }
 
   var statusEl = document.getElementById('gameStatus');
@@ -641,17 +641,31 @@ page_head(tra("Search progress"));
   var resetBtn = document.getElementById('resetBtn');
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  function formatNum(n) {
+    return Number(n).toLocaleString('en-US');
+  }
+
+  var statusTplLoadedDeal = <?php echo json_encode(tra("Loaded deal #%1. Press Play to watch it, or step through it one move at a time.")); ?>;
+  var statusTplGameOver = <?php echo json_encode(tra("Game over! %1 cards played across %2 tricks.")); ?>;
+  var statusTplPenalty = <?php echo json_encode(tra("%1 played: player %2 must pay cards")); ?>;
+  var statusTplTrickWon = <?php echo json_encode(tra("Player %1 wins the cards on the table")); ?>;
+  var statusTplSweep = <?php echo json_encode(tra("No cards left to play: the cards on the table pass to the opponent")); ?>;
+  var statusTplReady = <?php echo json_encode(tra("Ready. Press Play to watch it, or step through it one move at a time.")); ?>;
+  var statusTplTurn = <?php echo json_encode(tra("Player %1's turn")); ?>;
+
   function statusFor(state, event, done) {
-    if (done) return 'Game over! <b>' + state.totalCardsPlayed + '</b> cards played across <b>' + state.totalTricks + '</b> tricks.';
-    if (event === 'penalty') return '<b>' + state.pile[state.pile.length - 1] + '</b> played: player ' + (state.turn === 0 ? 'A' : 'B') + ' must pay cards';
-    if (event === 'trickWon') return 'Player <b>' + (state.turn === 0 ? 'A' : 'B') + '</b> wins the cards on the table';
-    if (event === 'sweep') return 'No cards left to play: the cards on the table pass to the opponent';
-    if (event === null) return 'Ready. Press Play to watch it, or step through it one move at a time.';
-    return "Player " + (state.turn === 0 ? 'A' : 'B') + "'s turn";
+    if (done) return statusTplGameOver.replace('%1', '<b>' + formatNum(state.totalCardsPlayed) + '</b>').replace('%2', '<b>' + formatNum(state.totalTricks) + '</b>');
+    if (event === 'penalty') return statusTplPenalty.replace('%1', '<b>' + state.pile[state.pile.length - 1] + '</b>').replace('%2', state.turn === 0 ? 'A' : 'B');
+    if (event === 'trickWon') return statusTplTrickWon.replace('%1', '<b>' + (state.turn === 0 ? 'A' : 'B') + '</b>');
+    if (event === 'sweep') return statusTplSweep;
+    if (event === null) return statusTplReady;
+    return statusTplTurn.replace('%1', state.turn === 0 ? 'A' : 'B');
   }
 
   var CHECKPOINT_EVERY = 25;
   var checkpoints, current, playing = false, timer = null;
+  var playBtnText = '▶ ' + <?php echo json_encode(tra("Play")); ?>;
+  var pauseBtnText = '⏸ ' + <?php echo json_encode(tra("Pause")); ?>;
 
   function render() {
     renderGameTable(current.state);
@@ -690,12 +704,12 @@ page_head(tra("Search progress"));
   function stopPlaying() {
     playing = false;
     if (timer) { clearTimeout(timer); timer = null; }
-    playBtn.textContent = '▶ Play';
+    playBtn.textContent = playBtnText;
   }
 
   function startPlaying() {
     playing = true;
-    playBtn.textContent = '⏸ Pause';
+    playBtn.textContent = pauseBtnText;
     (function loop() {
       if (!playing) return;
       if (!stepForward()) { stopPlaying(); return; }
@@ -727,7 +741,7 @@ page_head(tra("Search progress"));
     if (typeof dealInfo === 'object') {
       updateVisualizerHeader(dealInfo);
     }
-    statusEl.innerHTML = 'Loaded deal <b>#' + dealStr + '</b>. Press Play to watch it, or step through it one move at a time.';
+    statusEl.innerHTML = statusTplLoadedDeal.replace('%1', '<b>' + dealStr + '</b>');
     var el = document.getElementById('vizCard');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -736,7 +750,7 @@ page_head(tra("Search progress"));
     deal: <?php echo json_encode($longest['deal_index'] ?? ''); ?>,
     cards: <?php echo (int)($longest['cards'] ?? 0); ?>,
     tricks: <?php echo (int)($longest['tricks'] ?? 0); ?>,
-    date: <?php echo json_encode(!empty($longest['found_at']) ? date('F j, Y', $longest['found_at']) : ''); ?>,
+    date: <?php echo json_encode(!empty($longest['found_at']) ? date('d/m/Y', $longest['found_at']) : ''); ?>,
     author: <?php echo json_encode($longest['user_html'] ?? ''); ?>,
     isWr: <?php echo !empty($longest['is_world_record']) ? 'true' : 'false'; ?>,
     type: 'champion'
@@ -749,10 +763,6 @@ page_head(tra("Search progress"));
   var vizMetaDeal = document.getElementById('vizMetaDeal');
   var vizMetaAuthor = document.getElementById('vizMetaAuthor');
   var vizPlaybackDesc = document.getElementById('vizPlaybackDesc');
-
-  function formatNum(n) {
-    return Number(n).toLocaleString('en-US');
-  }
 
   function updateVisualizerHeader(info) {
     if (!vizTagContainer) return;
