@@ -7,12 +7,37 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+#ifndef CAMICIA_TEST_RECORDS
 #include "boinc_db.h"
 #include "error_numbers.h"
 #include "filesys.h"
 #include "sched_msgs.h"
 #include "validate_util.h"
 #include "assimilate_handler.h"
+#else
+struct WORKUNIT {
+    char name[256];
+    int batch = 0;
+    int error_mask = 0;
+    int canonical_resultid = 0;
+};
+struct RESULT {
+    long long userid = 0;
+    long long hostid = 0;
+};
+struct OUTPUT_FILE_INFO {
+    std::string path;
+};
+int boinc_mkdir(const char*);
+int get_output_file_infos(const RESULT&, std::vector<OUTPUT_FILE_INFO>&);
+struct DB_CONN {
+    void* mysql = nullptr;
+    DB_CONN();
+    int do_query(const char*);
+};
+extern DB_CONN boinc_db;
+#define ERR_FOPEN -1
+#endif
 #include "int128_io.hpp"
 
 using std::vector;
@@ -220,20 +245,23 @@ int write_verify_rejected(WORKUNIT &wu, const string& detail) {
     return 0;
 }
 
-// records_longest.txt / records_loops.txt: tiny plain-text side files
-// tracking the project's two headline findings (longest finished game,
-// every loop found), updated right here as each result line is already
-// being read -- not by periodically rescanning results.txt, which is kept
-// forever and only grows. Deliberately plain space-separated fields, not
-// JSON: a deal index exceeds 64 bits (MAX_INDEX is ~6.5e20), so it can
-// only ever be carried as a string, and nothing here needs to parse it
-// back as a number -- keeping this dependency-free (no JSON library) and
-// cheap. html/ops/generate_progress_stats.php and html/user/progress.php
-// are what turn these into what the progress page actually shows.
+// records_longest.txt / records_loops.txt / records_longest_history.txt:
+// tracking the project's headline findings (longest finished game,
+// every loop found, and all-time record progression from Day 1), updated
+// right here as each result line is already being read.
+// Also persists discoveries into the unpurged MariaDB table
+// camicia_discoveries with volunteer attribution (userid, hostid), so badges
+// and Hall of Fame remain permanently accurate after db_purge deletes old
+// workunit/result rows.
+// Deliberately plain space-separated fields for flat files, not JSON:
+// a deal index exceeds 64 bits (MAX_INDEX is ~6.5e20), so it can only ever
+// be carried as a string, and keeping this dependency-free and cheap.
 void maybe_update_longest_record(
-    const char* wu_name, long long cards, long long tricks, const char* deal_index
+    const char* wu_name, long long cards, long long tricks, const char* deal_index,
+    long long userid = 0, long long hostid = 0
 ) {
     const char* path = "../records_longest.txt";
+    const char* history_path = "../records_longest_history.txt";
     long long best_cards = -1;
     FILE* f = fopen(path, "r");
     if (f) {
@@ -242,20 +270,70 @@ void maybe_update_longest_record(
     }
     if (cards <= best_cards) return;
 
+    time_t now = time(0);
+
+    // 1. Standing record cache (single current champion). Fields:
+    // <cards> <tricks> <deal_index> <wu_name> <timestamp> <userid> <hostid>
+    // Keeping timestamp as 5th field preserves backward compatibility with
+    // any consumer reading $parts[0..4].
     char tmp_path[256];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
     FILE* tmp = fopen(tmp_path, "w");
     if (!tmp) return;
-    fprintf(tmp, "%lld %lld %s %s %ld\n", cards, tricks, deal_index, wu_name, (long)time(0));
+    fprintf(tmp, "%lld %lld %s %s %ld %lld %lld\n",
+            cards, tricks, deal_index, wu_name, (long)now, userid, hostid);
     fclose(tmp);
     rename(tmp_path, path);
+
+    // 2. Milestone history log (append-only timeline of every record from Day 1).
+    FILE* h = fopen(history_path, "a");
+    if (h) {
+        fprintf(h, "%lld %lld %s %s %ld %lld %lld\n",
+                cards, tricks, deal_index, wu_name, (long)now, userid, hostid);
+        fclose(h);
+    }
+
+    // 3. Persist in unpurged MariaDB table camicia_discoveries.
+    // Real-world record threshold is 8344 cards (Nessler 2022).
+    static const long long REAL_WORLD_RECORD_CARDS = 8344;
+    int is_wr = (cards > REAL_WORLD_RECORD_CARDS) ? 1 : 0;
+    if (boinc_db.mysql) {
+        char sql[1024];
+        snprintf(sql, sizeof(sql),
+            "INSERT INTO camicia_discoveries "
+            "(discovery_type, deal_index, cards, tricks, wu_name, userid, hostid, discovered_at, is_world_record) "
+            "VALUES ('longest', '%s', %lld, %lld, '%s', %lld, %lld, %ld, %d)",
+            deal_index, cards, tricks, wu_name, userid, hostid, (long)now, is_wr
+        );
+        boinc_db.do_query(sql);
+    }
 }
 
-void record_loop_found(const char* wu_name, const char* deal_index) {
+void record_loop_found(
+    const char* wu_name, const char* deal_index,
+    long long cards = 0, long long tricks = 0,
+    long long userid = 0, long long hostid = 0
+) {
+    time_t now = time(0);
+
+    // 1. Append to records_loops.txt:
+    // <deal_index> <wu_name> <timestamp> <userid> <hostid>
     FILE* f = fopen("../records_loops.txt", "a");
     if (!f) return;
-    fprintf(f, "%s %s %ld\n", deal_index, wu_name, (long)time(0));
+    fprintf(f, "%s %s %ld %lld %lld\n", deal_index, wu_name, (long)now, userid, hostid);
     fclose(f);
+
+    // 2. Persist in unpurged MariaDB table camicia_discoveries
+    if (boinc_db.mysql) {
+        char sql[1024];
+        snprintf(sql, sizeof(sql),
+            "INSERT INTO camicia_discoveries "
+            "(discovery_type, deal_index, cards, tricks, wu_name, userid, hostid, discovered_at, is_world_record) "
+            "VALUES ('loop', '%s', %lld, %lld, '%s', %lld, %lld, %ld, 0)",
+            deal_index, cards, tricks, wu_name, userid, hostid, (long)now
+        );
+        boinc_db.do_query(sql);
+    }
 }
 
 // CA-M1 fix: records_longest.txt/records_loops.txt were previously
@@ -302,7 +380,10 @@ bool valid_result_line(const char* deal_index, long long cards, long long tricks
 // Parses one already-read results.txt line (before the wu.name prefix is
 // added below) and updates the record files above when it's a new
 // longest finished game or any loop at all.
-void track_result_line(const char* wu_name, const char* line) {
+void track_result_line(
+    const char* wu_name, const char* line,
+    long long userid = 0, long long hostid = 0
+) {
     char status[16];
     if (sscanf(line, "%15[^,],", status) != 1) return;
 
@@ -311,12 +392,12 @@ void track_result_line(const char* wu_name, const char* line) {
     if (!strcmp(status, "finished")) {
         if (sscanf(line, "finished,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3
             && valid_result_line(deal_index, cards, tricks)) {
-            maybe_update_longest_record(wu_name, cards, tricks, deal_index);
+            maybe_update_longest_record(wu_name, cards, tricks, deal_index, userid, hostid);
         }
     } else if (!strcmp(status, "loop")) {
         if (sscanf(line, "loop,%63[^,],%lld,%lld", deal_index, &cards, &tricks) == 3
             && valid_result_line(deal_index, cards, tricks)) {
-            record_loop_found(wu_name, deal_index);
+            record_loop_found(wu_name, deal_index, cards, tricks, userid, hostid);
         }
     }
 }
@@ -460,7 +541,7 @@ int assimilate_handler(
                 size_t line_cap = 0;
                 ssize_t len;
                 while ((len = getline(&line, &line_cap, f_in)) != -1) {
-                    track_result_line(wu.name, line);
+                    track_result_line(wu.name, line, (long long)canonical_result.userid, (long long)canonical_result.hostid);
                     fprintf(f_out, "%s,%s", wu.name, line);
                     if (len == 0 || line[len - 1] != '\n') fprintf(f_out, "\n");
                 }
@@ -483,6 +564,17 @@ int assimilate_handler(
 }
 
 #ifdef CAMICIA_TEST_RECORDS
+#include <sys/stat.h>
+
+// Stubs for BOINC symbols referenced by uncalled functions (assimilate_handler,
+// write_error, write_verify_rejected) so the test binary can link standalone
+// without needing libsched.a / libboinc.a on host builds.
+int boinc_mkdir(const char*) { return 0; }
+int get_output_file_infos(const RESULT&, vector<OUTPUT_FILE_INFO>&) { return 0; }
+DB_CONN::DB_CONN() {}
+int DB_CONN::do_query(const char*) { return 0; }
+DB_CONN boinc_db;
+
 // Standalone regression test for the CA-M1 validation gate
 // (valid_result_line() / track_result_line()) -- compiled with
 // -DCAMICIA_TEST_RECORDS, and deliberately NOT linked against BOINC's own
@@ -567,18 +659,19 @@ int main() {
         fprintf(stderr, "mkdtemp failed\n");
         return 1;
     }
-    char subdir[300], longest_path[300], loops_path[300];
+    char subdir[300], longest_path[300], history_path[300], loops_path[300];
     snprintf(subdir, sizeof(subdir), "%s/sub", tmpdir);
     snprintf(longest_path, sizeof(longest_path), "%s/records_longest.txt", tmpdir);
+    snprintf(history_path, sizeof(history_path), "%s/records_longest_history.txt", tmpdir);
     snprintf(loops_path, sizeof(loops_path), "%s/records_loops.txt", tmpdir);
     mkdir(subdir, 0755);
     if (chdir(subdir) != 0) {
         fprintf(stderr, "chdir failed\n");
         return 1;
     }
-    // track_result_line()'s two sinks resolve "../records_longest.txt" /
-    // "../records_loops.txt" relative to cwd -- from subdir/, that's
-    // tmpdir/records_longest.txt and tmpdir/records_loops.txt.
+    // track_result_line()'s sinks resolve "../records_longest.txt",
+    // "../records_longest_history.txt", and "../records_loops.txt"
+    // relative to cwd -- from subdir/, that's files under tmpdir/.
 
     int failures = 0;
     auto check = [&](const char* label, bool cond) {
@@ -587,17 +680,19 @@ int main() {
     };
 
     // 1) legit finished line -> becomes the record (best_cards starts at -1)
-    track_result_line("wu_a", "finished,1000,500,250\n");
-    check("legit finished line recorded",
+    track_result_line("wu_a", "finished,1000,500,250\n", 42, 101);
+    check("legit finished line recorded in longest",
         file_contains(longest_path, "500 250 1000 wu_a"));
+    check("legit finished line recorded in history",
+        file_contains(history_path, "500 250 1000 wu_a"));
 
     // 2) legit loop line -> appended
-    track_result_line("wu_b", "loop,2000,10,5\n");
+    track_result_line("wu_b", "loop,2000,10,5\n", 43, 102);
     check("legit loop line recorded", file_contains(loops_path, "2000 wu_b"));
 
     // 3) deal_index with embedded junk -> rejected. Before this fix,
     //    stringTo128() would have silently skipped the 'x' and stored 123.
-    track_result_line("wu_evil1", "finished,12x3,999,999\n");
+    track_result_line("wu_evil1", "finished,12x3,999,999\n", 99, 999);
     check("junk deal_index rejected (record unchanged)",
         file_contains(longest_path, "500 250 1000 wu_a"));
     check("junk deal_index never written",
@@ -618,16 +713,19 @@ int main() {
 
     // 7) a genuinely better finished line -> DOES become the new record
     //    (confirms the gate doesn't collaterally block legitimate updates)
-    track_result_line("wu_c", "finished,5000,600,300\n");
-    check("better legit record accepted", file_contains(longest_path, "600 300 5000 wu_c"));
+    track_result_line("wu_c", "finished,5000,600,300\n", 44, 103);
+    check("better legit record accepted in longest", file_contains(longest_path, "600 300 5000 wu_c"));
+    check("better legit record appended to history", file_contains(history_path, "600 300 5000 wu_c"));
 
     // 8) a worse finished line -> still correctly ignored (pre-existing
     //    maybe_update_longest_record() behavior, unaffected by this fix)
-    track_result_line("wu_d", "finished,6000,1,1\n");
+    track_result_line("wu_d", "finished,6000,1,1\n", 45, 104);
     check("worse legit record still ignored", file_contains(longest_path, "600 300 5000 wu_c"));
+    check("worse legit record not in history", !file_contains(history_path, "wu_d"));
+    check("history has exactly 2 milestone entries", file_line_count(history_path) == 2);
 
     // 9) a second, independent loop -> appended alongside the first
-    track_result_line("wu_e", "loop,7000,20,10\n");
+    track_result_line("wu_e", "loop,7000,20,10\n", 46, 105);
     check("second loop appended", file_contains(loops_path, "7000 wu_e"));
     check("first loop still present", file_contains(loops_path, "2000 wu_b"));
     check("exactly 2 loop lines (evil lines never reached record_loop_found)",
@@ -637,6 +735,7 @@ int main() {
     char longest_tmp_path[320];
     snprintf(longest_tmp_path, sizeof(longest_tmp_path), "%s.tmp", longest_path);
     remove(longest_tmp_path);
+    remove(history_path);
     remove(loops_path);
     rmdir(subdir);
     rmdir(tmpdir);
