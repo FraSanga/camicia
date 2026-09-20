@@ -244,8 +244,6 @@ page_head(tra("Search progress"));
 .progress-page .deal-id-cell { font-family: monospace; font-size: 12px; word-break: break-all; }
 .progress-page .table-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--cream-dim); }
 .progress-page .table-pagination .ctrl-btn { padding: 5px 14px; font-size: 12px; }
-.progress-page .restore-champ-btn { background: var(--felt); border: 1px solid var(--gold-dim); color: var(--gold); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; cursor: pointer; margin-left: 10px; vertical-align: middle; }
-.progress-page .restore-champ-btn:hover { background: var(--felt-2); border-color: var(--gold); color: var(--cream); }
 .progress-page .loop-list { display: flex; flex-direction: column; gap: 2px; background: var(--felt-line); border-radius: 10px; overflow: hidden; border: 1px solid var(--felt-line); margin-top: 10px; }
 .progress-page .loop-row { background: var(--felt-2); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .progress-page .loop-row b { color: var(--gold); font-family: Georgia, serif; }
@@ -777,9 +775,9 @@ page_head(tra("Search progress"));
       }
     } else if (info.type === 'loop') {
       vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Loop Discovery"); ?></span>';
-      vizSubtitle.innerHTML = '<?php echo tra("Non-terminating loop game"); ?> <button type="button" class="restore-champ-btn" id="restoreChampionBtn">&#x21ba; <?php echo tra("Back to longest game"); ?></button>';
+      vizSubtitle.innerHTML = '<?php echo tra("Non-terminating loop game"); ?>';
       vizMoveCount.innerHTML = '<?php echo tra("Infinite loop"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("never terminates"); ?></span>';
-      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, non-terminating game deal #"); ?>' + info.deal + ', <?php echo tra("played back move by move."); ?>';
+      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, the non-terminating game, played back move by move."); ?>';
       if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
       if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
       if (vizMetaAuthor) {
@@ -797,9 +795,9 @@ page_head(tra("Search progress"));
       } else {
         vizTagContainer.innerHTML = '<span class="discovery-tag" style="background:var(--felt);border:1px solid var(--gold-dim);color:var(--gold)"><?php echo tra("Historical Milestone"); ?></span>';
       }
-      vizSubtitle.innerHTML = '<?php echo tra("Historical record milestone"); ?> <button type="button" class="restore-champ-btn" id="restoreChampionBtn">&#x21ba; <?php echo tra("Back to longest game"); ?></button>';
+      vizSubtitle.innerHTML = '<?php echo tra("Historical record milestone"); ?>';
       vizMoveCount.innerHTML = Number(info.cards).toLocaleString() + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + Number(info.tricks).toLocaleString() + ' <?php echo tra("tricks"); ?></span>';
-      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, historical milestone deal #"); ?>' + info.deal + ', <?php echo tra("played back move by move."); ?>';
+      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, the historical milestone record, played back move by move."); ?>';
       if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
       if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
       if (vizMetaAuthor) {
@@ -810,13 +808,6 @@ page_head(tra("Search progress"));
           vizMetaAuthor.style.display = 'none';
         }
       }
-    }
-
-    var restoreBtn = document.getElementById('restoreChampionBtn');
-    if (restoreBtn) {
-      restoreBtn.addEventListener('click', function() {
-        loadDeal(championDeal);
-      });
     }
   }
 
