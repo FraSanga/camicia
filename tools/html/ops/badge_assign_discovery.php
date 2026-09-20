@@ -66,9 +66,9 @@ function save_state($path, $state) {
     file_put_contents($path, json_encode($state));
 }
 
-// wu_name -> BoincUser, or null if unattributable for any reason
-// (purged workunit/result, deleted host, deleted account).
-//
+// wu_name -> BoincUser, fallback when userid is not directly available in
+// camicia_discoveries or flat files (e.g. legacy entries before migration 0002).
+// Can legitimately fail if db_purge already deleted old workunit/result rows.
 function attribute_wu_to_user($wu_name) {
     $wu = BoincWorkunit::lookup("name='".BoincDb::escape_string($wu_name)."'");
     if (!$wu || !$wu->canonical_resultid) return null;
@@ -79,7 +79,49 @@ function attribute_wu_to_user($wu_name) {
     return BoincUser::lookup_id($host->userid);
 }
 
-function process_loops($badge, &$state) {
+// Primary path: award badges directly from camicia_discoveries table
+// (unpurged, immune to db_purge).
+function process_from_db($db, $loop_badge, $longest_badge) {
+    // 1. Loop Finder: every distinct user who found at least one loop
+    $res = $db->do_query("
+        SELECT DISTINCT userid FROM camicia_discoveries
+        WHERE discovery_type = 'loop' AND userid > 0
+    ");
+    if ($res) {
+        while ($row = $res->fetch_row()) {
+            $uid = (int)$row[0];
+            $user = BoincUser::lookup_id($uid);
+            if ($user) {
+                assign_badge(true, $user, $loop_badge);
+                echo "Loop Finder confirmed for $user->name (ID $user->id)\n";
+            }
+        }
+        $res->free();
+    }
+
+    // 2. Longest Game: every distinct user who beat the world record (>8344 cards)
+    $cutoff = REAL_WORLD_RECORD_CARDS;
+    $res = $db->do_query("
+        SELECT userid, MAX(cards) FROM camicia_discoveries
+        WHERE discovery_type = 'longest' AND (is_world_record = 1 OR cards > $cutoff) AND userid > 0
+        GROUP BY userid
+    ");
+    if ($res) {
+        while ($row = $res->fetch_row()) {
+            $uid = (int)$row[0];
+            $cards = (int)$row[1];
+            $user = BoincUser::lookup_id($uid);
+            if ($user) {
+                assign_badge(true, $user, $longest_badge);
+                echo "Awarded Longest Game to $user->name (ID $user->id): $cards cards (beat world record)\n";
+            }
+        }
+        $res->free();
+    }
+}
+
+// Fallback path: process flat files if camicia_discoveries is not yet populated
+function process_loops_fallback($badge, &$state) {
     $path = "../../records_loops.txt";
     if (!file_exists($path)) return;
     $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -90,7 +132,15 @@ function process_loops($badge, &$state) {
         $parts = preg_split('/\s+/', trim($lines[$i]));
         if (count($parts) < 2) continue;
         $wu_name = $parts[1];
-        $user = attribute_wu_to_user($wu_name);
+
+        // Check if userid is present directly in line: <deal_index> <wu_name> <timestamp> <userid> <hostid>
+        $user = null;
+        if (isset($parts[3]) && (int)$parts[3] > 0) {
+            $user = BoincUser::lookup_id((int)$parts[3]);
+        }
+        if (!$user) {
+            $user = attribute_wu_to_user($wu_name);
+        }
         if (!$user) {
             echo "Loop find in $wu_name: can't attribute to a user (purged or deleted) -- skipping\n";
             continue;
@@ -101,7 +151,7 @@ function process_loops($badge, &$state) {
     $state['loop_lines_processed'] = $n;
 }
 
-function process_longest($badge, &$state) {
+function process_longest_fallback($badge, &$state) {
     $path = "../../records_longest.txt";
     if (!file_exists($path)) return;
     $line = trim(@file_get_contents($path));
@@ -116,7 +166,14 @@ function process_longest($badge, &$state) {
 
     if ($cards <= REAL_WORLD_RECORD_CARDS) return;  // not a real-world record (yet)
 
-    $user = attribute_wu_to_user($wu_name);
+    // Check if userid is present directly in line: <cards> <tricks> <deal_index> <wu_name> <timestamp> <userid> <hostid>
+    $user = null;
+    if (isset($parts[5]) && (int)$parts[5] > 0) {
+        $user = BoincUser::lookup_id((int)$parts[5]);
+    }
+    if (!$user) {
+        $user = attribute_wu_to_user($wu_name);
+    }
     if (!$user) {
         echo "New real-world record ($cards cards, wu $wu_name) but can't attribute to a user -- skipping\n";
         return;
@@ -127,15 +184,30 @@ function process_longest($badge, &$state) {
 
 echo "Starting: ", time_str(time()), "\n";
 
+$db = BoincDb::get();
+$has_discoveries_table = false;
+$res = $db->do_query("SHOW TABLES LIKE 'camicia_discoveries'");
+if ($res) {
+    if ($res->num_rows > 0) {
+        $has_discoveries_table = true;
+    }
+    $res->free();
+}
+
 $state = load_state($state_path);
 
 $loop_badge = get_badge("discovery_loop", "Loop Finder", "discovery_loop.png");
 $longest_badge = get_badge("discovery_longest", "Longest Game", "discovery_longest.png");
 
-process_loops($loop_badge, $state);
-process_longest($longest_badge, $state);
-
-save_state($state_path, $state);
+if ($has_discoveries_table) {
+    echo "Processing discovery badges from camicia_discoveries table...\n";
+    process_from_db($db, $loop_badge, $longest_badge);
+} else {
+    echo "camicia_discoveries table not present, falling back to flat files...\n";
+    process_loops_fallback($loop_badge, $state);
+    process_longest_fallback($longest_badge, $state);
+    save_state($state_path, $state);
+}
 
 echo "Finished: ", time_str(time()), "\n";
 

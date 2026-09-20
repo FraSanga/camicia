@@ -20,6 +20,8 @@
 
 $cli_only = true;
 require_once("../inc/util_ops.inc");
+require_once("../inc/user.inc");
+require_once("../inc/badge.inc");
 
 db_init();
 
@@ -145,6 +147,160 @@ $waiting = (int)scalar($db, "
     and (select count(*) from result r where r.workunitid = w.id) <= 2
 ");
 
+// -------- discoveries & hall of fame milestones --------
+$longest_current = null;
+$longest_history = [];
+$loops_found = [];
+
+$has_disc_table = false;
+$res = $db->do_query("SHOW TABLES LIKE 'camicia_discoveries'");
+if ($res) {
+    if ($res->num_rows > 0) {
+        $has_disc_table = true;
+    }
+    $res->free();
+}
+
+if ($has_disc_table) {
+    // Current champion longest game (highest cards, then most recent)
+    $res = $db->do_query("
+        SELECT cards, tricks, deal_index, wu_name, discovered_at, userid, hostid, is_world_record
+        FROM camicia_discoveries
+        WHERE discovery_type = 'longest'
+        ORDER BY cards DESC, discovered_at DESC
+        LIMIT 1
+    ");
+    if ($res && ($row = $res->fetch_assoc())) {
+        $uid = (int)$row['userid'];
+        $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+        $longest_current = [
+            'cards' => (int)$row['cards'],
+            'tricks' => (int)$row['tricks'],
+            'deal_index' => $row['deal_index'],
+            'wu_name' => $row['wu_name'],
+            'found_at' => (int)$row['discovered_at'],
+            'userid' => $uid,
+            'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+            'is_world_record' => (bool)$row['is_world_record'],
+        ];
+        $res->free();
+    }
+
+    // All-time record progression / Hall of Fame milestones from Day 1
+    $res = $db->do_query("
+        SELECT cards, tricks, deal_index, wu_name, discovered_at, userid, hostid, is_world_record
+        FROM camicia_discoveries
+        WHERE discovery_type = 'longest'
+        ORDER BY cards DESC, discovered_at DESC
+    ");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $uid = (int)$row['userid'];
+            $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+            $longest_history[] = [
+                'cards' => (int)$row['cards'],
+                'tricks' => (int)$row['tricks'],
+                'deal_index' => $row['deal_index'],
+                'wu_name' => $row['wu_name'],
+                'found_at' => (int)$row['discovered_at'],
+                'userid' => $uid,
+                'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+                'is_world_record' => (bool)$row['is_world_record'],
+            ];
+        }
+        $res->free();
+    }
+
+    // Loops found: newest first
+    $res = $db->do_query("
+        SELECT cards, tricks, deal_index, wu_name, discovered_at, userid, hostid
+        FROM camicia_discoveries
+        WHERE discovery_type = 'loop'
+        ORDER BY discovered_at DESC
+    ");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $uid = (int)$row['userid'];
+            $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+            $loops_found[] = [
+                'cards' => (int)$row['cards'],
+                'tricks' => (int)$row['tricks'],
+                'deal_index' => $row['deal_index'],
+                'wu_name' => $row['wu_name'],
+                'found_at' => (int)$row['discovered_at'],
+                'userid' => $uid,
+                'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+            ];
+        }
+        $res->free();
+    }
+} else {
+    // Fallback to flat files
+    $longest_path = "../../records_longest.txt";
+    if (file_exists($longest_path)) {
+        $parts = preg_split('/\s+/', trim(file_get_contents($longest_path)));
+        if (count($parts) >= 5) {
+            $uid = isset($parts[5]) ? (int)$parts[5] : 0;
+            $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+            $cards = (int)$parts[0];
+            $longest_current = [
+                'cards' => $cards,
+                'tricks' => (int)$parts[1],
+                'deal_index' => $parts[2],
+                'wu_name' => $parts[3],
+                'found_at' => (int)$parts[4],
+                'userid' => $uid,
+                'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+                'is_world_record' => ($cards > 8344),
+            ];
+        }
+    }
+
+    $history_path = "../../records_longest_history.txt";
+    if (file_exists($history_path)) {
+        foreach (file($history_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            $parts = preg_split('/\s+/', trim($line));
+            if (count($parts) >= 5) {
+                $uid = isset($parts[5]) ? (int)$parts[5] : 0;
+                $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+                $cards = (int)$parts[0];
+                $longest_history[] = [
+                    'cards' => $cards,
+                    'tricks' => (int)$parts[1],
+                    'deal_index' => $parts[2],
+                    'wu_name' => $parts[3],
+                    'found_at' => (int)$parts[4],
+                    'userid' => $uid,
+                    'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+                    'is_world_record' => ($cards > 8344),
+                ];
+            }
+        }
+        usort($longest_history, function($a, $b) {
+            return $b['cards'] <=> $a['cards'];
+        });
+    }
+
+    $loops_path = "../../records_loops.txt";
+    if (file_exists($loops_path)) {
+        foreach (file($loops_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            $parts = preg_split('/\s+/', trim($line));
+            if (count($parts) >= 3) {
+                $uid = isset($parts[3]) ? (int)$parts[3] : 0;
+                $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+                $loops_found[] = [
+                    'deal_index' => $parts[0],
+                    'wu_name' => $parts[1],
+                    'found_at' => (int)$parts[2],
+                    'userid' => $uid,
+                    'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+                ];
+            }
+        }
+        $loops_found = array_reverse($loops_found);
+    }
+}
+
 $stats = [
     'generated_at' => $now,
     'search_space_blocks' => SEARCH_SPACE_BLOCKS,
@@ -155,6 +311,9 @@ $stats = [
         'rechecking' => $rechecking,
         'waiting' => $waiting,
     ],
+    'longest_current' => $longest_current,
+    'longest_history' => $longest_history,
+    'loops' => $loops_found,
 ];
 
 } catch (Throwable $e) {

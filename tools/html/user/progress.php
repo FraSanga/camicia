@@ -36,22 +36,56 @@ function read_progress_stats() {
     return $json ?: null;
 }
 
-// records_longest.txt: one line "<cards> <tricks> <deal_index> <wu_name> <unix_time>"
+// records_longest.txt: one line "<cards> <tricks> <deal_index> <wu_name> <unix_time> [<userid> <hostid>]"
 function read_longest_record() {
     $path = '../../records_longest.txt';
     if (!file_exists($path)) return null;
     $parts = explode(' ', trim(file_get_contents($path)));
     if (count($parts) < 5) return null;
+    $uid = isset($parts[5]) ? (int)$parts[5] : 0;
+    $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+    $cards = (int)$parts[0];
     return array(
-        'cards' => (int)$parts[0],
+        'cards' => $cards,
         'tricks' => (int)$parts[1],
         'deal_index' => $parts[2],
         'wu_name' => $parts[3],
         'found_at' => (int)$parts[4],
+        'userid' => $uid,
+        'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+        'is_world_record' => ($cards > 8344),
     );
 }
 
-// records_loops.txt: append-only, one line per loop "<deal_index> <wu_name> <unix_time>"
+// records_longest_history.txt: append-only, every new record from Day 1
+function read_longest_history() {
+    $path = '../../records_longest_history.txt';
+    if (!file_exists($path)) return array();
+    $history = array();
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $parts = explode(' ', trim($line));
+        if (count($parts) < 5) continue;
+        $uid = isset($parts[5]) ? (int)$parts[5] : 0;
+        $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
+        $cards = (int)$parts[0];
+        $history[] = array(
+            'cards' => $cards,
+            'tricks' => (int)$parts[1],
+            'deal_index' => $parts[2],
+            'wu_name' => $parts[3],
+            'found_at' => (int)$parts[4],
+            'userid' => $uid,
+            'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
+            'is_world_record' => ($cards > 8344),
+        );
+    }
+    usort($history, function($a, $b) {
+        return $b['cards'] <=> $a['cards'];
+    });
+    return $history;
+}
+
+// records_loops.txt: append-only, one line per loop "<deal_index> <wu_name> <unix_time> [<userid> <hostid>]"
 function read_loops_found() {
     $path = '../../records_loops.txt';
     if (!file_exists($path)) return array();
@@ -59,18 +93,46 @@ function read_loops_found() {
     foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
         $parts = explode(' ', trim($line));
         if (count($parts) < 3) continue;
+        $uid = isset($parts[3]) ? (int)$parts[3] : 0;
+        $user = $uid > 0 ? BoincUser::lookup_id($uid) : null;
         $loops[] = array(
             'deal_index' => $parts[0],
             'wu_name' => $parts[1],
             'found_at' => (int)$parts[2],
+            'userid' => $uid,
+            'user_html' => $user ? user_links($user, BADGE_HEIGHT_SMALL) : "",
         );
     }
     return array_reverse($loops); // newest first
 }
 
 $stats = read_progress_stats();
-$longest = read_longest_record();
-$loops_found = read_loops_found();
+$longest = ($stats && !empty($stats['longest_current'])) ? $stats['longest_current'] : read_longest_record();
+$longest_history = ($stats && !empty($stats['longest_history'])) ? $stats['longest_history'] : read_longest_history();
+$loops_found = ($stats && !empty($stats['loops'])) ? $stats['loops'] : read_loops_found();
+
+if (!$longest && !empty($longest_history)) {
+    $longest = $longest_history[0];
+}
+
+if ($longest && empty($longest['user_html']) && !empty($longest['userid'])) {
+    $u = BoincUser::lookup_id($longest['userid']);
+    if ($u) $longest['user_html'] = user_links($u, BADGE_HEIGHT_SMALL);
+}
+foreach ($longest_history as &$rec) {
+    if (empty($rec['user_html']) && !empty($rec['userid'])) {
+        $u = BoincUser::lookup_id($rec['userid']);
+        if ($u) $rec['user_html'] = user_links($u, BADGE_HEIGHT_SMALL);
+    }
+}
+unset($rec);
+foreach ($loops_found as &$loop) {
+    if (empty($loop['user_html']) && !empty($loop['userid'])) {
+        $u = BoincUser::lookup_id($loop['userid']);
+        if ($u) $loop['user_html'] = user_links($u, BADGE_HEIGHT_SMALL);
+    }
+}
+unset($loop);
 
 $search_space_blocks = $stats ? (int)$stats['search_space_blocks'] : FALLBACK_SEARCH_SPACE_BLOCKS;
 $blocks_confirmed_total = $stats ? (int)$stats['blocks_confirmed_total'] : 0;
@@ -166,13 +228,21 @@ page_head(tra("Search progress"));
 .progress-page .legend-note .chip { display: inline-flex; width: 18px; height: 24px; font-size: 10px; vertical-align: middle; margin: 0 4px; }
 .progress-page .discovery-tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; margin-bottom: 10px; }
 .progress-page .discovery-tag.camicia { background: var(--gold); color: var(--felt); }
+.progress-page .discovery-tag.world-record { background: var(--ruby); color: var(--cream); border: 1px solid #d94b63; }
 .progress-page .discovery-tag.reference { background: transparent; border: 1px solid var(--cream-dim); color: var(--cream-dim); }
 .progress-page .source-note { font-size: 12px; color: var(--cream-dim); margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--felt-line); line-height: 1.6; }
 .progress-page .source-note a { color: var(--gold); }
 .progress-page .empty-state { background: var(--felt-2); border-radius: 10px; padding: 20px 22px; text-align: center; color: var(--cream-dim); font-size: 13.5px; line-height: 1.6; margin-top: 16px; }
 .progress-page .empty-state b { color: var(--cream); }
+.progress-page .hall-of-fame-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px; font-size: 13px; background: var(--felt-2); border-radius: 10px; overflow: hidden; border: 1px solid var(--felt-line); }
+.progress-page .hall-of-fame-table th { background: var(--felt); color: var(--gold); padding: 12px 14px; text-align: left; font-weight: 600; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--felt-line); }
+.progress-page .hall-of-fame-table td { padding: 10px 14px; border-bottom: 1px solid var(--felt-line); color: var(--cream); vertical-align: middle; }
+.progress-page .hall-of-fame-table tr:last-child td { border-bottom: none; }
+.progress-page .hall-of-fame-table tr:hover td { background: rgba(201, 162, 39, 0.05); }
+.progress-page .hall-of-fame-table td a, .progress-page .loop-row a { color: var(--gold); text-decoration: none; font-weight: 600; }
+.progress-page .hall-of-fame-table td a:hover, .progress-page .loop-row a:hover { text-decoration: underline; }
 .progress-page .loop-list { display: flex; flex-direction: column; gap: 2px; background: var(--felt-line); border-radius: 10px; overflow: hidden; border: 1px solid var(--felt-line); margin-top: 10px; }
-.progress-page .loop-row { background: var(--felt-2); padding: 14px 18px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+.progress-page .loop-row { background: var(--felt-2); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .progress-page .loop-row b { color: var(--gold); font-family: Georgia, serif; }
 </style>
 
@@ -231,12 +301,22 @@ page_head(tra("Search progress"));
 
     <div class="discovery">
 <?php if ($longest): ?>
+      <?php if (!empty($longest['is_world_record'])): ?>
+      <span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>
+      <?php else: ?>
       <span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>
+      <?php endif; ?>
       <p class="section-sub" style="margin-bottom:2px"><?php echo tra("The longest game found so far"); ?></p>
-      <p class="move-count"><?php echo tra("%1 hands played", number_format($longest['tricks'])); ?></p>
+      <p class="move-count">
+        <?php echo tra("%1 cards played", number_format($longest['cards'])); ?>
+        <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("%1 hands", number_format($longest['tricks'])); ?></span>
+      </p>
       <div class="discovery-meta">
         <span><?php echo tra("Confirmed on %1", date('F j, Y', $longest['found_at'])); ?></span>
         <span><?php echo tra("Deal #%1", $longest['deal_index']); ?></span>
+        <?php if (!empty($longest['user_html'])): ?>
+        <span><?php echo tra("Discovered by %1", $longest['user_html']); ?></span>
+        <?php endif; ?>
       </div>
 <?php else: ?>
       <p class="section-sub" style="margin-bottom:2px"><?php echo tra("The longest game found so far"); ?></p>
@@ -266,6 +346,43 @@ page_head(tra("Search progress"));
     </div>
 
     <div class="discovery">
+      <h2 class="section-title" style="margin-bottom:2px"><?php echo tra("Hall of fame"); ?></h2>
+      <p class="section-sub" style="margin-bottom:16px"><?php echo tra("The history of every record set on Camicia from day 1"); ?></p>
+<?php if (!empty($longest_history)): ?>
+      <div style="overflow-x:auto">
+        <table class="hall-of-fame-table">
+          <thead>
+            <tr>
+              <th><?php echo tra("Confirmed on"); ?></th>
+              <th><?php echo tra("Cards"); ?></th>
+              <th><?php echo tra("Hands"); ?></th>
+              <th><?php echo tra("Deal #"); ?></th>
+              <th><?php echo tra("Discovered by"); ?></th>
+              <th style="text-align:right"></th>
+            </tr>
+          </thead>
+          <tbody>
+<?php foreach ($longest_history as $rec): ?>
+            <tr>
+              <td><?php echo date('F j, Y', $rec['found_at']); ?></td>
+              <td><b><?php echo number_format($rec['cards']); ?></b></td>
+              <td><?php echo number_format($rec['tricks']); ?></td>
+              <td><span title="<?php echo htmlspecialchars($rec['deal_index']); ?>" style="font-family:monospace;font-size:12px"><?php echo (strlen($rec['deal_index']) > 16) ? substr($rec['deal_index'], 0, 8) . '...' . substr($rec['deal_index'], -6) : $rec['deal_index']; ?></span></td>
+              <td><?php echo !empty($rec['user_html']) ? $rec['user_html'] : tra("Anonymous"); ?></td>
+              <td style="text-align:right">
+                <button class="ctrl-btn replay-deal-btn" data-deal="<?php echo htmlspecialchars($rec['deal_index']); ?>" title="<?php echo tra("Load into visualizer"); ?>" style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
+              </td>
+            </tr>
+<?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+<?php else: ?>
+      <div class="empty-state"><?php echo tra("No historical records recorded yet -- check back once the search is running."); ?></div>
+<?php endif; ?>
+    </div>
+
+    <div class="discovery">
       <span class="discovery-tag reference"><?php echo tra("Historical reference &mdash; not found by Camicia"); ?></span>
       <p class="section-sub" style="margin-bottom:2px"><?php echo tra("The first documented loop for this game"); ?></p>
       <p class="move-count"><?php echo tra("474 moves, then enters a cycle of 66 deals"); ?></p>
@@ -286,9 +403,10 @@ page_head(tra("Search progress"));
       <div class="loop-list">
 <?php foreach ($loops_found as $loop): ?>
         <div class="loop-row">
-          <span><?php echo tra("Deal #%1", $loop['deal_index']); ?></span>
-          <span><b><?php echo $loop['wu_name']; ?></b></span>
+          <span><?php echo tra("Deal #%1", (strlen($loop['deal_index']) > 16) ? substr($loop['deal_index'], 0, 8) . '...' . substr($loop['deal_index'], -6) : $loop['deal_index']); ?></span>
+          <span><?php echo !empty($loop['user_html']) ? $loop['user_html'] : '<b>' . htmlspecialchars($loop['wu_name']) . '</b>'; ?></span>
           <span><?php echo date('F j, Y', $loop['found_at']); ?></span>
+          <button class="ctrl-btn replay-deal-btn" data-deal="<?php echo htmlspecialchars($loop['deal_index']); ?>" title="<?php echo tra("Load into visualizer"); ?>" style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
         </div>
 <?php endforeach; ?>
       </div>
@@ -552,6 +670,24 @@ page_head(tra("Search progress"));
   backBtn.addEventListener('click', function() { stopPlaying(); stepBack(); });
   fwdBtn.addEventListener('click', function() { stopPlaying(); stepForward(); });
   resetBtn.addEventListener('click', resetGame);
+
+  function loadDeal(dealIndexStr) {
+    stopPlaying();
+    realDeck = getNthPermutation(dealIndexStr);
+    deckA = realDeck.slice(0, 26);
+    deckB = realDeck.slice(26);
+    resetGame();
+    var shortIndex = dealIndexStr.length > 16 ? dealIndexStr.slice(0, 8) + '...' + dealIndexStr.slice(-6) : dealIndexStr;
+    statusEl.innerHTML = 'Loaded deal <b>#' + shortIndex + '</b>. Press Play to watch it, or step through it one move at a time.';
+    var el = document.getElementById('gameTable');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.replay-deal-btn');
+    if (!btn || !btn.dataset.deal) return;
+    loadDeal(btn.dataset.deal);
+  });
 
   resetGame();
 <?php endif; ?>
