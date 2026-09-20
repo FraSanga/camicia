@@ -750,6 +750,10 @@ page_head(tra("Search progress"));
   var vizMetaAuthor = document.getElementById('vizMetaAuthor');
   var vizPlaybackDesc = document.getElementById('vizPlaybackDesc');
 
+  function formatNum(n) {
+    return Number(n).toLocaleString('en-US');
+  }
+
   function updateVisualizerHeader(info) {
     if (!vizTagContainer) return;
     var isChampion = (info.deal === championDeal.deal);
@@ -761,7 +765,7 @@ page_head(tra("Search progress"));
         vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>';
       }
       vizSubtitle.innerHTML = '<?php echo tra("The longest game found so far"); ?>';
-      vizMoveCount.innerHTML = Number(championDeal.cards).toLocaleString() + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + Number(championDeal.tricks).toLocaleString() + ' <?php echo tra("tricks"); ?></span>';
+      vizMoveCount.innerHTML = formatNum(championDeal.cards) + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(championDeal.tricks) + ' <?php echo tra("tricks"); ?></span>';
       vizPlaybackDesc.innerHTML = '<?php echo tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>"); ?>';
       if (vizMetaDate) vizMetaDate.textContent = '<?php echo tra("Confirmed on"); ?> ' + championDeal.date;
       if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + championDeal.deal;
@@ -796,7 +800,7 @@ page_head(tra("Search progress"));
         vizTagContainer.innerHTML = '<span class="discovery-tag" style="background:var(--felt);border:1px solid var(--gold-dim);color:var(--gold)"><?php echo tra("Historical Milestone"); ?></span>';
       }
       vizSubtitle.innerHTML = '<?php echo tra("Historical record milestone"); ?>';
-      vizMoveCount.innerHTML = Number(info.cards).toLocaleString() + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + Number(info.tricks).toLocaleString() + ' <?php echo tra("tricks"); ?></span>';
+      vizMoveCount.innerHTML = formatNum(info.cards) + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(info.tricks) + ' <?php echo tra("tricks"); ?></span>';
       vizPlaybackDesc.innerHTML = '<?php echo tra("Below, the historical milestone record, played back move by move."); ?>';
       if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
       if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
@@ -861,6 +865,8 @@ page_head(tra("Search progress"));
       if (currentPage > 1) {
         currentPage--;
         updatePage();
+        var target = table.closest('.discovery') || table;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
 
@@ -868,6 +874,8 @@ page_head(tra("Search progress"));
       if (currentPage < totalPages) {
         currentPage++;
         updatePage();
+        var target = table.closest('.discovery') || table;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
 
