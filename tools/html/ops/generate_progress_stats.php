@@ -21,7 +21,6 @@
 $cli_only = true;
 require_once("../inc/util_ops.inc");
 require_once("../inc/user.inc");
-require_once("../inc/badge.inc");
 
 db_init();
 
