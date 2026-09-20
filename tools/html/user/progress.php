@@ -241,6 +241,11 @@ page_head(tra("Search progress"));
 .progress-page .hall-of-fame-table tr:hover td { background: rgba(201, 162, 39, 0.05); }
 .progress-page .hall-of-fame-table td a, .progress-page .loop-row a { color: var(--gold); text-decoration: none; font-weight: 600; }
 .progress-page .hall-of-fame-table td a:hover, .progress-page .loop-row a:hover { text-decoration: underline; }
+.progress-page .deal-id-cell { font-family: monospace; font-size: 12px; word-break: break-all; }
+.progress-page .table-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--cream-dim); }
+.progress-page .table-pagination .ctrl-btn { padding: 5px 14px; font-size: 12px; }
+.progress-page .restore-champ-btn { background: var(--felt); border: 1px solid var(--gold-dim); color: var(--gold); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; cursor: pointer; margin-left: 10px; vertical-align: middle; }
+.progress-page .restore-champ-btn:hover { background: var(--felt-2); border-color: var(--gold); color: var(--cream); }
 .progress-page .loop-list { display: flex; flex-direction: column; gap: 2px; background: var(--felt-line); border-radius: 10px; overflow: hidden; border: 1px solid var(--felt-line); margin-top: 10px; }
 .progress-page .loop-row { background: var(--felt-2); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .progress-page .loop-row b { color: var(--gold); font-family: Georgia, serif; }
@@ -299,30 +304,30 @@ page_head(tra("Search progress"));
   <section>
     <h2 class="section-title" style="margin-bottom:16px"><?php echo tra("Discoveries"); ?></h2>
 
-    <div class="discovery">
+    <div class="discovery" id="vizCard">
 <?php if ($longest): ?>
-      <?php if (!empty($longest['is_world_record'])): ?>
-      <span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>
-      <?php else: ?>
-      <span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>
-      <?php endif; ?>
-      <p class="section-sub" style="margin-bottom:2px"><?php echo tra("The longest game found so far"); ?></p>
-      <p class="move-count">
-        <?php echo tra("%1 cards played", number_format($longest['cards'])); ?>
-        <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("%1 hands", number_format($longest['tricks'])); ?></span>
-      </p>
-      <div class="discovery-meta">
-        <span><?php echo tra("Confirmed on %1", date('F j, Y', $longest['found_at'])); ?></span>
-        <span><?php echo tra("Deal #%1", $longest['deal_index']); ?></span>
-        <?php if (!empty($longest['user_html'])): ?>
-        <span><?php echo tra("Discovered by %1", $longest['user_html']); ?></span>
+      <div id="vizTagContainer">
+        <?php if (!empty($longest['is_world_record'])): ?>
+        <span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>
+        <?php else: ?>
+        <span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>
         <?php endif; ?>
+      </div>
+      <p class="section-sub" id="vizSubtitle" style="margin-bottom:2px"><?php echo tra("The longest game found so far"); ?></p>
+      <p class="move-count" id="vizMoveCount">
+        <?php echo tra("%1 cards played", number_format($longest['cards'])); ?>
+        <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("%1 tricks", number_format($longest['tricks'])); ?></span>
+      </p>
+      <div class="discovery-meta" id="vizMeta">
+        <span id="vizMetaDate"><?php echo tra("Confirmed on %1", date('F j, Y', $longest['found_at'])); ?></span>
+        <span id="vizMetaDeal" style="word-break:break-all"><?php echo tra("Deal #%1", $longest['deal_index']); ?></span>
+        <span id="vizMetaAuthor" <?php if (empty($longest['user_html'])) echo 'style="display:none"'; ?>><?php echo tra("Discovered by %1", $longest['user_html'] ?? ''); ?></span>
       </div>
 <?php else: ?>
       <p class="section-sub" style="margin-bottom:2px"><?php echo tra("The longest game found so far"); ?></p>
       <div class="empty-state"><?php echo tra("Camicia hasn't confirmed any games yet -- check back once the search is running."); ?></div>
 <?php endif; ?>
-      <p class="section-sub" style="margin:16px 0 4px">
+      <p class="section-sub" id="vizPlaybackDesc" style="margin:16px 0 4px">
         <?php if ($longest): ?>
         <?php echo tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>"); ?>
         <?php else: ?>
@@ -350,12 +355,12 @@ page_head(tra("Search progress"));
       <p class="section-sub" style="margin-bottom:16px"><?php echo tra("The history of every record set on Camicia from day 1"); ?></p>
 <?php if (!empty($longest_history)): ?>
       <div style="overflow-x:auto">
-        <table class="hall-of-fame-table">
+        <table class="hall-of-fame-table" id="hofTable">
           <thead>
             <tr>
               <th><?php echo tra("Confirmed on"); ?></th>
               <th><?php echo tra("Cards"); ?></th>
-              <th><?php echo tra("Hands"); ?></th>
+              <th><?php echo tra("Tricks"); ?></th>
               <th><?php echo tra("Deal #"); ?></th>
               <th><?php echo tra("Discovered by"); ?></th>
               <th style="text-align:right"></th>
@@ -367,15 +372,29 @@ page_head(tra("Search progress"));
               <td><?php echo date('F j, Y', $rec['found_at']); ?></td>
               <td><b><?php echo number_format($rec['cards']); ?></b></td>
               <td><?php echo number_format($rec['tricks']); ?></td>
-              <td><span title="<?php echo htmlspecialchars($rec['deal_index']); ?>" style="font-family:monospace;font-size:12px"><?php echo (strlen($rec['deal_index']) > 16) ? substr($rec['deal_index'], 0, 8) . '...' . substr($rec['deal_index'], -6) : $rec['deal_index']; ?></span></td>
+              <td><span class="deal-id-cell"><?php echo htmlspecialchars($rec['deal_index']); ?></span></td>
               <td><?php echo !empty($rec['user_html']) ? $rec['user_html'] : tra("Anonymous"); ?></td>
               <td style="text-align:right">
-                <button class="ctrl-btn replay-deal-btn" data-deal="<?php echo htmlspecialchars($rec['deal_index']); ?>" title="<?php echo tra("Load into visualizer"); ?>" style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
+                <button class="ctrl-btn replay-deal-btn"
+                  data-deal="<?php echo htmlspecialchars($rec['deal_index']); ?>"
+                  data-type="longest"
+                  data-cards="<?php echo (int)$rec['cards']; ?>"
+                  data-tricks="<?php echo (int)$rec['tricks']; ?>"
+                  data-date="<?php echo date('F j, Y', $rec['found_at']); ?>"
+                  data-author="<?php echo htmlspecialchars($rec['user_html'] ?? ''); ?>"
+                  data-wr="<?php echo !empty($rec['is_world_record']) ? '1' : '0'; ?>"
+                  title="<?php echo tra("Load into visualizer"); ?>"
+                  style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
               </td>
             </tr>
 <?php endforeach; ?>
           </tbody>
         </table>
+      </div>
+      <div id="hofPagination" class="table-pagination" style="display:none">
+        <button id="hofPrevBtn" class="ctrl-btn">&larr; <?php echo tra("Previous"); ?></button>
+        <span id="hofPageInfo"></span>
+        <button id="hofNextBtn" class="ctrl-btn"><?php echo tra("Next"); ?> &rarr;</button>
       </div>
 <?php else: ?>
       <div class="empty-state"><?php echo tra("No historical records recorded yet -- check back once the search is running."); ?></div>
@@ -398,17 +417,46 @@ page_head(tra("Search progress"));
     </div>
 
     <div class="discovery">
-      <p class="section-sub" style="margin-bottom:2px"><?php echo tra("Loops found by Camicia"); ?></p>
-<?php if (count($loops_found) > 0): ?>
-      <div class="loop-list">
+      <h2 class="section-title" style="margin-bottom:2px"><?php echo tra("Loops found by Camicia"); ?></h2>
+      <p class="section-sub" style="margin-bottom:16px"><?php echo tra("Non-terminating loop games discovered by volunteers"); ?></p>
+<?php if (!empty($loops_found)): ?>
+      <div style="overflow-x:auto">
+        <table class="hall-of-fame-table" id="loopsTable">
+          <thead>
+            <tr>
+              <th><?php echo tra("Confirmed on"); ?></th>
+              <th><?php echo tra("Deal #"); ?></th>
+              <th><?php echo tra("Discovered by"); ?></th>
+              <th style="text-align:right"></th>
+            </tr>
+          </thead>
+          <tbody>
 <?php foreach ($loops_found as $loop): ?>
-        <div class="loop-row">
-          <span><?php echo tra("Deal #%1", (strlen($loop['deal_index']) > 16) ? substr($loop['deal_index'], 0, 8) . '...' . substr($loop['deal_index'], -6) : $loop['deal_index']); ?></span>
-          <span><?php echo !empty($loop['user_html']) ? $loop['user_html'] : '<b>' . htmlspecialchars($loop['wu_name']) . '</b>'; ?></span>
-          <span><?php echo date('F j, Y', $loop['found_at']); ?></span>
-          <button class="ctrl-btn replay-deal-btn" data-deal="<?php echo htmlspecialchars($loop['deal_index']); ?>" title="<?php echo tra("Load into visualizer"); ?>" style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
-        </div>
+            <tr>
+              <td><?php echo date('F j, Y', $loop['found_at']); ?></td>
+              <td><span class="deal-id-cell"><?php echo htmlspecialchars($loop['deal_index']); ?></span></td>
+              <td><?php echo !empty($loop['user_html']) ? $loop['user_html'] : tra("Anonymous"); ?></td>
+              <td style="text-align:right">
+                <button class="ctrl-btn replay-deal-btn"
+                  data-deal="<?php echo htmlspecialchars($loop['deal_index']); ?>"
+                  data-type="loop"
+                  data-cards="0"
+                  data-tricks="0"
+                  data-date="<?php echo date('F j, Y', $loop['found_at']); ?>"
+                  data-author="<?php echo htmlspecialchars($loop['user_html'] ?? ''); ?>"
+                  data-wr="0"
+                  title="<?php echo tra("Load into visualizer"); ?>"
+                  style="padding:4px 12px;font-size:11.5px">&#9654; <?php echo tra("Replay"); ?></button>
+              </td>
+            </tr>
 <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <div id="loopsPagination" class="table-pagination" style="display:none">
+        <button id="loopsPrevBtn" class="ctrl-btn">&larr; <?php echo tra("Previous"); ?></button>
+        <span id="loopsPageInfo"></span>
+        <button id="loopsNextBtn" class="ctrl-btn"><?php echo tra("Next"); ?> &rarr;</button>
       </div>
 <?php else: ?>
       <div class="empty-state"><?php echo tra("Camicia hasn't found a loop of its own yet. %1The search continues%2 -- every block explored shrinks the space still left to check.", "<b>", "</b>"); ?></div>
@@ -671,26 +719,172 @@ page_head(tra("Search progress"));
   fwdBtn.addEventListener('click', function() { stopPlaying(); stepForward(); });
   resetBtn.addEventListener('click', resetGame);
 
-  function loadDeal(dealIndexStr) {
+  function loadDeal(dealInfo) {
     stopPlaying();
-    realDeck = getNthPermutation(dealIndexStr);
+    var dealStr = (typeof dealInfo === 'object') ? dealInfo.deal : dealInfo;
+    realDeck = getNthPermutation(dealStr);
     deckA = realDeck.slice(0, 26);
     deckB = realDeck.slice(26);
     resetGame();
-    var shortIndex = dealIndexStr.length > 16 ? dealIndexStr.slice(0, 8) + '...' + dealIndexStr.slice(-6) : dealIndexStr;
-    statusEl.innerHTML = 'Loaded deal <b>#' + shortIndex + '</b>. Press Play to watch it, or step through it one move at a time.';
-    var el = document.getElementById('gameTable');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (typeof dealInfo === 'object') {
+      updateVisualizerHeader(dealInfo);
+    }
+    statusEl.innerHTML = 'Loaded deal <b>#' + dealStr + '</b>. Press Play to watch it, or step through it one move at a time.';
+    var el = document.getElementById('vizCard');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  var championDeal = {
+    deal: <?php echo json_encode($longest['deal_index'] ?? ''); ?>,
+    cards: <?php echo (int)($longest['cards'] ?? 0); ?>,
+    tricks: <?php echo (int)($longest['tricks'] ?? 0); ?>,
+    date: <?php echo json_encode(!empty($longest['found_at']) ? date('F j, Y', $longest['found_at']) : ''); ?>,
+    author: <?php echo json_encode($longest['user_html'] ?? ''); ?>,
+    isWr: <?php echo !empty($longest['is_world_record']) ? 'true' : 'false'; ?>,
+    type: 'champion'
+  };
+
+  var vizTagContainer = document.getElementById('vizTagContainer');
+  var vizSubtitle = document.getElementById('vizSubtitle');
+  var vizMoveCount = document.getElementById('vizMoveCount');
+  var vizMetaDate = document.getElementById('vizMetaDate');
+  var vizMetaDeal = document.getElementById('vizMetaDeal');
+  var vizMetaAuthor = document.getElementById('vizMetaAuthor');
+  var vizPlaybackDesc = document.getElementById('vizPlaybackDesc');
+
+  function updateVisualizerHeader(info) {
+    if (!vizTagContainer) return;
+    var isChampion = (info.deal === championDeal.deal);
+
+    if (isChampion) {
+      if (championDeal.isWr) {
+        vizTagContainer.innerHTML = '<span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>';
+      } else {
+        vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>';
+      }
+      vizSubtitle.innerHTML = '<?php echo tra("The longest game found so far"); ?>';
+      vizMoveCount.innerHTML = Number(championDeal.cards).toLocaleString() + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + Number(championDeal.tricks).toLocaleString() + ' <?php echo tra("tricks"); ?></span>';
+      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>"); ?>';
+      if (vizMetaDate) vizMetaDate.textContent = '<?php echo tra("Confirmed on"); ?> ' + championDeal.date;
+      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + championDeal.deal;
+      if (vizMetaAuthor) {
+        if (championDeal.author) {
+          vizMetaAuthor.style.display = '';
+          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + championDeal.author;
+        } else {
+          vizMetaAuthor.style.display = 'none';
+        }
+      }
+    } else if (info.type === 'loop') {
+      vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Loop Discovery"); ?></span>';
+      vizSubtitle.innerHTML = '<?php echo tra("Non-terminating loop game"); ?> <button type="button" class="restore-champ-btn" id="restoreChampionBtn">&#x21ba; <?php echo tra("Back to longest game"); ?></button>';
+      vizMoveCount.innerHTML = '<?php echo tra("Infinite loop"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("never terminates"); ?></span>';
+      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, non-terminating game deal #"); ?>' + info.deal + ', <?php echo tra("played back move by move."); ?>';
+      if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
+      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
+      if (vizMetaAuthor) {
+        if (info.author) {
+          vizMetaAuthor.style.display = '';
+          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + info.author;
+        } else {
+          vizMetaAuthor.style.display = 'none';
+        }
+      }
+    } else {
+      var isWr = (info.wr === '1' || info.wr === 1 || info.isWr);
+      if (isWr) {
+        vizTagContainer.innerHTML = '<span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>';
+      } else {
+        vizTagContainer.innerHTML = '<span class="discovery-tag" style="background:var(--felt);border:1px solid var(--gold-dim);color:var(--gold)"><?php echo tra("Historical Milestone"); ?></span>';
+      }
+      vizSubtitle.innerHTML = '<?php echo tra("Historical record milestone"); ?> <button type="button" class="restore-champ-btn" id="restoreChampionBtn">&#x21ba; <?php echo tra("Back to longest game"); ?></button>';
+      vizMoveCount.innerHTML = Number(info.cards).toLocaleString() + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + Number(info.tricks).toLocaleString() + ' <?php echo tra("tricks"); ?></span>';
+      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, historical milestone deal #"); ?>' + info.deal + ', <?php echo tra("played back move by move."); ?>';
+      if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
+      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
+      if (vizMetaAuthor) {
+        if (info.author) {
+          vizMetaAuthor.style.display = '';
+          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + info.author;
+        } else {
+          vizMetaAuthor.style.display = 'none';
+        }
+      }
+    }
+
+    var restoreBtn = document.getElementById('restoreChampionBtn');
+    if (restoreBtn) {
+      restoreBtn.addEventListener('click', function() {
+        loadDeal(championDeal);
+      });
+    }
   }
 
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('.replay-deal-btn');
     if (!btn || !btn.dataset.deal) return;
-    loadDeal(btn.dataset.deal);
+    loadDeal({
+      deal: btn.dataset.deal,
+      type: btn.dataset.type || 'longest',
+      cards: btn.dataset.cards || 0,
+      tricks: btn.dataset.tricks || 0,
+      date: btn.dataset.date || '',
+      author: btn.dataset.author || '',
+      wr: btn.dataset.wr || '0'
+    });
   });
 
   resetGame();
 <?php endif; ?>
+
+  function paginateTable(tableId, paginationId, prevBtnId, nextBtnId, pageInfoId, pageSize) {
+    var table = document.getElementById(tableId);
+    if (!table) return;
+    var tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    if (rows.length <= pageSize) return;
+
+    var paginationEl = document.getElementById(paginationId);
+    var prevBtn = document.getElementById(prevBtnId);
+    var nextBtn = document.getElementById(nextBtnId);
+    var pageInfo = document.getElementById(pageInfoId);
+    if (!paginationEl || !prevBtn || !nextBtn || !pageInfo) return;
+
+    paginationEl.style.display = 'flex';
+    var currentPage = 1;
+    var totalPages = Math.ceil(rows.length / pageSize);
+
+    function updatePage() {
+      var start = (currentPage - 1) * pageSize;
+      var end = start + pageSize;
+      rows.forEach(function(row, idx) {
+        row.style.display = (idx >= start && idx < end) ? '' : 'none';
+      });
+      pageInfo.textContent = '<?php echo tra("Page"); ?> ' + currentPage + ' <?php echo tra("of"); ?> ' + totalPages + ' (' + rows.length + ' <?php echo tra("total"); ?>)';
+      prevBtn.disabled = currentPage === 1;
+      nextBtn.disabled = currentPage === totalPages;
+    }
+
+    prevBtn.addEventListener('click', function() {
+      if (currentPage > 1) {
+        currentPage--;
+        updatePage();
+      }
+    });
+
+    nextBtn.addEventListener('click', function() {
+      if (currentPage < totalPages) {
+        currentPage++;
+        updatePage();
+      }
+    });
+
+    updatePage();
+  }
+
+  paginateTable('hofTable', 'hofPagination', 'hofPrevBtn', 'hofNextBtn', 'hofPageInfo', 25);
+  paginateTable('loopsTable', 'loopsPagination', 'loopsPrevBtn', 'loopsNextBtn', 'loopsPageInfo', 25);
 })();
 </script>
 <?php
