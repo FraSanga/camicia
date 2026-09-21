@@ -316,12 +316,8 @@ page_head($page_title);
   <p class="eyebrow"><?php echo tra("Volunteer Conquered Universe"); ?></p>
   <h1><?php echo user_links($target_user, BADGE_HEIGHT_MEDIUM); ?></h1>
   <p class="lede">
-    <?php echo tra("Cosmic exploration portfolio for volunteer #%1. Every deal simulated and validated is permanently indexed and attributed here.", $target_user->id); ?>
+    <?php echo tra("Cosmic exploration portfolio for volunteer #%1.", $target_user->id); ?>
   </p>
-  <div class="universe-meta-link">
-    <?php echo tra("Direct share link:"); ?>
-    <a href="universe.php?userid=<?php echo $target_user->id; ?>">https://camicia.cards/universe.php?userid=<?php echo $target_user->id; ?></a>
-  </div>
 
   <section class="hero">
     <p class="hero-label"><?php echo tra("Permutations Explored & Confirmed"); ?></p>
