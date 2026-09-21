@@ -194,7 +194,7 @@ function sample_navbar(
             // in the site -- not even here, next to the other project
             // status pages it belongs alongside.
             array(tra("Progress"), $url_prefix."progress.php"),
-            array(tra("Conquered Universe"), $url_prefix."universe.php"),
+            array(tra("Conquered Universe"), $url_prefix."universe.php?all=1"),
             array(tra("Server status"), $url_prefix."server_status.php"),
             array(tra("Credit statistics"), $url_prefix."stats.php"),
             array(tra("Applications"), $url_prefix."apps.php"),
