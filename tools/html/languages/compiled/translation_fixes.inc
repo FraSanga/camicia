@@ -2084,6 +2084,62 @@ $language_lookup_array["vi"]["Progress"] = "Tiến độ";
 $language_lookup_array["zh_CN"]["Progress"] = "进度";
 $language_lookup_array["zh_TW"]["Progress"] = "進度";
 
+// "My Universe" navbar menu entry (bootstrap.inc) linking to universe.php
+$language_lookup_array["it_IT"]["My Universe"] = "Il mio universo";
+$language_lookup_array["az"]["My Universe"] = "Mənim kainatım";
+$language_lookup_array["ca"]["My Universe"] = "El meu univers";
+$language_lookup_array["cs"]["My Universe"] = "Můj vesmír";
+$language_lookup_array["de"]["My Universe"] = "Mein Universum";
+$language_lookup_array["es"]["My Universe"] = "Mi universo";
+$language_lookup_array["eu"]["My Universe"] = "Nire unibertsoa";
+$language_lookup_array["fi"]["My Universe"] = "Oma universumi";
+$language_lookup_array["fr"]["My Universe"] = "Mon univers";
+$language_lookup_array["he"]["My Universe"] = "היקום שלי";
+$language_lookup_array["hu"]["My Universe"] = "Az én univerzumom";
+$language_lookup_array["ja"]["My Universe"] = "マイ宇宙";
+$language_lookup_array["ko"]["My Universe"] = "나의 우주";
+$language_lookup_array["nb"]["My Universe"] = "Mitt universum";
+$language_lookup_array["nl"]["My Universe"] = "Mijn universum";
+$language_lookup_array["pl"]["My Universe"] = "Mój wszechświat";
+$language_lookup_array["pt_BR"]["My Universe"] = "Meu universo";
+$language_lookup_array["pt_PT"]["My Universe"] = "Meu universo";
+$language_lookup_array["ru"]["My Universe"] = "Моя вселенная";
+$language_lookup_array["sk"]["My Universe"] = "Môj vesmír";
+$language_lookup_array["sv"]["My Universe"] = "Mitt universum";
+$language_lookup_array["tr"]["My Universe"] = "Evrenim";
+$language_lookup_array["uk"]["My Universe"] = "Мій всесвіт";
+$language_lookup_array["vi"]["My Universe"] = "Vũ trụ của tôi";
+$language_lookup_array["zh_CN"]["My Universe"] = "我的宇宙";
+$language_lookup_array["zh_TW"]["My Universe"] = "我的宇宙";
+
+// "Conquered Universe" navbar menu entry (bootstrap.inc) linking to universe.php
+$language_lookup_array["it_IT"]["Conquered Universe"] = "Universo conquistato";
+$language_lookup_array["az"]["Conquered Universe"] = "Fəth edilmiş kainat";
+$language_lookup_array["ca"]["Conquered Universe"] = "Univers conquerit";
+$language_lookup_array["cs"]["Conquered Universe"] = "Dobytý vesmír";
+$language_lookup_array["de"]["Conquered Universe"] = "Erobertes Universum";
+$language_lookup_array["es"]["Conquered Universe"] = "Universo conquistado";
+$language_lookup_array["eu"]["Conquered Universe"] = "Konkistatutako unibertsoa";
+$language_lookup_array["fi"]["Conquered Universe"] = "Valloitettu universumi";
+$language_lookup_array["fr"]["Conquered Universe"] = "Univers conquis";
+$language_lookup_array["he"]["Conquered Universe"] = "יקום שנכבש";
+$language_lookup_array["hu"]["Conquered Universe"] = "Meghódított univerzum";
+$language_lookup_array["ja"]["Conquered Universe"] = "征服された宇宙";
+$language_lookup_array["ko"]["Conquered Universe"] = "정복된 우주";
+$language_lookup_array["nb"]["Conquered Universe"] = "Erobret univers";
+$language_lookup_array["nl"]["Conquered Universe"] = "Veroverd universum";
+$language_lookup_array["pl"]["Conquered Universe"] = "Podbity wszechświat";
+$language_lookup_array["pt_BR"]["Conquered Universe"] = "Universo conquistado";
+$language_lookup_array["pt_PT"]["Conquered Universe"] = "Universo conquistado";
+$language_lookup_array["ru"]["Conquered Universe"] = "Покоренная вселенная";
+$language_lookup_array["sk"]["Conquered Universe"] = "Dobytý vesmír";
+$language_lookup_array["sv"]["Conquered Universe"] = "Erövrat universum";
+$language_lookup_array["tr"]["Conquered Universe"] = "Fethedilen Evren";
+$language_lookup_array["uk"]["Conquered Universe"] = "Підкорений всесвіт";
+$language_lookup_array["vi"]["Conquered Universe"] = "Vũ trụ đã chinh phục";
+$language_lookup_array["zh_CN"]["Conquered Universe"] = "已探索宇宙";
+$language_lookup_array["zh_TW"]["Conquered Universe"] = "已探索宇宙";
+
 //-------------- Certificate verification (cert1.php's verify code, verify_cert.php,
 // bootstrap.inc's "Verify a certificate" nav entry)
 // 2026-08-27: new feature this session, no prior translations exist anywhere
