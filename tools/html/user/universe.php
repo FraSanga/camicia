@@ -87,9 +87,9 @@ if ($target_user) {
     $ver_ranges = (int)($ver_stats['ranges_count'] ?? 0);
     $total_ranges = $exp_ranges + $ver_ranges;
 
-    $exp_deals = (string)($exp_stats['deals_count'] ?? '0');
-    $ver_deals = (string)($ver_stats['deals_count'] ?? '0');
-    $total_deals = bcadd($exp_deals, $ver_deals);
+    $exp_deals = (float)($exp_stats['deals_count'] ?? 0);
+    $ver_deals = (float)($ver_stats['deals_count'] ?? 0);
+    $total_deals = $exp_deals + $ver_deals;
 
     $personal_max_cards = max(
         (int)($exp_stats['max_cards'] ?? 0),
@@ -109,10 +109,9 @@ if ($target_user) {
 
     // Cosmic fraction
     $cosmic_pct = '0';
-    if ($total_deals !== '0') {
-        bcscale(16);
-        $fraction = bcdiv($total_deals, TOTAL_SEARCH_SPACE, 16);
-        $cosmic_pct = bcmul($fraction, '100', 14);
+    if ($total_deals > 0) {
+        $pct_num = ($total_deals / 6.53534134886878245e20) * 100;
+        $cosmic_pct = sprintf("%.14f", $pct_num);
         $cosmic_pct = rtrim(rtrim($cosmic_pct, '0'), '.');
         if ($cosmic_pct === '' || $cosmic_pct === '0') $cosmic_pct = '<0.00000000000001';
     }
