@@ -22,6 +22,7 @@ struct WORKUNIT {
     int canonical_resultid = 0;
 };
 struct RESULT {
+    long long id = 0;
     long long userid = 0;
     long long hostid = 0;
 };
@@ -336,6 +337,45 @@ void record_loop_found(
     }
 }
 
+// Persists one fully assimilated permutation range into the unpurged MariaDB
+// table camicia_completed_ranges (Proposal 4). Tracks boundaries, champion deal,
+// summary metrics, and volunteer attribution for both the canonical worker and
+// validator.
+void record_completed_range(
+    const char* range_start,
+    const char* range_end,
+    const char* best_deal_index,
+    long long max_cards,
+    long long max_tricks,
+    int loops_count,
+    long long userid,
+    long long verifier_userid
+) {
+    if (!boinc_db.mysql) return;
+    time_t now = time(0);
+    char verifier_sql[32];
+    if (verifier_userid > 0) {
+        snprintf(verifier_sql, sizeof(verifier_sql), "%lld", verifier_userid);
+    } else {
+        snprintf(verifier_sql, sizeof(verifier_sql), "NULL");
+    }
+
+    char sql[1024];
+    snprintf(sql, sizeof(sql),
+        "INSERT INTO camicia_completed_ranges "
+        "(range_start, range_end, best_deal_index, max_cards, max_tricks, loops_count, user_id, verifier_user_id, assimilated_at) "
+        "VALUES ('%s', '%s', '%s', %lld, %lld, %d, %lld, %s, %ld) "
+        "ON DUPLICATE KEY UPDATE "
+        "best_deal_index=VALUES(best_deal_index), max_cards=VALUES(max_cards), max_tricks=VALUES(max_tricks), "
+        "loops_count=VALUES(loops_count), user_id=VALUES(user_id), verifier_user_id=VALUES(verifier_user_id), "
+        "assimilated_at=VALUES(assimilated_at)",
+        range_start, range_end, best_deal_index,
+        max_cards, max_tricks, loops_count,
+        userid, verifier_sql, (long)now
+    );
+    boinc_db.do_query(sql);
+}
+
 // CA-M1 fix: records_longest.txt/records_loops.txt were previously
 // updated straight from an already-read results.txt line with zero
 // validation -- deal_index (a free-form string) and cards/tricks
@@ -531,6 +571,11 @@ int assimilate_handler(
             return ERR_FOPEN; 
         }
 
+        string best_deal_index;
+        long long best_cards = -1;
+        long long best_tricks = 0;
+        int loops_count = 0;
+
         for (const OUTPUT_FILE_INFO& fi: output_files) {
             FILE* f_in = fopen(fi.path.c_str(), "r");
             if (f_in) {
@@ -542,6 +587,25 @@ int assimilate_handler(
                 ssize_t len;
                 while ((len = getline(&line, &line_cap, f_in)) != -1) {
                     track_result_line(wu.name, line, (long long)canonical_result.userid, (long long)canonical_result.hostid);
+
+                    // Parse completed range metrics
+                    char status[16];
+                    char deal_idx[64];
+                    long long cards = 0, tricks = 0;
+                    if (sscanf(line, "%15[^,],%63[^,],%lld,%lld", status, deal_idx, &cards, &tricks) >= 2) {
+                        if (!strcmp(status, "finished")) {
+                            if (cards >= best_cards && valid_result_line(deal_idx, cards, tricks)) {
+                                best_deal_index = deal_idx;
+                                best_cards = cards;
+                                best_tricks = tricks;
+                            }
+                        } else if (!strcmp(status, "loop")) {
+                            if (valid_result_line(deal_idx, cards, tricks)) {
+                                loops_count++;
+                            }
+                        }
+                    }
+
                     fprintf(f_out, "%s,%s", wu.name, line);
                     if (len == 0 || line[len - 1] != '\n') fprintf(f_out, "\n");
                 }
@@ -554,6 +618,34 @@ int assimilate_handler(
             }
         }
         fclose(f_out);
+
+        // Persist completed range in unpurged MariaDB ledger (Proposal 4)
+        if (!best_deal_index.empty()) {
+            long long verifier_userid = 0;
+            for (const RESULT& r : results) {
+                if (r.id != canonical_result.id && r.userid != 0) {
+#ifndef CAMICIA_TEST_RECORDS
+                    if (r.outcome == RESULT_OUTCOME_SUCCESS) {
+                        verifier_userid = r.userid;
+                        break;
+                    }
+#else
+                    verifier_userid = r.userid;
+                    break;
+#endif
+                }
+            }
+            record_completed_range(
+                wu_start.c_str(),
+                wu_end.c_str(),
+                best_deal_index.c_str(),
+                best_cards >= 0 ? best_cards : 0,
+                best_tricks,
+                loops_count,
+                (long long)canonical_result.userid,
+                verifier_userid
+            );
+        }
     } else {
         char buf_err[1024];
         snprintf(buf_err, sizeof(buf_err), "0x%x\n", wu.error_mask);
