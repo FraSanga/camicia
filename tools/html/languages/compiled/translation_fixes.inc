@@ -2143,8 +2143,10 @@ $language_lookup_array["zh_TW"]["Deal Registry"] = "發牌名錄";
 // deals.php (Deal Registry) strings
 $language_lookup_array["it_IT"]["The Deal Registry"] = "Registro delle smazzate";
 $language_lookup_array["it_IT"]["%1's Deals"] = "Le smazzate di %1";
-$language_lookup_array["it_IT"]["Volunteer Deal Portfolio"] = "Portfolio smazzate del volontario";
-$language_lookup_array["it_IT"]["Deal portfolio for volunteer #%1."] = "Portfolio smazzate per il volontario #%1.";
+$language_lookup_array["it_IT"]["Volunteer Deals"] = "Smazzate del volontario";
+$language_lookup_array["it_IT"]["Deals for volunteer #%1."] = "Smazzate per il volontario #%1.";
+$language_lookup_array["it_IT"]["Deals &rarr;"] = "Smazzate &rarr;";
+$language_lookup_array["it_IT"]["Search volunteer by username or ID"] = "Cerca volontario per nome utente o ID";
 $language_lookup_array["it_IT"]["Deals Explored & Verified"] = "Smazzate esplorate e verificate";
 $language_lookup_array["it_IT"]["%1% of all possible 52-card deals (6.535x10^20)"] = "%1% di tutte le possibili smazzate da 52 carte (6.535x10^20)";
 $language_lookup_array["it_IT"]["verified deal blocks"] = "blocchi di smazzate verificate";
