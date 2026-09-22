@@ -2140,6 +2140,11 @@ $language_lookup_array["vi"]["Conquered Universe"] = "Vũ trụ đã chinh phụ
 $language_lookup_array["zh_CN"]["Conquered Universe"] = "已探索宇宙";
 $language_lookup_array["zh_TW"]["Conquered Universe"] = "已探索宇宙";
 
+// universe.php error messages
+$language_lookup_array["it_IT"]["Volunteer Not Found"] = "Volontario non trovato";
+$language_lookup_array["it_IT"]["This user doesn't exist or has been deleted."] = "Questo utente non esiste o è stato eliminato.";
+$language_lookup_array["it_IT"]["Return to Conquered Universe"] = "Torna all'universo conquistato";
+
 //-------------- Certificate verification (cert1.php's verify code, verify_cert.php,
 // bootstrap.inc's "Verify a certificate" nav entry)
 // 2026-08-27: new feature this session, no prior translations exist anywhere
