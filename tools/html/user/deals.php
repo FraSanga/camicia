@@ -1,16 +1,16 @@
 <?php
-// Volunteer Universe Portfolio ("My Conquered Universe")
+// Volunteer Deal Portfolio ("My Deals" / "The Deal Registry")
 //
 // Shows a volunteer's lifetime contribution to exploring the 6.535x10^20
-// permutation space: total deals conquered, cosmic percentage, role breakdown
-// (Explorer vs Verifier), personal longest game record, loops discovered, and
-// recent completed blocks.
+// permutation space: total deals simulated and verified, percentage of the 52-card
+// deck space, role breakdown (Explorer vs Verifier), personal longest game record,
+// loops discovered, and recent verified blocks.
 //
 // Accessible via:
-// - /universe.php (shows logged-in user's portfolio, or global leaderboard if logged out)
-// - /universe.php?userid=123 (public, shareable permalink to volunteer #123)
-// - /universe.php?q=username (search by username or user id)
-// - /universe.php?all=1 (forces the global explorer leaderboard)
+// - /deals.php (shows logged-in user's deal portfolio, or global registry if logged out)
+// - /deals.php?userid=123 (shareable link to volunteer #123)
+// - /deals.php?q=username (search by username or user id)
+// - /deals.php?all=1 (forces the global deal registry / leaderboard)
 
 require_once('../inc/util.inc');
 require_once('../inc/translation.inc');
@@ -177,7 +177,7 @@ if ($target_user) {
         $res->free();
     }
 
-    $page_title = tra("%1's Conquered Universe", $target_user->name);
+    $page_title = tra("%1's Deals", $target_user->name);
 } elseif (!$user_not_found) {
     // =========================================================================
     // DATA FETCHING: GLOBAL OVERVIEW & LEADERBOARD
@@ -222,7 +222,7 @@ if ($target_user) {
         $res->free();
     }
 
-    $page_title = tra("Conquered Universe");
+    $page_title = tra("Deal Registry");
 } else {
     $page_title = tra("Volunteer Not Found");
 }
@@ -230,7 +230,7 @@ if ($target_user) {
 page_head($page_title);
 ?>
 <style>
-.universe-page {
+.deals-page {
     --felt: #0f1f1a; --felt-2: #16302a; --felt-line: #1d3a32;
     --gold: #c9a227; --gold-dim: #8c7a3e; --gold-pale: #4a4326;
     --cream: #ede3cb; --cream-dim: #b7ae95; --ruby: #a83349;
@@ -243,58 +243,58 @@ page_head($page_title);
         repeating-linear-gradient(45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 48px),
         repeating-linear-gradient(-45deg, var(--felt-line) 0, var(--felt-line) 1px, transparent 1px, transparent 48px);
 }
-.universe-page * { box-sizing: border-box; }
-.universe-page .eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); font-weight: 700; margin: 0 0 12px; }
-.universe-page h1 { font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif; font-size: 34px; line-height: 1.2; margin: 0 0 16px; color: var(--cream); }
-.universe-page .lede { font-size: 15.5px; line-height: 1.65; color: var(--cream-dim); max-width: 72ch; margin: 0 0 24px; }
-.universe-page h2.section-title { font-family: Georgia, serif; font-size: 20px; margin: 0 0 4px; color: var(--cream); }
-.universe-page p.section-sub { font-size: 13.5px; color: var(--cream-dim); margin: 0 0 20px; line-height: 1.55; }
+.deals-page * { box-sizing: border-box; }
+.deals-page .eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); font-weight: 700; margin: 0 0 12px; }
+.deals-page h1 { font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif; font-size: 34px; line-height: 1.2; margin: 0 0 16px; color: var(--cream); }
+.deals-page .lede { font-size: 15.5px; line-height: 1.65; color: var(--cream-dim); max-width: 72ch; margin: 0 0 24px; }
+.deals-page h2.section-title { font-family: Georgia, serif; font-size: 20px; margin: 0 0 4px; color: var(--cream); }
+.deals-page p.section-sub { font-size: 13.5px; color: var(--cream-dim); margin: 0 0 20px; line-height: 1.55; }
 
 /* Top search bar */
-.universe-search-bar {
+.deals-search-bar {
     display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px;
     background: var(--felt-2); border: 1px solid var(--felt-line);
     border-radius: 10px; padding: 8px; max-width: 600px;
 }
-.universe-search-bar input {
+.deals-search-bar input {
     flex: 1; min-width: 200px; background: var(--felt); border: 1px solid var(--felt-line);
     border-radius: 6px; padding: 8px 14px; font-size: 14px; color: var(--cream);
 }
-.universe-search-bar input:focus { outline: none; border-color: var(--gold); }
-.universe-search-bar button {
+.deals-search-bar input:focus { outline: none; border-color: var(--gold); }
+.deals-search-bar button {
     background: var(--gold); color: var(--felt); border: none;
     border-radius: 6px; padding: 8px 18px; font-weight: 600; font-size: 13px; cursor: pointer;
 }
-.universe-search-bar button:hover { background: #dcb336; }
-.universe-search-bar a.all-link {
+.deals-search-bar button:hover { background: #dcb336; }
+.deals-search-bar a.all-link {
     display: inline-flex; align-items: center; color: var(--cream-dim);
     font-size: 13px; padding: 0 10px; text-decoration: none;
 }
-.universe-search-bar a.all-link:hover { color: var(--gold); }
+.deals-search-bar a.all-link:hover { color: var(--gold); }
 
 /* Hero Banner */
-.universe-page .hero {
+.deals-page .hero {
     border: 1px solid var(--gold-dim); border-radius: 16px;
     background: linear-gradient(180deg, var(--felt-2), var(--felt));
     padding: 36px 40px 32px; margin: 24px 0 36px; text-align: center;
 }
-.universe-page .hero-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--cream-dim); margin: 0 0 10px; font-weight: 600; }
-.universe-page .hero-number { font-family: Georgia, serif; font-size: 64px; line-height: 1.1; color: var(--gold); margin: 0 0 8px; font-variant-numeric: tabular-nums; word-break: break-all; }
-.universe-page .hero-sub { font-size: 14.5px; color: var(--cream-dim); margin: 0; }
+.deals-page .hero-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--cream-dim); margin: 0 0 10px; font-weight: 600; }
+.deals-page .hero-number { font-family: Georgia, serif; font-size: 64px; line-height: 1.1; color: var(--gold); margin: 0 0 8px; font-variant-numeric: tabular-nums; word-break: break-all; }
+.deals-page .hero-sub { font-size: 14.5px; color: var(--cream-dim); margin: 0; }
 
 /* Stat grid */
-.universe-page .stat-grid {
+.deals-page .stat-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 2px;
     background: var(--felt-line); border: 1px solid var(--felt-line);
     border-radius: 14px; overflow: hidden; margin-bottom: 36px;
 }
-.universe-page .stat-tile { background: var(--felt-2); padding: 22px 20px; }
-.universe-page .stat-value { font-family: Georgia, serif; font-size: 28px; color: var(--gold); font-variant-numeric: tabular-nums; margin: 0 0 6px; }
-.universe-page .stat-label { font-size: 12.5px; color: var(--cream-dim); line-height: 1.4; }
-.universe-page .stat-sub { font-size: 11.5px; color: var(--cream-dim); opacity: 0.8; margin-top: 4px; }
+.deals-page .stat-tile { background: var(--felt-2); padding: 22px 20px; }
+.deals-page .stat-value { font-family: Georgia, serif; font-size: 28px; color: var(--gold); font-variant-numeric: tabular-nums; margin: 0 0 6px; }
+.deals-page .stat-label { font-size: 12.5px; color: var(--cream-dim); line-height: 1.4; }
+.deals-page .stat-sub { font-size: 11.5px; color: var(--cream-dim); opacity: 0.8; margin-top: 4px; }
 
 /* Box card */
-.universe-card {
+.deals-card {
     border: 1px solid var(--gold-dim); border-radius: 14px; padding: 28px;
     background: var(--felt-2); margin-bottom: 32px;
 }
@@ -309,38 +309,38 @@ page_head($page_title);
 .loop-badge { background: var(--ruby); color: var(--cream); font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
 
 /* Tables */
-.universe-table-wrap { overflow-x: auto; margin-top: 12px; }
-.universe-table { width: 100%; border-collapse: collapse; font-size: 13.5px; text-align: left; }
-.universe-table th {
+.deals-table-wrap { overflow-x: auto; margin-top: 12px; }
+.deals-table { width: 100%; border-collapse: collapse; font-size: 13.5px; text-align: left; }
+.deals-table th {
     background: var(--felt-line); color: var(--cream); font-weight: 600;
     padding: 12px 14px; border-bottom: 2px solid var(--gold-dim);
 }
-.universe-table td {
+.deals-table td {
     padding: 12px 14px; border-bottom: 1px solid var(--felt-line);
     color: var(--cream); vertical-align: middle;
 }
-.universe-table tr:hover td { background: rgba(201, 162, 39, 0.05); }
-.universe-table td a { color: var(--gold); text-decoration: none; }
-.universe-table td a:hover { text-decoration: underline; }
-.universe-table .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; }
+.deals-table tr:hover td { background: rgba(201, 162, 39, 0.05); }
+.deals-table td a { color: var(--gold); text-decoration: none; }
+.deals-table td a:hover { text-decoration: underline; }
+.deals-table .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; }
 
-.universe-meta-link {
+.deals-meta-link {
     font-size: 12.5px; color: var(--cream-dim); margin-top: 8px; display: inline-block;
 }
-.universe-meta-link a { color: var(--gold); text-decoration: none; }
-.universe-meta-link a:hover { text-decoration: underline; }
+.deals-meta-link a { color: var(--gold); text-decoration: none; }
+.deals-meta-link a:hover { text-decoration: underline; }
 </style>
 
-<div class="universe-page">
+<div class="deals-page">
 
   <?php if ($logged_in_user): ?>
   <!-- Search & Navigation Bar (only visible to logged-in users) -->
-  <form method="GET" action="universe.php" class="universe-search-bar">
+  <form method="GET" action="deals.php" class="deals-search-bar">
     <input type="text" name="q" placeholder="<?php echo tra("Search volunteer by username or ID..."); ?>" value="<?php echo htmlspecialchars($search_query ?? ''); ?>">
     <button type="submit"><?php echo tra("Search"); ?></button>
-    <a href="universe.php?all=1" class="all-link"><?php echo tra("All Explorers"); ?></a>
+    <a href="deals.php?all=1" class="all-link"><?php echo tra("Deal Registry"); ?></a>
     <?php if (!$target_user || $target_user->id !== $logged_in_user->id): ?>
-    <a href="universe.php" class="all-link"><?php echo tra("My Universe"); ?></a>
+    <a href="deals.php" class="all-link"><?php echo tra("My Deals"); ?></a>
     <?php endif; ?>
   </form>
   <?php endif; ?>
@@ -354,8 +354,8 @@ page_head($page_title);
     <p style="color: var(--cream-dim); font-size: 15px; margin: 0 0 24px; line-height: 1.6;">
       <?php echo tra("This user doesn't exist or has been deleted."); ?>
     </p>
-    <a href="universe.php?all=1" style="display:inline-block; background: var(--gold); color: var(--felt); font-weight: 600; font-size: 13.5px; padding: 10px 20px; border-radius: 6px; text-decoration: none;">
-      &larr; <?php echo tra("Return to Conquered Universe"); ?>
+    <a href="deals.php?all=1" style="display:inline-block; background: var(--gold); color: var(--felt); font-weight: 600; font-size: 13.5px; padding: 10px 20px; border-radius: 6px; text-decoration: none;">
+      &larr; <?php echo tra("Return to Deal Registry"); ?>
     </a>
   </div>
 
@@ -363,24 +363,24 @@ page_head($page_title);
   <!-- ========================================================================= -->
   <!-- VIEW: INDIVIDUAL VOLUNTEER PORTFOLIO                                      -->
   <!-- ========================================================================= -->
-  <p class="eyebrow"><?php echo tra("Volunteer Conquered Universe"); ?></p>
+  <p class="eyebrow"><?php echo tra("Volunteer Deal Portfolio"); ?></p>
   <h1><?php echo user_links($target_user, BADGE_HEIGHT_MEDIUM); ?></h1>
   <p class="lede">
-    <?php echo tra("Cosmic exploration portfolio for volunteer #%1.", $target_user->id); ?>
+    <?php echo tra("Deal portfolio for volunteer #%1.", $target_user->id); ?>
   </p>
 
   <section class="hero">
-    <p class="hero-label"><?php echo tra("Permutations Explored & Confirmed"); ?></p>
+    <p class="hero-label"><?php echo tra("Deals Explored & Verified"); ?></p>
     <p class="hero-number"><?php echo number_format($total_deals); ?></p>
     <p class="hero-sub">
-      <?php echo tra("%1% of the total mathematical universe (6.535x10^20 deals)", $cosmic_pct); ?>
+      <?php echo tra("%1% of all possible 52-card deals (6.535x10^20)", $cosmic_pct); ?>
     </p>
   </section>
 
   <div class="stat-grid">
     <div class="stat-tile">
       <p class="stat-value"><?php echo number_format($total_ranges); ?></p>
-      <p class="stat-label"><?php echo tra("conquered permutation blocks"); ?></p>
+      <p class="stat-label"><?php echo tra("verified deal blocks"); ?></p>
       <p class="stat-sub"><?php echo tra("%1 Explorer &middot; %2 Verifier", number_format($exp_ranges), number_format($ver_ranges)); ?></p>
     </div>
     <div class="stat-tile">
@@ -405,9 +405,9 @@ page_head($page_title);
   </div>
 
   <?php if ($best_game): ?>
-  <section class="universe-card">
+  <section class="deals-card">
     <h2 class="section-title"><?php echo tra("Personal Champion Game"); ?></h2>
-    <p class="section-sub"><?php echo tra("The longest finite game found in any range conquered by this volunteer"); ?></p>
+    <p class="section-sub"><?php echo tra("The longest finite game found in any range verified by this volunteer"); ?></p>
     <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:baseline;margin:16px 0">
       <div>
         <span style="font-family:Georgia,serif;font-size:32px;color:var(--gold);font-weight:700"><?php echo number_format($best_game['max_cards']); ?></span>
@@ -427,13 +427,13 @@ page_head($page_title);
   </section>
   <?php endif; ?>
 
-  <section class="universe-card">
-    <h2 class="section-title"><?php echo tra("Recent Conquered Blocks"); ?></h2>
-    <p class="section-sub"><?php echo tra("Latest verified blocks of permutations assimilated for this volunteer"); ?></p>
+  <section class="deals-card">
+    <h2 class="section-title"><?php echo tra("Recent Verified Blocks"); ?></h2>
+    <p class="section-sub"><?php echo tra("Latest verified blocks of deals assimilated for this volunteer"); ?></p>
 
     <?php if (count($recent_ranges) > 0): ?>
-    <div class="universe-table-wrap">
-      <table class="universe-table">
+    <div class="deals-table-wrap">
+      <table class="deals-table">
         <thead>
           <tr>
             <th><?php echo tra("Role"); ?></th>
@@ -471,7 +471,7 @@ page_head($page_title);
             </td>
             <td>
               <?php if ($r['partner_valid']): ?>
-              <a href="universe.php?userid=<?php echo $r['partner_id']; ?>">
+              <a href="deals.php?userid=<?php echo $r['partner_id']; ?>">
                 <?php echo htmlspecialchars($r['partner_user']->name); ?>
               </a>
               <?php elseif ($r['partner_id'] > 0): ?>
@@ -499,32 +499,32 @@ page_head($page_title);
   <!-- ========================================================================= -->
   <!-- VIEW: GLOBAL OVERVIEW & LEADERBOARD                                       -->
   <!-- ========================================================================= -->
-  <p class="eyebrow"><?php echo tra("Camicia &middot; Search Space Ledger"); ?></p>
-  <h1><?php echo tra("The Conquered Universe"); ?></h1>
+  <p class="eyebrow"><?php echo tra("Camicia &middot; Master Deal Registry"); ?></p>
+  <h1><?php echo tra("The Deal Registry"); ?></h1>
   <p class="lede">
     <?php echo tra("Every permutation of the 52-card deck simulated by Camicia is permanently recorded and credited to the volunteers who explored and validated it."); ?>
   </p>
 
   <section class="hero">
-    <p class="hero-label"><?php echo tra("Total Blocks Conquered Globally"); ?></p>
+    <p class="hero-label"><?php echo tra("Total Deal Blocks Verified Globally"); ?></p>
     <p class="hero-number"><?php echo number_format($global_ranges_count); ?></p>
     <p class="hero-sub">
-      <?php echo tra("%1 total permutations simulated and verified across all volunteers", number_format($global_deals_count)); ?>
+      <?php echo tra("%1 total deals simulated and verified across all volunteers", number_format($global_deals_count)); ?>
     </p>
   </section>
 
-  <section class="universe-card">
-    <h2 class="section-title"><?php echo tra("Top Universe Explorers"); ?></h2>
-    <p class="section-sub"><?php echo tra("Volunteers ranked by number of confirmed permutation blocks"); ?></p>
+  <section class="deals-card">
+    <h2 class="section-title"><?php echo tra("Top Deal Explorers"); ?></h2>
+    <p class="section-sub"><?php echo tra("Volunteers ranked by number of confirmed deal blocks"); ?></p>
 
     <?php if (count($top_explorers) > 0): ?>
-    <div class="universe-table-wrap">
-      <table class="universe-table">
+    <div class="deals-table-wrap">
+      <table class="deals-table">
         <thead>
           <tr>
             <th style="width:60px">#</th>
             <th><?php echo tra("Volunteer"); ?></th>
-            <th><?php echo tra("Blocks Conquered"); ?></th>
+            <th><?php echo tra("Blocks Verified"); ?></th>
             <th><?php echo tra("Deals Simulated"); ?></th>
             <th><?php echo tra("Personal Best"); ?></th>
             <th><?php echo tra("Loops"); ?></th>
@@ -559,7 +559,7 @@ page_head($page_title);
             <td><?php echo date('d/m/Y', (int)$exp['last_seen']); ?></td>
             <td>
               <?php if ($exp['is_valid']): ?>
-              <a href="universe.php?userid=<?php echo $exp['user_id']; ?>" style="background:var(--gold);color:var(--felt);padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;text-decoration:none">
+              <a href="deals.php?userid=<?php echo $exp['user_id']; ?>" style="background:var(--gold);color:var(--felt);padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;text-decoration:none">
                 <?php echo tra("Portfolio &rarr;"); ?>
               </a>
               <?php endif; ?>
