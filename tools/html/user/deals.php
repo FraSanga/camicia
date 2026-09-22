@@ -1,5 +1,5 @@
 <?php
-// Volunteer Deal Portfolio ("My Deals" / "The Deal Registry")
+// Volunteer Deals ("My Deals" / "The Deal Registry")
 //
 // Shows a volunteer's lifetime contribution to exploring the 6.535x10^20
 // permutation space: total deals simulated and verified, percentage of the 52-card
@@ -7,7 +7,7 @@
 // loops discovered, and recent verified blocks.
 //
 // Accessible via:
-// - /deals.php (shows logged-in user's deal portfolio, or global registry if logged out)
+// - /deals.php (shows logged-in user's deals, or global registry if logged out)
 // - /deals.php?userid=123 (shareable link to volunteer #123)
 // - /deals.php?q=username (search by username or user id)
 // - /deals.php?all=1 (forces the global deal registry / leaderboard)
@@ -31,7 +31,7 @@ function is_valid_boinc_user($user) {
     return true;
 }
 
-// Access control: block logged-out users from viewing individual portfolios or searching
+// Access control: block logged-out users from viewing individual volunteer deals or searching
 if (($userid || ($search_query !== null && $search_query !== '')) && !$logged_in_user) {
     get_logged_in_user(true); // redirects to login_form.php?next_url=...
 }
@@ -70,7 +70,7 @@ if ($userid) {
 }
 
 // =========================================================================
-// DATA FETCHING: INDIVIDUAL VOLUNTEER PORTFOLIO
+// DATA FETCHING: INDIVIDUAL VOLUNTEER DEALS
 // =========================================================================
 if ($target_user) {
     $uid = (int)$target_user->id;
@@ -336,9 +336,11 @@ page_head($page_title);
   <?php if ($logged_in_user): ?>
   <!-- Search & Navigation Bar (only visible to logged-in users) -->
   <form method="GET" action="deals.php" class="deals-search-bar">
-    <input type="text" name="q" placeholder="<?php echo tra("Search volunteer by username or ID..."); ?>" value="<?php echo htmlspecialchars($search_query ?? ''); ?>">
+    <input type="text" name="q" placeholder="<?php echo tra("Search volunteer by username or ID"); ?>" value="<?php echo htmlspecialchars($search_query ?? ''); ?>">
     <button type="submit"><?php echo tra("Search"); ?></button>
+    <?php if ($target_user || $user_not_found): ?>
     <a href="deals.php?all=1" class="all-link"><?php echo tra("Deal Registry"); ?></a>
+    <?php endif; ?>
     <?php if (!$target_user || $target_user->id !== $logged_in_user->id): ?>
     <a href="deals.php" class="all-link"><?php echo tra("My Deals"); ?></a>
     <?php endif; ?>
@@ -361,12 +363,12 @@ page_head($page_title);
 
 <?php elseif ($target_user): ?>
   <!-- ========================================================================= -->
-  <!-- VIEW: INDIVIDUAL VOLUNTEER PORTFOLIO                                      -->
+  <!-- VIEW: INDIVIDUAL VOLUNTEER DEALS                                          -->
   <!-- ========================================================================= -->
-  <p class="eyebrow"><?php echo tra("Volunteer Deal Portfolio"); ?></p>
+  <p class="eyebrow"><?php echo tra("Volunteer Deals"); ?></p>
   <h1><?php echo user_links($target_user, BADGE_HEIGHT_MEDIUM); ?></h1>
   <p class="lede">
-    <?php echo tra("Deal portfolio for volunteer #%1.", $target_user->id); ?>
+    <?php echo tra("Deals for volunteer #%1.", $target_user->id); ?>
   </p>
 
   <section class="hero">
@@ -560,7 +562,7 @@ page_head($page_title);
             <td>
               <?php if ($exp['is_valid']): ?>
               <a href="deals.php?userid=<?php echo $exp['user_id']; ?>" style="background:var(--gold);color:var(--felt);padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;text-decoration:none">
-                <?php echo tra("Portfolio &rarr;"); ?>
+                <?php echo tra("Deals &rarr;"); ?>
               </a>
               <?php endif; ?>
             </td>
