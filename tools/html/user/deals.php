@@ -473,9 +473,7 @@ page_head($page_title);
             </td>
             <td>
               <?php if ($r['partner_valid']): ?>
-              <a href="deals.php?userid=<?php echo $r['partner_id']; ?>">
-                <?php echo htmlspecialchars($r['partner_user']->name); ?>
-              </a>
+              <?php echo user_links($r['partner_user'], BADGE_HEIGHT_SMALL); ?>
               <?php elseif ($r['partner_id'] > 0): ?>
               <span style="color:var(--cream-dim)"><?php echo tra("User #%1", $r['partner_id']); ?></span>
               <?php else: ?>
