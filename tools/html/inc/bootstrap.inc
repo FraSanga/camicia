@@ -157,7 +157,7 @@ function sample_navbar(
     $x = array();
     if ($user) {
         $x[] = array(tra("Account"), $url_prefix.HOME_PAGE);
-        $x[] = array(tra("My Universe"), $url_prefix."universe.php");
+        $x[] = array(tra("My Deals"), $url_prefix."deals.php");
         // Camicia fix: html/user/join.php (a "how to download/attach
         // BOINC" onboarding page for logged-in users, added 2016) was
         // deleted from stock BOINC on 2026-03-30 -- ee8692be84, titled
@@ -194,7 +194,7 @@ function sample_navbar(
             // in the site -- not even here, next to the other project
             // status pages it belongs alongside.
             array(tra("Progress"), $url_prefix."progress.php"),
-            array(tra("Conquered Universe"), $url_prefix."universe.php?all=1"),
+            array(tra("Deal Registry"), $url_prefix."deals.php?all=1"),
             array(tra("Server status"), $url_prefix."server_status.php"),
             array(tra("Credit statistics"), $url_prefix."stats.php"),
             array(tra("Applications"), $url_prefix."apps.php"),
