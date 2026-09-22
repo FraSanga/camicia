@@ -25,27 +25,49 @@ $userid = get_int('userid', true);
 $search_query = get_str('q', true);
 $show_all = get_int('all', true);
 
-// Search resolution
+function is_valid_boinc_user($user) {
+    if (!$user) return false;
+    if (isset($user->authenticator) && strstr($user->authenticator, 'deleted')) return false;
+    return true;
+}
+
+// Access control: block logged-out users from viewing individual portfolios or searching
+if (($userid || ($search_query !== null && $search_query !== '')) && !$logged_in_user) {
+    get_logged_in_user(true); // redirects to login_form.php?next_url=...
+}
+
+$user_not_found = false;
+$target_user = null;
+
+// Search resolution (only reachable by logged-in users)
 if ($search_query !== null && $search_query !== '') {
     $search_query = trim($search_query);
     if (is_numeric($search_query)) {
         $userid = (int)$search_query;
     } else {
-        $escaped = $db->escape_string($search_query);
+        $escaped = BoincDb::escape_string($search_query);
         $res = $db->do_query("SELECT id FROM user WHERE name LIKE '%$escaped%' LIMIT 1");
         if ($res && $row = $res->fetch_row()) {
             $userid = (int)$row[0];
+        } else {
+            $user_not_found = true;
         }
         if ($res) $res->free();
     }
 }
 
-// Default to logged-in user if no specific user requested and not explicitly viewing all
-if (!$userid && $logged_in_user && !$show_all) {
-    $userid = (int)$logged_in_user->id;
+// User lookup
+if ($userid) {
+    $u = BoincUser::lookup_id($userid);
+    if (is_valid_boinc_user($u)) {
+        $target_user = $u;
+    } else {
+        $user_not_found = true;
+    }
+} elseif (!$show_all && $logged_in_user && ($search_query === null || $search_query === '')) {
+    // Default to logged-in user when no specific user requested, no search, and not forcing global view
+    $target_user = $logged_in_user;
 }
-
-$target_user = $userid ? BoincUser::lookup_id($userid) : null;
 
 // =========================================================================
 // DATA FETCHING: INDIVIDUAL VOLUNTEER PORTFOLIO
@@ -145,16 +167,18 @@ if ($target_user) {
         while ($row = $res->fetch_assoc()) {
             $partner_id = ((int)$row['user_id'] === $uid) ? (int)$row['verifier_user_id'] : (int)$row['user_id'];
             $partner_user = $partner_id > 0 ? BoincUser::lookup_id($partner_id) : null;
+            $partner_valid = is_valid_boinc_user($partner_user);
             $row['is_explorer'] = ((int)$row['user_id'] === $uid);
             $row['partner_id'] = $partner_id;
-            $row['partner_html'] = $partner_user ? user_links($partner_user, BADGE_HEIGHT_SMALL) : ($partner_id > 0 ? "User #$partner_id" : "—");
+            $row['partner_user'] = $partner_user;
+            $row['partner_valid'] = $partner_valid;
             $recent_ranges[] = $row;
         }
         $res->free();
     }
 
     $page_title = tra("%1's Conquered Universe", $target_user->name);
-} else {
+} elseif (!$user_not_found) {
     // =========================================================================
     // DATA FETCHING: GLOBAL OVERVIEW & LEADERBOARD
     // =========================================================================
@@ -185,14 +209,22 @@ if ($target_user) {
     if ($res) {
         while ($row = $res->fetch_assoc()) {
             $u = BoincUser::lookup_id((int)$row['user_id']);
+            $is_valid = is_valid_boinc_user($u);
+            $row['is_valid'] = $is_valid;
             $row['user_name'] = $u ? $u->name : "User #" . $row['user_id'];
-            $row['user_html'] = $u ? user_links($u, BADGE_HEIGHT_SMALL) : ("User #" . $row['user_id']);
+            if ($logged_in_user) {
+                $row['user_html'] = $is_valid ? user_links($u, BADGE_HEIGHT_SMALL) : ("User #" . $row['user_id']);
+            } else {
+                $row['user_html'] = htmlspecialchars($row['user_name']);
+            }
             $top_explorers[] = $row;
         }
         $res->free();
     }
 
     $page_title = tra("Conquered Universe");
+} else {
+    $page_title = tra("Volunteer Not Found");
 }
 
 page_head($page_title);
@@ -288,6 +320,8 @@ page_head($page_title);
     color: var(--cream); vertical-align: middle;
 }
 .universe-table tr:hover td { background: rgba(201, 162, 39, 0.05); }
+.universe-table td a { color: var(--gold); text-decoration: none; }
+.universe-table td a:hover { text-decoration: underline; }
 .universe-table .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; }
 
 .universe-meta-link {
@@ -299,17 +333,33 @@ page_head($page_title);
 
 <div class="universe-page">
 
-  <!-- Search & Navigation Bar -->
+  <?php if ($logged_in_user): ?>
+  <!-- Search & Navigation Bar (only visible to logged-in users) -->
   <form method="GET" action="universe.php" class="universe-search-bar">
     <input type="text" name="q" placeholder="<?php echo tra("Search volunteer by username or ID..."); ?>" value="<?php echo htmlspecialchars($search_query ?? ''); ?>">
     <button type="submit"><?php echo tra("Search"); ?></button>
     <a href="universe.php?all=1" class="all-link"><?php echo tra("All Explorers"); ?></a>
-    <?php if ($logged_in_user && (!$target_user || $target_user->id !== $logged_in_user->id)): ?>
+    <?php if (!$target_user || $target_user->id !== $logged_in_user->id): ?>
     <a href="universe.php" class="all-link"><?php echo tra("My Universe"); ?></a>
     <?php endif; ?>
   </form>
+  <?php endif; ?>
 
-<?php if ($target_user): ?>
+<?php if ($user_not_found): ?>
+  <!-- ========================================================================= -->
+  <!-- VIEW: VOLUNTEER NOT FOUND / DELETED                                       -->
+  <!-- ========================================================================= -->
+  <div style="background: rgba(168, 51, 73, 0.15); border: 1px solid var(--ruby); border-radius: 12px; padding: 36px 28px; text-align: center; margin: 40px auto; max-width: 580px;">
+    <h2 style="color: var(--cream); font-family: Georgia, serif; font-size: 24px; margin: 0 0 12px;"><?php echo tra("Volunteer Not Found"); ?></h2>
+    <p style="color: var(--cream-dim); font-size: 15px; margin: 0 0 24px; line-height: 1.6;">
+      <?php echo tra("This user doesn't exist or has been deleted."); ?>
+    </p>
+    <a href="universe.php?all=1" style="display:inline-block; background: var(--gold); color: var(--felt); font-weight: 600; font-size: 13.5px; padding: 10px 20px; border-radius: 6px; text-decoration: none;">
+      &larr; <?php echo tra("Return to Conquered Universe"); ?>
+    </a>
+  </div>
+
+<?php elseif ($target_user): ?>
   <!-- ========================================================================= -->
   <!-- VIEW: INDIVIDUAL VOLUNTEER PORTFOLIO                                      -->
   <!-- ========================================================================= -->
@@ -365,7 +415,7 @@ page_head($page_title);
       </div>
       <div>
         <span style="font-family:Georgia,serif;font-size:24px;color:var(--cream);font-weight:700"><?php echo number_format($best_game['max_tricks']); ?></span>
-        <span style="color:var(--cream-dim);font-size:15px"> <?php echo tra("tricks won"); ?></span>
+        <span style="color:var(--cream-dim);font-size:15px"> <?php echo tra("tricks"); ?></span>
       </div>
       <div style="color:var(--cream-dim);font-size:13.5px">
         <?php echo tra("Confirmed on %1", date('d/m/Y', $best_game['assimilated_at'])); ?>
@@ -420,10 +470,12 @@ page_head($page_title);
               <?php endif; ?>
             </td>
             <td>
-              <?php if ($r['partner_id'] > 0): ?>
-              <a href="universe.php?userid=<?php echo $r['partner_id']; ?>" style="color:var(--gold);text-decoration:none">
-                <?php echo $r['partner_html']; ?>
+              <?php if ($r['partner_valid']): ?>
+              <a href="universe.php?userid=<?php echo $r['partner_id']; ?>">
+                <?php echo htmlspecialchars($r['partner_user']->name); ?>
               </a>
+              <?php elseif ($r['partner_id'] > 0): ?>
+              <span style="color:var(--cream-dim)"><?php echo tra("User #%1", $r['partner_id']); ?></span>
               <?php else: ?>
               <span style="color:var(--cream-dim)">&mdash;</span>
               <?php endif; ?>
@@ -450,7 +502,7 @@ page_head($page_title);
   <p class="eyebrow"><?php echo tra("Camicia &middot; Search Space Ledger"); ?></p>
   <h1><?php echo tra("The Conquered Universe"); ?></h1>
   <p class="lede">
-    <?php echo tra("Every permutation of the 52-card deck simulated by Camicia is permanently recorded and credited to the volunteers who explored and validated it. Search for any volunteer above or explore the leading contributors below."); ?>
+    <?php echo tra("Every permutation of the 52-card deck simulated by Camicia is permanently recorded and credited to the volunteers who explored and validated it."); ?>
   </p>
 
   <section class="hero">
@@ -476,8 +528,10 @@ page_head($page_title);
             <th><?php echo tra("Deals Simulated"); ?></th>
             <th><?php echo tra("Personal Best"); ?></th>
             <th><?php echo tra("Loops"); ?></th>
+            <?php if ($logged_in_user): ?>
             <th><?php echo tra("Last Active"); ?></th>
             <th></th>
+            <?php endif; ?>
           </tr>
         </thead>
         <tbody>
@@ -501,12 +555,16 @@ page_head($page_title);
               &mdash;
               <?php endif; ?>
             </td>
+            <?php if ($logged_in_user): ?>
             <td><?php echo date('d/m/Y', (int)$exp['last_seen']); ?></td>
             <td>
+              <?php if ($exp['is_valid']): ?>
               <a href="universe.php?userid=<?php echo $exp['user_id']; ?>" style="background:var(--gold);color:var(--felt);padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;text-decoration:none">
                 <?php echo tra("Portfolio &rarr;"); ?>
               </a>
+              <?php endif; ?>
             </td>
+            <?php endif; ?>
           </tr>
           <?php endforeach; ?>
         </tbody>
