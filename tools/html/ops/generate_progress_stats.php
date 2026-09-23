@@ -31,6 +31,7 @@ define('RANGE_SIZE', 1000000000); // work_generator.cpp's --range_size
 // here rather than computed at runtime since it never changes and PHP's
 // native ints can't hold it exactly anyway (it's a 128-bit value).
 define('SEARCH_SPACE_BLOCKS', 653534134887);
+define('TOTAL_DEAL_SPACE', '653534134886878244999');
 
 // do_query() returns null on a genuine query failure (connection dropped,
 // deadlock, syntax error) and a mysqli_result on success -- see
@@ -79,18 +80,11 @@ try {
 $app = BoincApp::lookup("name='" . APPNAME . "'");
 $appid = $app ? (int)$app->id : 0;
 
-// -------- lifetime total: blocks (workunits) confirmed ever --------
-// A block is "confirmed" once it has a canonical result, i.e. two
-// independent volunteers' output matched byte-for-byte
-// (sample_bitwise_validator). Joining to that specific result's
-// received_time (rather than workunit.mod_time, which updates on any
-// change) is what makes the per-period version below actually mean
-// "confirmed in this window", not just "touched in this window".
-$blocks_confirmed_total = (int)scalar($db, "
-    select count(*) from workunit w
-    join result r on w.canonical_resultid = r.id
-    where w.appid = $appid and w.canonical_resultid != 0
-");
+// -------- lifetime totals: deals & blocks confirmed ever --------
+// Using camicia_completed_ranges guarantees permanent, unpurged totals
+// that survive BOINC's 7-day db_purge, matching the Deal Registry.
+$blocks_confirmed_total = (int)scalar($db, "SELECT count(*) FROM camicia_completed_ranges");
+$deals_confirmed_total = (float)scalar($db, "SELECT coalesce(sum(range_end - range_start + 1), 0) FROM camicia_completed_ranges");
 
 // -------- per-period stats --------
 $periods = [
@@ -108,9 +102,12 @@ foreach ($periods as $key => $seconds) {
         where appid = $appid and received_time > $cutoff
     ");
     $confirmed = (int)scalar($db, "
-        select count(*) from workunit w
-        join result r on w.canonical_resultid = r.id
-        where w.appid = $appid and w.canonical_resultid != 0 and r.received_time > $cutoff
+        select count(*) from camicia_completed_ranges
+        where assimilated_at > $cutoff
+    ");
+    $deals_confirmed = (float)scalar($db, "
+        select coalesce(sum(range_end - range_start + 1), 0) from camicia_completed_ranges
+        where assimilated_at > $cutoff
     ");
     // outcome = 1 (CLIENT_RESULT_SUCCESS): only count CPU time from
     // results that actually completed successfully.
@@ -121,30 +118,10 @@ foreach ($periods as $key => $seconds) {
     $period_stats[$key] = [
         'volunteers' => $volunteers,
         'blocks_confirmed' => $confirmed,
+        'deals_confirmed' => $deals_confirmed,
         'cpu_hours' => round($cpu_hours, 1),
     ];
 }
-
-// -------- today's pace: where blocks touched in the last 24h currently stand --------
-// "Rechecking": still unconfirmed, but already has more than the normal 2
-// results -- BOINC's own stock redundancy handling already generates extra
-// replicas automatically when the first pair doesn't match (nothing to do
-// with adaptive replication, which this project deliberately does not use
-// -- see that discussion). "Waiting": still unconfirmed, at or under 2
-// results, i.e. genuinely just waiting on its second independent result.
-$day_ago = $now - 86400;
-$rechecking = (int)scalar($db, "
-    select count(*) from workunit w
-    where w.appid = $appid and w.canonical_resultid = 0
-    and w.mod_time > $day_ago
-    and (select count(*) from result r where r.workunitid = w.id) > 2
-");
-$waiting = (int)scalar($db, "
-    select count(*) from workunit w
-    where w.appid = $appid and w.canonical_resultid = 0
-    and w.mod_time > $day_ago
-    and (select count(*) from result r where r.workunitid = w.id) <= 2
-");
 
 // -------- discoveries & hall of fame milestones --------
 $longest_current = null;
@@ -303,13 +280,10 @@ if ($has_disc_table) {
 $stats = [
     'generated_at' => $now,
     'search_space_blocks' => SEARCH_SPACE_BLOCKS,
+    'total_deal_space' => TOTAL_DEAL_SPACE,
+    'deals_confirmed_total' => $deals_confirmed_total,
     'blocks_confirmed_total' => $blocks_confirmed_total,
     'periods' => $period_stats,
-    'today_pace' => [
-        'confirmed' => $period_stats['day']['blocks_confirmed'],
-        'rechecking' => $rechecking,
-        'waiting' => $waiting,
-    ],
     'longest_current' => $longest_current,
     'longest_history' => $longest_history,
     'loops' => $loops_found,
@@ -339,6 +313,6 @@ $tmp_path = "$final_path.tmp";
 file_put_contents($tmp_path, json_encode($stats, JSON_PRETTY_PRINT));
 rename($tmp_path, $final_path);
 
-echo date(DATE_RFC822), ": wrote progress_stats.json ($blocks_confirmed_total blocks confirmed total)\n";
+echo date(DATE_RFC822), ": wrote progress_stats.json ($deals_confirmed_total deals, $blocks_confirmed_total blocks confirmed total)\n";
 
 ?>

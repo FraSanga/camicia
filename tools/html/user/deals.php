@@ -182,15 +182,6 @@ if ($target_user) {
     // =========================================================================
     // DATA FETCHING: GLOBAL OVERVIEW & LEADERBOARD
     // =========================================================================
-    $global_ranges_count = 0;
-    $global_deals_count = '0';
-    $res = $db->do_query("SELECT COUNT(*), COALESCE(SUM(range_end - range_start + 1), 0) FROM camicia_completed_ranges");
-    if ($res && $row = $res->fetch_row()) {
-        $global_ranges_count = (int)$row[0];
-        $global_deals_count = (string)$row[1];
-    }
-    if ($res) $res->free();
-
     // Top 25 Explorers
     $top_explorers = [];
     $res = $db->do_query("
@@ -505,17 +496,12 @@ page_head($page_title);
     <?php echo tra("Every permutation of the 52-card deck simulated by Camicia is permanently recorded and credited to the volunteers who explored and validated it."); ?>
   </p>
 
-  <section class="hero">
-    <p class="hero-label"><?php echo tra("Total Deal Blocks Verified Globally"); ?></p>
-    <p class="hero-number"><?php echo number_format($global_ranges_count); ?></p>
-    <p class="hero-sub">
-      <?php echo tra("%1 total deals simulated and verified across all volunteers", number_format($global_deals_count)); ?>
-    </p>
-  </section>
-
   <section class="deals-card">
     <h2 class="section-title"><?php echo tra("Top Deal Explorers"); ?></h2>
-    <p class="section-sub"><?php echo tra("Volunteers ranked by number of confirmed deal blocks"); ?></p>
+    <p class="section-sub">
+      <?php echo tra("Volunteers ranked by number of confirmed deal blocks"); ?> &middot;
+      <a href="progress.php" style="color:var(--gold);text-decoration:none;font-weight:600"><?php echo tra("View global search progress &rarr;"); ?></a>
+    </p>
 
     <?php if (count($top_explorers) > 0): ?>
     <div class="deals-table-wrap">
