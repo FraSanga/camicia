@@ -184,7 +184,7 @@ page_head(tra("Search progress"));
 .progress-page p.section-sub { font-size: 13.5px; color: var(--cream-dim); margin: 0 0 20px; line-height: 1.55; }
 .progress-page .hero { border: 1px solid var(--gold-dim); border-radius: 16px; background: linear-gradient(180deg, var(--felt-2), var(--felt)); padding: 40px 40px 36px; margin: 40px 0; text-align: center; }
 .progress-page .hero-label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--cream-dim); margin: 0 0 10px; font-weight: 600; }
-.progress-page .hero-number { font-family: Georgia, serif; font-size: 84px; line-height: 1; color: var(--gold); margin: 0; font-variant-numeric: tabular-nums; }
+.progress-page .hero-number { font-family: Georgia, serif; font-size: clamp(24px, 4.2vw, 68px); line-height: 1.15; color: var(--gold); margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .progress-page .hero-sub { font-size: 14px; color: var(--cream-dim); margin: 12px 0 26px; }
 .progress-page .meter { height: 14px; border-radius: 999px; background: var(--felt); border: 1px solid var(--felt-line); overflow: hidden; max-width: 640px; margin: 0 auto; }
 .progress-page .meter-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius: 999px 0 0 999px; }
@@ -249,6 +249,11 @@ page_head(tra("Search progress"));
 .progress-page .loop-list { display: flex; flex-direction: column; gap: 2px; background: var(--felt-line); border-radius: 10px; overflow: hidden; border: 1px solid var(--felt-line); margin-top: 10px; }
 .progress-page .loop-row { background: var(--felt-2); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .progress-page .loop-row b { color: var(--gold); font-family: Georgia, serif; }
+@media (max-width: 640px) {
+    .progress-page { padding: 24px 16px; }
+    .progress-page .hero { padding: 28px 16px 24px; margin: 24px 0; }
+    .progress-page .hero-number { font-size: clamp(16px, 5.5vw, 32px); }
+}
 </style>
 
 <div class="progress-page">
