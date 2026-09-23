@@ -182,35 +182,19 @@ if ($target_user) {
     // =========================================================================
     // DATA FETCHING: GLOBAL OVERVIEW & LEADERBOARD
     // =========================================================================
-    // Top 25 Explorers
+    // Top 25 Explorers (read from pre-computed progress_stats.json; 0 DB queries)
     $top_explorers = [];
-    $res = $db->do_query("
-        SELECT 
-            user_id, 
-            COUNT(*) as total_ranges,
-            COALESCE(SUM(range_end - range_start + 1), 0) as total_deals,
-            COALESCE(MAX(max_cards), 0) as top_cards,
-            COALESCE(SUM(loops_count), 0) as total_loops,
-            MAX(assimilated_at) as last_seen
-        FROM camicia_completed_ranges
-        GROUP BY user_id
-        ORDER BY total_ranges DESC
-        LIMIT 25
-    ");
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $u = BoincUser::lookup_id((int)$row['user_id']);
-            $is_valid = is_valid_boinc_user($u);
-            $row['is_valid'] = $is_valid;
-            $row['user_name'] = $u ? $u->name : "User #" . $row['user_id'];
-            if ($logged_in_user) {
-                $row['user_html'] = $is_valid ? user_links($u, BADGE_HEIGHT_SMALL) : ("User #" . $row['user_id']);
-            } else {
-                $row['user_html'] = htmlspecialchars($row['user_name']);
+    $stats_path = 'progress_stats.json';
+    if (file_exists($stats_path)) {
+        $stats_data = json_decode(@file_get_contents($stats_path), true);
+        if (isset($stats_data['top_explorers']) && is_array($stats_data['top_explorers'])) {
+            foreach ($stats_data['top_explorers'] as $exp) {
+                if (!$logged_in_user) {
+                    $exp['user_html'] = htmlspecialchars($exp['user_name']);
+                }
+                $top_explorers[] = $exp;
             }
-            $top_explorers[] = $row;
         }
-        $res->free();
     }
 
     $page_title = tra("Deal Registry");
