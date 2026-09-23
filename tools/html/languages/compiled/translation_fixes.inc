@@ -5393,10 +5393,114 @@ $language_lookup_array["vi"]["Player %1's turn"] = "Lượt của người chơi
 $language_lookup_array["zh_CN"]["Player %1's turn"] = "轮到玩家 %1";
 $language_lookup_array["zh_TW"]["Player %1's turn"] = "輪到玩家 %1";
 
+// 49. 6.535 &times; 10^20 total deals in the search space
+$language_lookup_array["it_IT"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 smazzate totali nello spazio di ricerca";
+$language_lookup_array["az"]["6.535 &times; 10^20 total deals in the search space"] = "Axtarış sahəsində cəmi 6.535 &times; 10^20 pay";
+$language_lookup_array["ca"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 mans totals a l'espai de cerca";
+$language_lookup_array["cs"]["6.535 &times; 10^20 total deals in the search space"] = "Celkem 6,535 &times; 10^20 rozdání ve vyhledávacím prostoru";
+$language_lookup_array["de"]["6.535 &times; 10^20 total deals in the search space"] = "Insgesamt 6,535 &times; 10^20 Austeilungen im Suchraum";
+$language_lookup_array["es"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 repartos en total en el espacio de búsqueda";
+$language_lookup_array["eu"]["6.535 &times; 10^20 total deals in the search space"] = "Guztira 6,535 &times; 10^20 banaketa bilaketa-espazioan";
+$language_lookup_array["fi"]["6.535 &times; 10^20 total deals in the search space"] = "Yhteensä 6,535 &times; 10^20 jakoa hakuavaruudessa";
+$language_lookup_array["fr"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 donnes au total dans l'espace de recherche";
+$language_lookup_array["he"]["6.535 &times; 10^20 total deals in the search space"] = "‏6.535 &times; 10^20 חלוקות בסך הכל במרחב החיפוש";
+$language_lookup_array["hu"]["6.535 &times; 10^20 total deals in the search space"] = "Összesen 6,535 &times; 10^20 osztás a keresési térben";
+$language_lookup_array["ja"]["6.535 &times; 10^20 total deals in the search space"] = "検索空間内の合計 6.535 &times; 10^20 ディール";
+$language_lookup_array["ko"]["6.535 &times; 10^20 total deals in the search space"] = "탐색 공간 내 총 6.535 &times; 10^20 개의 딜";
+$language_lookup_array["nb"]["6.535 &times; 10^20 total deals in the search space"] = "Totalt 6,535 &times; 10^20 giv i søkeområdet";
+$language_lookup_array["nl"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 delen in totaal in de zoekruimte";
+$language_lookup_array["pl"]["6.535 &times; 10^20 total deals in the search space"] = "Łącznie 6,535 &times; 10^20 rozdań w przestrzeni przeszukiwań";
+$language_lookup_array["pt_BR"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 distribuições no total no espaço de busca";
+$language_lookup_array["pt_PT"]["6.535 &times; 10^20 total deals in the search space"] = "6,535 &times; 10^20 distribuições no total no espaço de pesquisa";
+$language_lookup_array["ru"]["6.535 &times; 10^20 total deals in the search space"] = "Всего 6,535 &times; 10^20 раздач в пространстве поиска";
+$language_lookup_array["sk"]["6.535 &times; 10^20 total deals in the search space"] = "Celkovo 6,535 &times; 10^20 rozdaní vo vyhľadávacom priestore";
+$language_lookup_array["sv"]["6.535 &times; 10^20 total deals in the search space"] = "Totalt 6,535 &times; 10^20 giv i sökutrymmet";
+$language_lookup_array["tr"]["6.535 &times; 10^20 total deals in the search space"] = "Arama alanında toplam 6.535 &times; 10^20 dağıtım";
+$language_lookup_array["uk"]["6.535 &times; 10^20 total deals in the search space"] = "Всього 6,535 &times; 10^20 роздач у просторі пошуку";
+$language_lookup_array["vi"]["6.535 &times; 10^20 total deals in the search space"] = "Tổng cộng 6.535 &times; 10^20 ván bài trong không gian tìm kiếm";
+$language_lookup_array["zh_CN"]["6.535 &times; 10^20 total deals in the search space"] = "搜索空间中共 6.535 &times; 10^20 个发牌";
+$language_lookup_array["zh_TW"]["6.535 &times; 10^20 total deals in the search space"] = "搜尋空間中共 6.535 &times; 10^20 個發牌";
 
+// 50. %1 deals simulated and verified across %2 blocks
+$language_lookup_array["it_IT"]["%1 deals simulated and verified across %2 blocks"] = "%1 smazzate simulate e verificate su %2 blocchi";
+$language_lookup_array["az"]["%1 deals simulated and verified across %2 blocks"] = "%2 blok üzrə simulyasiya edilmiş və təsdiqlənmiş %1 pay";
+$language_lookup_array["ca"]["%1 deals simulated and verified across %2 blocks"] = "%1 mans simulades i verificades en %2 blocs";
+$language_lookup_array["cs"]["%1 deals simulated and verified across %2 blocks"] = "%1 rozdání simulovaných a ověřených v %2 blocích";
+$language_lookup_array["de"]["%1 deals simulated and verified across %2 blocks"] = "%1 Austeilungen simuliert und verifiziert über %2 Blöcke";
+$language_lookup_array["es"]["%1 deals simulated and verified across %2 blocks"] = "%1 repartos simulados y verificados en %2 bloques";
+$language_lookup_array["eu"]["%1 deals simulated and verified across %2 blocks"] = "%1 banaketa simulatuta eta %2 bloketan egiaztatuta";
+$language_lookup_array["fi"]["%1 deals simulated and verified across %2 blocks"] = "%1 jakoa simuloitu ja vahvistettu %2 lohkolla";
+$language_lookup_array["fr"]["%1 deals simulated and verified across %2 blocks"] = "%1 donnes simulées et vérifiées sur %2 blocs";
+$language_lookup_array["he"]["%1 deals simulated and verified across %2 blocks"] = "%1 חלוקות סומלצו ואומתו על פני %2 בלוקים";
+$language_lookup_array["hu"]["%1 deals simulated and verified across %2 blocks"] = "%1 osztás szimulálva és ellenőrizve %2 blokkon";
+$language_lookup_array["ja"]["%1 deals simulated and verified across %2 blocks"] = "%2 ブロックにわたりシミュレートおよび検証された %1 ディール";
+$language_lookup_array["ko"]["%1 deals simulated and verified across %2 blocks"] = "%2개 블록에 걸쳐 시뮬레이션 및 검증된 %1개 딜";
+$language_lookup_array["nb"]["%1 deals simulated and verified across %2 blocks"] = "%1 giv simulert og verifisert på tvers av %2 blokker";
+$language_lookup_array["nl"]["%1 deals simulated and verified across %2 blocks"] = "%1 delen gesimuleerd en geverifieerd over %2 blokken";
+$language_lookup_array["pl"]["%1 deals simulated and verified across %2 blocks"] = "%1 rozdań przesymulowanych i zweryfikowanych w %2 blokach";
+$language_lookup_array["pt_BR"]["%1 deals simulated and verified across %2 blocks"] = "%1 distribuições simuladas e verificadas em %2 blocos";
+$language_lookup_array["pt_PT"]["%1 deals simulated and verified across %2 blocks"] = "%1 distribuições simuladas e verificadas em %2 blocos";
+$language_lookup_array["ru"]["%1 deals simulated and verified across %2 blocks"] = "%1 раздач смоделировано и проверено в %2 блоках";
+$language_lookup_array["sk"]["%1 deals simulated and verified across %2 blocks"] = "%1 rozdaní simulovaných a overených v %2 blokoch";
+$language_lookup_array["sv"]["%1 deals simulated and verified across %2 blocks"] = "%1 giv simulerade och verifierade över %2 block";
+$language_lookup_array["tr"]["%1 deals simulated and verified across %2 blocks"] = "%2 blok genelinde simüle edilen ve doğrulanan %1 dağıtım";
+$language_lookup_array["uk"]["%1 deals simulated and verified across %2 blocks"] = "%1 роздач змодельовано та перевірено у %2 блоках";
+$language_lookup_array["vi"]["%1 deals simulated and verified across %2 blocks"] = "%1 ván bài được mô phỏng và xác thực trên %2 khối";
+$language_lookup_array["zh_CN"]["%1 deals simulated and verified across %2 blocks"] = "在 %2 个区块中共模拟并验证了 %1 个发牌";
+$language_lookup_array["zh_TW"]["%1 deals simulated and verified across %2 blocks"] = "在 %2 個區塊中共模擬並驗證了 %1 個發牌";
 
+// 51. Explore all verified ranges in the Deal Registry &rarr;
+$language_lookup_array["it_IT"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Esplora tutti gli intervalli verificati nel Registro delle smazzate &rarr;";
+$language_lookup_array["az"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Paylar reyestrindəki bütün təsdiqlənmiş diapazonları araşdırın &rarr;";
+$language_lookup_array["ca"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Explora tots els intervals verificats al Registre de mans &rarr;";
+$language_lookup_array["cs"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Prozkoumat všechny ověřené rozsahy v Registru rozdání &rarr;";
+$language_lookup_array["de"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Alle verifizierten Bereiche im Austeilungsregister erkunden &rarr;";
+$language_lookup_array["es"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Explorar todos los intervalos verificados en el Registro de repartos &rarr;";
+$language_lookup_array["eu"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Arakatu egiaztatutako tarte guztiak Banaketen erregistroan &rarr;";
+$language_lookup_array["fi"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Tutustu kaikkiin vahvistettuihin väleihin Jakorekisterissä &rarr;";
+$language_lookup_array["fr"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Explorer toutes les plages vérifiées dans le Registre des donnes &rarr;";
+$language_lookup_array["he"]["Explore all verified ranges in the Deal Registry &rarr;"] = "סיירו בכל הטווחים המאומתים בפנקס החלוקות &rarr;";
+$language_lookup_array["hu"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Fedezze fel az összes ellenőrzött tartományt az Osztásnyilvántartásban &rarr;";
+$language_lookup_array["ja"]["Explore all verified ranges in the Deal Registry &rarr;"] = "ディール登録簿のすべての検証済み範囲を探索 &rarr;";
+$language_lookup_array["ko"]["Explore all verified ranges in the Deal Registry &rarr;"] = "딜 레지스트리에서 검증된 모든 범위를 탐색 &rarr;";
+$language_lookup_array["nb"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Utforsk alle bekreftede intervaller i Givregisteret &rarr;";
+$language_lookup_array["nl"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Verken alle geverifieerde bereiken in het Deelregister &rarr;";
+$language_lookup_array["pl"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Przeglądaj wszystkie zweryfikowane zakresy w Rejestrze rozdań &rarr;";
+$language_lookup_array["pt_BR"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Explorar todos os intervalos verificados no Registro de distribuições &rarr;";
+$language_lookup_array["pt_PT"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Explorar todos os intervalos verificados no Registo de distribuições &rarr;";
+$language_lookup_array["ru"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Исследовать все проверенные диапазоны в Реестре раздач &rarr;";
+$language_lookup_array["sk"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Preskúmať všetky overené rozsahy v Registri rozdaní &rarr;";
+$language_lookup_array["sv"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Utforska alla verifierade intervall i Givregistret &rarr;";
+$language_lookup_array["tr"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Dağıtım Sicili'ndeki tüm onaylanmış aralıkları keşfedin &rarr;";
+$language_lookup_array["uk"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Переглянути всі перевірені діапазони в Реєстрі роздач &rarr;";
+$language_lookup_array["vi"]["Explore all verified ranges in the Deal Registry &rarr;"] = "Khám phá tất cả các dải đã xác thực trong Sổ đăng ký ván bài &rarr;";
+$language_lookup_array["zh_CN"]["Explore all verified ranges in the Deal Registry &rarr;"] = "在发牌名录中探索所有已验证的范围 &rarr;";
+$language_lookup_array["zh_TW"]["Explore all verified ranges in the Deal Registry &rarr;"] = "在發牌名錄中探索所有已驗證的範圍 &rarr;";
 
-
-
-
-
+// 52. View global search progress &rarr;
+$language_lookup_array["it_IT"]["View global search progress &rarr;"] = "Visualizza l'avanzamento globale della ricerca &rarr;";
+$language_lookup_array["az"]["View global search progress &rarr;"] = "Axtarışın qlobal gedişatına baxın &rarr;";
+$language_lookup_array["ca"]["View global search progress &rarr;"] = "Visualitza el progrés global de la cerca &rarr;";
+$language_lookup_array["cs"]["View global search progress &rarr;"] = "Zobrazit globální postup hledání &rarr;";
+$language_lookup_array["de"]["View global search progress &rarr;"] = "Globalen Suchfortschritt anzeigen &rarr;";
+$language_lookup_array["es"]["View global search progress &rarr;"] = "Ver el progreso global de la búsqueda &rarr;";
+$language_lookup_array["eu"]["View global search progress &rarr;"] = "Ikusi bilaketaren aurrerapen globala &rarr;";
+$language_lookup_array["fi"]["View global search progress &rarr;"] = "Näytä maailmanlaajuinen haun edistyminen &rarr;";
+$language_lookup_array["fr"]["View global search progress &rarr;"] = "Afficher la progression globale de la recherche &rarr;";
+$language_lookup_array["he"]["View global search progress &rarr;"] = "הצגת התקדמות החיפוש העולמית &rarr;";
+$language_lookup_array["hu"]["View global search progress &rarr;"] = "A keresés globális folyamatának megtekintése &rarr;";
+$language_lookup_array["ja"]["View global search progress &rarr;"] = "グローバルな探索の進捗を表示 &rarr;";
+$language_lookup_array["ko"]["View global search progress &rarr;"] = "전체 탐색 진행 상황 보기 &rarr;";
+$language_lookup_array["nb"]["View global search progress &rarr;"] = "Vis global søkefremgang &rarr;";
+$language_lookup_array["nl"]["View global search progress &rarr;"] = "Bekijk wereldwijde zoekvoortgang &rarr;";
+$language_lookup_array["pl"]["View global search progress &rarr;"] = "Zobacz globalny postęp wyszukiwania &rarr;";
+$language_lookup_array["pt_BR"]["View global search progress &rarr;"] = "Ver progresso global da busca &rarr;";
+$language_lookup_array["pt_PT"]["View global search progress &rarr;"] = "Ver progresso global da pesquisa &rarr;";
+$language_lookup_array["ru"]["View global search progress &rarr;"] = "Посмотреть общий ход поиска &rarr;";
+$language_lookup_array["sk"]["View global search progress &rarr;"] = "Zobraziť globálny priebeh hľadania &rarr;";
+$language_lookup_array["sv"]["View global search progress &rarr;"] = "Visa globala sökframsteg &rarr;";
+$language_lookup_array["tr"]["View global search progress &rarr;"] = "Küresel arama ilerlemesini görüntüle &rarr;";
+$language_lookup_array["uk"]["View global search progress &rarr;"] = "Переглянути глобальний хід пошуку &rarr;";
+$language_lookup_array["vi"]["View global search progress &rarr;"] = "Xem tiến độ tìm kiếm toàn cầu &rarr;";
+$language_lookup_array["zh_CN"]["View global search progress &rarr;"] = "查看全局搜索进度 &rarr;";
+$language_lookup_array["zh_TW"]["View global search progress &rarr;"] = "檢視全域搜尋進度 &rarr;";

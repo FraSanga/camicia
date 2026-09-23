@@ -134,16 +134,24 @@ foreach ($loops_found as &$loop) {
 }
 unset($loop);
 
-$search_space_blocks = $stats ? (int)$stats['search_space_blocks'] : FALLBACK_SEARCH_SPACE_BLOCKS;
-$blocks_confirmed_total = $stats ? (int)$stats['blocks_confirmed_total'] : 0;
-$pct = $search_space_blocks > 0 ? ($blocks_confirmed_total / $search_space_blocks) * 100 : 0;
-$pct_display = ($pct > 0 && $pct < 0.001) ? "&lt;0.001" : number_format($pct, 3);
+define('TOTAL_DEAL_SPACE_NUM', 6.53534134886878245e20);
+
+$blocks_confirmed_total = $stats ? (int)($stats['blocks_confirmed_total'] ?? 0) : 0;
+$deals_confirmed_total = $stats ? (float)($stats['deals_confirmed_total'] ?? ($blocks_confirmed_total * 1000000000)) : 0;
+
+$pct = $deals_confirmed_total > 0 ? ($deals_confirmed_total / TOTAL_DEAL_SPACE_NUM) * 100 : 0;
+if ($pct > 0 && $pct < 0.00000000000001) {
+    $pct_display = "&lt;0.00000000000001";
+} elseif ($pct > 0 && $pct < 0.001) {
+    $pct_display = sprintf("%.14f", $pct);
+    $pct_display = rtrim(rtrim($pct_display, '0'), '.');
+    if ($pct_display === '' || $pct_display === '0') $pct_display = "&lt;0.00000000000001";
+} else {
+    $pct_display = number_format($pct, 3);
+}
 // A meaningful minimum width so the fill is visible at all at these scales
 // (the real percentage is astronomically close to 0 for a long time).
 $meter_pct = max($pct, 0.05);
-
-$today_pace = $stats ? $stats['today_pace'] : array('confirmed' => 0, 'rechecking' => 0, 'waiting' => 0);
-$pace_total = max(1, $today_pace['confirmed'] + $today_pace['rechecking'] + $today_pace['waiting']);
 
 $period_json = $stats ? json_encode($stats['periods']) : json_encode(array(
     'day' => array('volunteers' => 0, 'blocks_confirmed' => 0, 'cpu_hours' => 0),
@@ -190,13 +198,7 @@ page_head(tra("Search progress"));
 .progress-page .stat-tile { background: var(--felt-2); padding: 22px 20px; }
 .progress-page .stat-value { font-family: Georgia, serif; font-size: 32px; color: var(--gold); font-variant-numeric: tabular-nums; margin: 0 0 6px; }
 .progress-page .stat-label { font-size: 12.5px; color: var(--cream-dim); }
-.progress-page .pipeline { border: 1px solid var(--gold-dim); border-radius: 14px; padding: 26px 28px 24px; margin-bottom: 40px; }
-.progress-page .segbar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; background: var(--felt); }
-.progress-page .seg { height: 100%; }
-.progress-page .seglegend { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 16px; font-size: 13px; color: var(--cream-dim); }
-.progress-page .seglegend span { display: inline-flex; align-items: center; gap: 8px; }
-.progress-page .swatch { width: 11px; height: 11px; border-radius: 3px; }
-.progress-page .seglegend b { color: var(--cream); font-variant-numeric: tabular-nums; }
+
 .progress-page .discovery { border: 1px solid var(--gold-dim); border-radius: 14px; padding: 28px; margin-bottom: 24px; }
 .progress-page .discovery-meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--cream-dim); margin: 14px 0 20px; }
 .progress-page .discovery-meta b { color: var(--cream); }
@@ -259,9 +261,14 @@ page_head(tra("Search progress"));
   <section class="hero">
     <p class="hero-label"><?php echo tra("Search space explored and confirmed"); ?></p>
     <p class="hero-number"><?php echo $pct_display; ?>%</p>
-    <p class="hero-sub"><?php echo tra("%1 possible blocks in total", number_format($search_space_blocks)); ?></p>
+    <p class="hero-sub"><?php echo tra("6.535 &times; 10^20 total deals in the search space"); ?></p>
     <div class="meter"><div class="meter-fill" style="width:<?php echo $meter_pct; ?>%"></div></div>
-    <p class="meter-caption"><?php echo tra("%1 blocks confirmed out of %2", number_format($blocks_confirmed_total), number_format($search_space_blocks)); ?></p>
+    <p class="meter-caption"><?php echo tra("%1 deals simulated and verified across %2 blocks", number_format($deals_confirmed_total), number_format($blocks_confirmed_total)); ?></p>
+    <p style="margin:16px 0 0;font-size:13.5px">
+      <a href="deals.php?all=1" style="color:var(--gold);text-decoration:none;font-weight:600">
+        <?php echo tra("Explore all verified ranges in the Deal Registry &rarr;"); ?>
+      </a>
+    </p>
   </section>
 
   <section class="period-block">
@@ -284,20 +291,7 @@ page_head(tra("Search progress"));
     </div>
   </section>
 
-  <section class="pipeline">
-    <h2 class="section-title"><?php echo tra("Today's pace"); ?></h2>
-    <p class="section-sub"><?php echo tra("What happened to the blocks worked on in the last 24 hours"); ?></p>
-    <div class="segbar">
-      <div class="seg" style="background:var(--gold);width:<?php echo round($today_pace['confirmed'] / $pace_total * 100, 2); ?>%"></div>
-      <div class="seg" style="background:var(--ruby);width:<?php echo round($today_pace['rechecking'] / $pace_total * 100, 2); ?>%"></div>
-      <div class="seg" style="background:var(--gold-pale);width:<?php echo round($today_pace['waiting'] / $pace_total * 100, 2); ?>%"></div>
-    </div>
-    <div class="seglegend">
-      <span><i class="swatch" style="background:var(--gold)"></i><?php echo tra("Confirmed"); ?> &middot; <b><?php echo number_format($today_pace['confirmed']); ?></b></span>
-      <span><i class="swatch" style="background:var(--ruby)"></i><?php echo tra("Being rechecked (the two volunteers disagreed)"); ?> &middot; <b><?php echo number_format($today_pace['rechecking']); ?></b></span>
-      <span><i class="swatch" style="background:var(--gold-pale)"></i><?php echo tra("Waiting on a second result"); ?> &middot; <b><?php echo number_format($today_pace['waiting']); ?></b></span>
-    </div>
-  </section>
+
 
   <section>
     <h2 class="section-title" style="margin-bottom:16px"><?php echo tra("Discoveries"); ?></h2>
