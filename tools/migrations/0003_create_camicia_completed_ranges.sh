@@ -2,7 +2,7 @@
 # One-off migration: creates the `camicia_completed_ranges` table in MariaDB.
 #
 # Why: Maintains a permanent, lightweight ledger of confirmed completed
-# permutation blocks (Proposal 4). Provides instant sub-millisecond
+# permutation blocks. Provides instant sub-millisecond
 # continuity verification, public deal checking, and volunteer statistics
 # independent of 7-day BOINC db_purge.
 #

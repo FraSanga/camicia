@@ -60,6 +60,7 @@
 #include "int128_io.hpp"
 #include "permutation.hpp"
 #include "engine.hpp"
+#include "histogram.hpp"
 
 using namespace std;
 
@@ -72,6 +73,7 @@ struct RecordedBest {
 struct RecordedOutput {
     optional<RecordedBest> best;
     unordered_set<string> loopIndices; // int128ToString(index) -> present
+    optional<SummaryStats> summary;
 };
 
 // Parses the plain per-WU output format worker.cpp itself writes (the `out`
@@ -91,6 +93,38 @@ static bool parse_result_file(const string& path, RecordedOutput& out, string& e
     while (getline(f, line)) {
         lineNo++;
         if (line.empty()) continue;
+        if (line.rfind("summary,", 0) == 0) {
+            if (out.summary.has_value()) {
+                err = "result file has more than one 'summary' line";
+                return false;
+            }
+            stringstream ss_sum(line);
+            string token;
+            getline(ss_sum, token, ','); // skip "summary"
+            SummaryStats s;
+            if (getline(ss_sum, token, ',')) s.totalDeals = strtoull(token.c_str(), nullptr, 10);
+            if (getline(ss_sum, token, ',')) s.totalCards = strtoull(token.c_str(), nullptr, 10);
+            if (getline(ss_sum, token, ',')) s.totalTricks = strtoull(token.c_str(), nullptr, 10);
+            if (getline(ss_sum, token, ',')) s.totalCardsSq = strtoull(token.c_str(), nullptr, 10);
+            if (getline(ss_sum, token, ',')) s.p1Wins = strtoull(token.c_str(), nullptr, 10);
+            uint64_t bSum = 0;
+            for (int b = 0; b < 64; ++b) {
+                if (getline(ss_sum, token, ',')) {
+                    s.buckets[b] = strtoull(token.c_str(), nullptr, 10);
+                    bSum += s.buckets[b];
+                } else {
+                    err = "malformed summary line (missing buckets): " + line;
+                    return false;
+                }
+            }
+            if (bSum != s.totalDeals) {
+                err = "malformed summary line: sum of buckets (" + to_string(bSum) + ") != totalDeals (" + to_string(s.totalDeals) + ")";
+                return false;
+            }
+            out.summary = s;
+            continue;
+        }
+
         stringstream ss(line);
         string status, idxStr, cardsStr, tricksStr;
         if (!getline(ss, status, ',') || !getline(ss, idxStr, ',') ||
@@ -211,7 +245,7 @@ static void check_deal(int128 index, const RecordedOutput& recorded, vector<Anom
 // itself. Reuses check_deal() for the best index -- same logic, same
 // message, just guaranteed to run instead of only running if the random
 // sample happens to land on it.
-static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly>& anomalies, StateTracker& tracker) {
+static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly>& anomalies, StateTracker& tracker, int128 start, int128 blockSizeFull) {
     if (recorded.best.has_value()) {
         check_deal(recorded.best->index, recorded, anomalies, tracker);
     }
@@ -223,6 +257,21 @@ static void check_recorded_claims(const RecordedOutput& recorded, vector<Anomaly
                 "recorded as a loop, but the true outcome is 'finished' (cards=" +
                 to_string(res.cards) + ", tricks=" + to_string(res.tricks) +
                 ") -- this loop claim is false"});
+        }
+    }
+    if (recorded.summary.has_value()) {
+        int128 accounted = (int128)recorded.summary->totalDeals + (int128)recorded.loopIndices.size();
+        if (accounted != blockSizeFull) {
+            anomalies.push_back({start,
+                "summary line deal count mismatch: totalDeals (" + to_string(recorded.summary->totalDeals) +
+                ") + loop count (" + to_string(recorded.loopIndices.size()) +
+                ") = " + int128ToString(accounted) +
+                " does not match block size (" + int128ToString(blockSizeFull) + ")"});
+        }
+        if (recorded.summary->p1Wins > recorded.summary->totalDeals) {
+            anomalies.push_back({start,
+                "summary line p1Wins (" + to_string(recorded.summary->p1Wins) +
+                ") exceeds totalDeals (" + to_string(recorded.summary->totalDeals) + ")"});
         }
     }
 }
@@ -367,7 +416,7 @@ int main(int argc, char** argv) {
     // own comment for why the random sample alone can't be trusted to
     // catch a false or omitted claim about the one specific best index or
     // the (usually very few) specific recorded loop indices.
-    check_recorded_claims(recorded, anomalies, tracker);
+    check_recorded_claims(recorded, anomalies, tracker, start, blockSizeFull);
     for (uint64_t off : offsets) {
         check_deal(start + (int128)off, recorded, anomalies, tracker);
     }

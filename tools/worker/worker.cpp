@@ -40,6 +40,7 @@ inline int boinc_resolve_filename_s(const std::string& in, std::string& out) {
 #include "engine.hpp"
 #include "permutation.hpp"
 #include "int128_io.hpp"
+#include "histogram.hpp"
 #if __has_include("opencl_dispatch.hpp")
 #include "opencl_dispatch.hpp"
 #include "kernel_source.hpp"
@@ -94,6 +95,7 @@ struct WorkerState {
     int128 endIndex;
     GameResultInfo bestFinished;
     std::vector<GameResultInfo> loops;
+    SummaryStats summary;
 };
 
 // loopsAppended tracks how many of state.loops are already durably written
@@ -144,6 +146,17 @@ void do_checkpoint(WorkerState& state, size_t& loopsAppended) {
             cur.c_str(), start.c_str(), end.c_str(),
             bestIdx.c_str(), state.bestFinished.cards, state.bestFinished.tricks);
 
+    fprintf(f, "%llu %llu %llu %llu %llu",
+            (unsigned long long)state.summary.totalDeals,
+            (unsigned long long)state.summary.totalCards,
+            (unsigned long long)state.summary.totalTricks,
+            (unsigned long long)state.summary.totalCardsSq,
+            (unsigned long long)state.summary.p1Wins);
+    for (int b = 0; b < 64; ++b) {
+        fprintf(f, " %llu", (unsigned long long)state.summary.buckets[b]);
+    }
+    fprintf(f, "\n");
+
     fclose(f);
     boinc_rename("temp", resolved_name.c_str());
     boinc_checkpoint_completed();
@@ -152,7 +165,7 @@ void do_checkpoint(WorkerState& state, size_t& loopsAppended) {
 int main(int argc, char** argv) {
     boinc_init();
 
-    WorkerState state = {0, 0, 0, {0, 0, 0}, {}};
+    WorkerState state = {0, 0, 0, {0, 0, 0}, {}, {}};
     char input_path[512], chkpt_path[512], output_path[512];
     
     boinc_resolve_filename(INPUT_FILENAME, input_path, sizeof(input_path));
@@ -171,6 +184,21 @@ int main(int argc, char** argv) {
             state.endIndex = stringTo128(end);
             state.bestFinished.index = stringTo128(bestIdxStr);
             resumed = true;
+
+            unsigned long long d = 0, c = 0, t = 0, sq = 0, p1 = 0;
+            if (fscanf(chkpt, "%llu %llu %llu %llu %llu", &d, &c, &t, &sq, &p1) == 5) {
+                state.summary.totalDeals = d;
+                state.summary.totalCards = c;
+                state.summary.totalTricks = t;
+                state.summary.totalCardsSq = sq;
+                state.summary.p1Wins = p1;
+                for (int b = 0; b < 64; ++b) {
+                    unsigned long long bVal = 0;
+                    if (fscanf(chkpt, "%llu", &bVal) == 1) {
+                        state.summary.buckets[b] = bVal;
+                    }
+                }
+            }
         }
         fclose(chkpt);
     }
@@ -203,6 +231,7 @@ int main(int argc, char** argv) {
                     // wrong checkpoint's bestFinished would linger even
                     // though resumed is now false.
                     state.bestFinished = {0, 0, 0};
+                    state.summary = SummaryStats();
                 }
             }
             fclose(in_check);
@@ -445,6 +474,16 @@ int main(int argc, char** argv) {
                         state.bestFinished.tricks = outcomes[i].tricks;
                         state.bestFinished.index = dealIdx;
                     }
+                    uint32_t c = outcomes[i].cards;
+                    uint32_t t = outcomes[i].tricks;
+                    state.summary.totalDeals++;
+                    state.summary.totalCards += c;
+                    state.summary.totalTricks += t;
+                    state.summary.totalCardsSq += (uint64_t)c * c;
+                    if (outcomes[i].pad == 1) {
+                        state.summary.p1Wins++;
+                    }
+                    state.summary.buckets[get_bucket_index(c)]++;
                 } else if (outcomes[i].status == 1) {
                     if (state.loops.empty() || dealIdx > state.loops.back().index) {
                         state.loops.push_back({dealIdx, outcomes[i].cards, outcomes[i].tricks});
@@ -459,6 +498,16 @@ int main(int argc, char** argv) {
                             state.bestFinished.tricks = res.tricks;
                             state.bestFinished.index = dealIdx;
                         }
+                        uint32_t c = (uint32_t)res.cards;
+                        uint32_t t = (uint32_t)res.tricks;
+                        state.summary.totalDeals++;
+                        state.summary.totalCards += c;
+                        state.summary.totalTricks += t;
+                        state.summary.totalCardsSq += (uint64_t)c * c;
+                        if (res.winner == 1) {
+                            state.summary.p1Wins++;
+                        }
+                        state.summary.buckets[get_bucket_index(c)]++;
                     } else if (res.status == "loop") {
                         if (state.loops.empty() || dealIdx > state.loops.back().index) {
                             state.loops.push_back({dealIdx, res.cards, res.tricks});
@@ -490,6 +539,16 @@ int main(int argc, char** argv) {
                 state.bestFinished.tricks = res.tricks;
                 state.bestFinished.index = state.currentIndex;
             }
+            uint32_t c = (uint32_t)res.cards;
+            uint32_t t = (uint32_t)res.tricks;
+            state.summary.totalDeals++;
+            state.summary.totalCards += c;
+            state.summary.totalTricks += t;
+            state.summary.totalCardsSq += (uint64_t)c * c;
+            if (res.winner == 1) {
+                state.summary.p1Wins++;
+            }
+            state.summary.buckets[get_bucket_index(c)]++;
         } else if (res.status == "loop") {
             // Dedup guard: after a resume that reloaded already-durable
             // loops from LOOPS_FILE, reprocessing can land on an index
@@ -528,6 +587,16 @@ int main(int argc, char** argv) {
             fprintf(out, "loop,%s,%lld,%lld\n", 
                     int128ToString(l.index).c_str(), l.cards, l.tricks);
         }
+        fprintf(out, "summary,%llu,%llu,%llu,%llu,%llu",
+                (unsigned long long)state.summary.totalDeals,
+                (unsigned long long)state.summary.totalCards,
+                (unsigned long long)state.summary.totalTricks,
+                (unsigned long long)state.summary.totalCardsSq,
+                (unsigned long long)state.summary.p1Wins);
+        for (int b = 0; b < 64; ++b) {
+            fprintf(out, ",%llu", (unsigned long long)state.summary.buckets[b]);
+        }
+        fprintf(out, "\n");
         fclose(out);
     }
 

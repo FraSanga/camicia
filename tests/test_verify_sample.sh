@@ -53,4 +53,22 @@ fi
 grep -q "true outcome is a loop" "$TMP/bad_loop_report.txt" || fail "wrong anomaly reported for missing loop line"
 echo "OK: missing loop line is detected"
 
+# --- summary line: valid summary with 10 finished deals (10 + 1 loop = 11) ---
+# Construct a 64-bucket list summing to 10: 10 in bucket 4, zero in all others
+BUCKETS="0,0,0,0,10$(printf ',0%.0s' {1..59})"
+cp "$TMP/ref_out.txt" "$TMP/with_summary.txt"
+echo "summary,10,1000,100,120000,6,$BUCKETS" >> "$TMP/with_summary.txt"
+"$TMP/verify_sample" --start "$START" --end "$END" --result-file "$TMP/with_summary.txt" --samples 11 > "$TMP/pass_summary_out.txt"
+echo "OK: valid summary line passes (exit 0)"
+
+# --- summary line: corrupted count (totalDeals = 9, so 9 + 1 loop != 11) ---
+BUCKETS_9="0,0,0,0,9$(printf ',0%.0s' {1..59})"
+cp "$TMP/ref_out.txt" "$TMP/bad_sum_count.txt"
+echo "summary,9,1000,100,120000,6,$BUCKETS_9" >> "$TMP/bad_sum_count.txt"
+if "$TMP/verify_sample" --start "$START" --end "$END" --result-file "$TMP/bad_sum_count.txt" --samples 11 > "$TMP/bad_sum_report.txt"; then
+    fail "corrupted summary deal count was not detected"
+fi
+grep -q "summary line deal count mismatch" "$TMP/bad_sum_report.txt" || fail "wrong anomaly reported for summary count mismatch"
+echo "OK: corrupted summary deal count is detected"
+
 echo "All test_verify_sample.sh checks passed."
