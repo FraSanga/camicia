@@ -60,8 +60,12 @@ fi
 # Build bucket column definitions
 BUCKET_COLS=""
 for i in $(seq 0 63); do
-    BUCKET_COLS="${BUCKET_COLS}    bucket_${i} DECIMAL(24,0) NOT NULL DEFAULT 0,
+    if [ "$i" -eq 63 ]; then
+        BUCKET_COLS="${BUCKET_COLS}    bucket_${i} DECIMAL(24,0) NOT NULL DEFAULT 0"
+    else
+        BUCKET_COLS="${BUCKET_COLS}    bucket_${i} DECIMAL(24,0) NOT NULL DEFAULT 0,
 "
+    fi
 done
 
 echo "== Creating camicia_histogram_totals table =="
@@ -73,7 +77,7 @@ CREATE TABLE IF NOT EXISTS camicia_histogram_totals (
     total_tricks   DECIMAL(28,0) NOT NULL DEFAULT 0,
     total_cards_sq DECIMAL(34,0) NOT NULL DEFAULT 0,
     p1_wins        DECIMAL(24,0) NOT NULL DEFAULT 0,
-${BUCKET_COLS%?}
+${BUCKET_COLS}
 ) ENGINE=InnoDB DEFAULT CHARSET=ascii;
 "
 echo "  Table created or verified successfully."
