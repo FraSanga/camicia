@@ -14,6 +14,7 @@
 #include "sched_msgs.h"
 #include "validate_util.h"
 #include "assimilate_handler.h"
+#include <mysql.h>
 #else
 struct WORKUNIT {
     char name[256];
@@ -39,7 +40,9 @@ struct DB_CONN {
 extern DB_CONN boinc_db;
 #define ERR_FOPEN -1
 #endif
+#include <sstream>
 #include "int128_io.hpp"
+#include "histogram.hpp"
 
 using std::vector;
 using std::string;
@@ -338,7 +341,7 @@ void record_loop_found(
 }
 
 // Persists one fully assimilated permutation range into the unpurged MariaDB
-// table camicia_completed_ranges (Proposal 4). Tracks boundaries, champion deal,
+// table camicia_completed_ranges. Tracks boundaries, champion deal,
 // summary metrics, and volunteer attribution for both the canonical worker and
 // validator.
 void record_completed_range(
@@ -374,6 +377,73 @@ void record_completed_range(
         userid, verifier_sql, (long)now
     );
     boinc_db.do_query(sql);
+}
+
+// Atomically and idempotently updates the macro-distribution totals in
+// camicia_histogram_totals. Uses a transaction and the
+// histogram_applied flag in camicia_completed_ranges to guarantee zero
+// double-counting even under server power cuts and BOINC re-assimilation.
+void apply_histogram_totals(
+    const char* range_start,
+    const SummaryStats& summary
+) {
+    if (!boinc_db.mysql) return;
+
+    bool already_applied = false;
+    char check_sql[256];
+    snprintf(check_sql, sizeof(check_sql),
+        "SELECT histogram_applied FROM camicia_completed_ranges WHERE range_start = '%s'",
+        range_start);
+    if (boinc_db.do_query(check_sql) == 0) {
+#ifndef CAMICIA_TEST_RECORDS
+        MYSQL_RES* rp = mysql_store_result((MYSQL*)boinc_db.mysql);
+        if (rp) {
+            MYSQL_ROW row = mysql_fetch_row(rp);
+            if (row && row[0] && atoi(row[0]) == 1) {
+                already_applied = true;
+            }
+            mysql_free_result(rp);
+        }
+#endif
+    }
+
+    if (already_applied) return;
+
+    boinc_db.do_query("START TRANSACTION");
+
+    // Dynamic std::string prevents any stack buffer overflow across 64+ columns (~2.5KB)
+    std::string sql = "INSERT INTO camicia_histogram_totals (id, total_deals, total_cards, total_tricks, total_cards_sq, p1_wins";
+    for (int b = 0; b < 64; ++b) {
+        sql += ", bucket_" + std::to_string(b);
+    }
+    sql += ") VALUES (1, " +
+           std::to_string(summary.totalDeals) + ", " +
+           std::to_string(summary.totalCards) + ", " +
+           std::to_string(summary.totalTricks) + ", " +
+           std::to_string(summary.totalCardsSq) + ", " +
+           std::to_string(summary.p1Wins);
+    for (int b = 0; b < 64; ++b) {
+        sql += ", " + std::to_string(summary.buckets[b]);
+    }
+    sql += ") ON DUPLICATE KEY UPDATE "
+           "total_deals = total_deals + VALUES(total_deals), "
+           "total_cards = total_cards + VALUES(total_cards), "
+           "total_tricks = total_tricks + VALUES(total_tricks), "
+           "total_cards_sq = total_cards_sq + VALUES(total_cards_sq), "
+           "p1_wins = p1_wins + VALUES(p1_wins)";
+    for (int b = 0; b < 64; ++b) {
+        sql += ", bucket_" + std::to_string(b) + " = bucket_" + std::to_string(b) + " + VALUES(bucket_" + std::to_string(b) + ")";
+    }
+
+    boinc_db.do_query(sql.c_str());
+
+    char mark_sql[256];
+    snprintf(mark_sql, sizeof(mark_sql),
+        "UPDATE camicia_completed_ranges SET histogram_applied = 1 WHERE range_start = '%s'",
+        range_start);
+    boinc_db.do_query(mark_sql);
+
+    boinc_db.do_query("COMMIT");
 }
 
 // CA-M1 fix: records_longest.txt/records_loops.txt were previously
@@ -575,6 +645,8 @@ int assimilate_handler(
         long long best_cards = -1;
         long long best_tricks = 0;
         int loops_count = 0;
+        SummaryStats summary;
+        bool has_summary = false;
 
         for (const OUTPUT_FILE_INFO& fi: output_files) {
             FILE* f_in = fopen(fi.path.c_str(), "r");
@@ -587,6 +659,31 @@ int assimilate_handler(
                 ssize_t len;
                 while ((len = getline(&line, &line_cap, f_in)) != -1) {
                     track_result_line(wu.name, line, (long long)canonical_result.userid, (long long)canonical_result.hostid);
+
+                    if (strncmp(line, "summary,", 8) == 0) {
+                        std::stringstream ss(line);
+                        std::string token;
+                        std::getline(ss, token, ','); // "summary"
+                        if (std::getline(ss, token, ',')) summary.totalDeals = strtoull(token.c_str(), nullptr, 10);
+                        if (std::getline(ss, token, ',')) summary.totalCards = strtoull(token.c_str(), nullptr, 10);
+                        if (std::getline(ss, token, ',')) summary.totalTricks = strtoull(token.c_str(), nullptr, 10);
+                        if (std::getline(ss, token, ',')) summary.totalCardsSq = strtoull(token.c_str(), nullptr, 10);
+                        if (std::getline(ss, token, ',')) summary.p1Wins = strtoull(token.c_str(), nullptr, 10);
+                        uint64_t bSum = 0;
+                        bool buckets_ok = true;
+                        for (int b = 0; b < 64; ++b) {
+                            if (std::getline(ss, token, ',')) {
+                                summary.buckets[b] = strtoull(token.c_str(), nullptr, 10);
+                                bSum += summary.buckets[b];
+                            } else {
+                                buckets_ok = false;
+                                break;
+                            }
+                        }
+                        if (buckets_ok && bSum == summary.totalDeals) {
+                            has_summary = true;
+                        }
+                    }
 
                     // Parse completed range metrics
                     char status[16];
@@ -612,15 +709,19 @@ int assimilate_handler(
                 free(line);
                 fclose(f_in);
             } else {
+                fflush(f_out);
+                fsync(fileno(f_out));
                 fclose(f_out);
                 fprintf(stderr, "Error while reading %s\n", fi.path.c_str());
                 return ERR_FOPEN; 
             }
         }
+        fflush(f_out);
+        fsync(fileno(f_out));
         fclose(f_out);
 
-        // Persist completed range in unpurged MariaDB ledger (Proposal 4)
-        if (!best_deal_index.empty()) {
+        // Persist completed range in unpurged MariaDB ledger and histogram totals
+        if (!best_deal_index.empty() || loops_count > 0 || has_summary) {
             long long verifier_userid = 0;
             for (const RESULT& r : results) {
                 if (r.id != canonical_result.id && r.userid != 0) {
@@ -638,13 +739,16 @@ int assimilate_handler(
             record_completed_range(
                 wu_start.c_str(),
                 wu_end.c_str(),
-                best_deal_index.c_str(),
+                best_deal_index.empty() ? "0" : best_deal_index.c_str(),
                 best_cards >= 0 ? best_cards : 0,
                 best_tricks,
                 loops_count,
                 (long long)canonical_result.userid,
                 verifier_userid
             );
+            if (has_summary) {
+                apply_histogram_totals(wu_start.c_str(), summary);
+            }
         }
     } else {
         char buf_err[1024];
@@ -822,6 +926,11 @@ int main() {
     check("first loop still present", file_contains(loops_path, "2000 wu_b"));
     check("exactly 2 loop lines (evil lines never reached record_loop_found)",
         file_line_count(loops_path) == 2);
+
+    // 10) summary line -> ignored by track_result_line (records unchanged)
+    track_result_line("wu_f", "summary,100,5000,1000,300000,50,0,0\n", 47, 106);
+    check("summary line ignored by record tracker", file_contains(longest_path, "600 300 5000 wu_c"));
+    check("summary line not in loops", !file_contains(loops_path, "wu_f"));
 
     remove(longest_path);
     char longest_tmp_path[320];

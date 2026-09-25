@@ -107,6 +107,7 @@ function read_loops_found() {
 }
 
 $stats = read_progress_stats();
+$histogram = ($stats && !empty($stats['histogram'])) ? $stats['histogram'] : null;
 $longest = ($stats && !empty($stats['longest_current'])) ? $stats['longest_current'] : read_longest_record();
 $longest_history = ($stats && !empty($stats['longest_history'])) ? $stats['longest_history'] : read_longest_history();
 $loops_found = ($stats && !empty($stats['loops'])) ? $stats['loops'] : read_loops_found();
@@ -254,6 +255,22 @@ page_head(tra("Search progress"));
     .progress-page .hero { padding: 28px 16px 24px; margin: 24px 0; }
     .progress-page .hero-number { font-size: clamp(16px, 5.5vw, 32px); }
 }
+.progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--border-gold); border-radius: 8px; padding: 16px; margin-top: 12px; }
+.progress-page .chart-box-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-family: Georgia, serif; font-size: 14px; color: var(--gold); }
+.progress-page #chartContainerWrap.chart-view-svg #chartjsChartBox { display: none; }
+.progress-page #chartContainerWrap.chart-view-svg #svgChartBox { display: block; width: 100%; }
+.progress-page #chartContainerWrap.chart-view-chartjs #svgChartBox { display: none; }
+.progress-page #chartContainerWrap.chart-view-chartjs #chartjsChartBox { display: block; width: 100%; }
+.progress-page #chartContainerWrap.chart-view-side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.progress-page #chartContainerWrap.chart-view-side-by-side #svgChartBox,
+.progress-page #chartContainerWrap.chart-view-side-by-side #chartjsChartBox { display: block; margin-top: 0; }
+@media (max-width: 900px) {
+    .progress-page #chartContainerWrap.chart-view-side-by-side { grid-template-columns: 1fr; }
+}
+.progress-page .svg-chart-container { position: relative; width: 100%; height: 320px; }
+.progress-page .svg-chart-container svg { width: 100%; height: 100%; overflow: visible; }
+.progress-page .chart-tooltip { position: absolute; pointer-events: none; background: #0d1e16; border: 1px solid var(--gold); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.progress-page .chart-bar-hover:hover { fill: #ffe082 !important; cursor: pointer; }
 </style>
 
 <div class="progress-page">
@@ -296,7 +313,71 @@ page_head(tra("Search progress"));
     </div>
   </section>
 
+  <section class="period-block" id="macroStatsSection" style="margin-top:24px">
+    <div class="period-head">
+      <div>
+        <h2 class="section-title"><?php echo tra("Macro-Distribution & Statistics"); ?></h2>
+        <p class="section-sub" style="margin-bottom:0">
+          <?php echo tra("Complete statistical survey of game lengths across %1 confirmed deals", ($histogram && !empty($histogram['total_deals'])) ? number_format((float)$histogram['total_deals']) : "all"); ?>
+        </p>
+      </div>
+      <div class="period-toggle" id="chartViewToggle">
+        <button data-view="svg" class="active"><?php echo tra("Native SVG"); ?></button>
+        <button data-view="chartjs"><?php echo tra("Chart.js"); ?></button>
+        <button data-view="side-by-side"><?php echo tra("Side by Side"); ?></button>
+      </div>
+    </div>
 
+    <div class="stat-grid" style="margin-bottom:20px">
+      <div class="stat-tile">
+        <p class="stat-value"><?php echo ($histogram && isset($histogram['mean_cards'])) ? number_format($histogram['mean_cards'], 1) : "&mdash;"; ?></p>
+        <p class="stat-label"><?php echo tra("mean game length (cards)"); ?></p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-value"><?php echo ($histogram && isset($histogram['std_dev_cards'])) ? "&plusmn;" . number_format($histogram['std_dev_cards'], 1) : "&mdash;"; ?></p>
+        <p class="stat-label"><?php echo tra("standard deviation (&sigma;)"); ?></p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-value"><?php echo ($histogram && isset($histogram['mean_tricks'])) ? number_format($histogram['mean_tricks'], 1) : "&mdash;"; ?></p>
+        <p class="stat-label"><?php echo tra("mean tricks per game"); ?></p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-value">
+          <?php if ($histogram && isset($histogram['p1_win_pct'])): ?>
+            <span style="color:var(--gold)"><?php echo number_format($histogram['p1_win_pct'], 1); ?>%</span>
+            <span style="font-size:14px;color:var(--cream-dim)">/ <?php echo number_format($histogram['p2_win_pct'], 1); ?>%</span>
+          <?php else: ?>
+            &mdash;
+          <?php endif; ?>
+        </p>
+        <p class="stat-label"><?php echo tra("P1 vs P2 win rate (first-player edge)"); ?></p>
+      </div>
+    </div>
+
+    <div id="chartContainerWrap" class="chart-view-svg">
+      <div class="chart-box" id="svgChartBox">
+        <div class="chart-box-title">
+          <span><?php echo tra("Native SVG Vector Render"); ?></span>
+          <span style="font-size:11px;color:var(--cream-dim)"><?php echo tra("Ultra-crisp zero-dependency vector graphics"); ?></span>
+        </div>
+        <div class="svg-chart-container" id="svgContainer"></div>
+      </div>
+
+      <div class="chart-box" id="chartjsChartBox">
+        <div class="chart-box-title">
+          <span><?php echo tra("Chart.js Canvas Render"); ?></span>
+          <span style="font-size:11px;color:var(--cream-dim)"><?php echo tra("Canvas-accelerated responsive chart library"); ?></span>
+        </div>
+        <div class="chartjs-container" style="position:relative;height:320px;width:100%">
+          <canvas id="chartjsCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <p class="legend-note" style="margin-top:14px">
+      <?php echo tra("Buckets 0&ndash;39 span 0&ndash;399 cards (width 10); buckets 40&ndash;55 span 400&ndash;1,999 cards (width 100); buckets 56&ndash;63 span 2,000&ndash;5,999+ cards (width 500). Infinite loops are excluded from finite length distributions."); ?>
+    </p>
+  </section>
 
   <section>
     <h2 class="section-title" style="margin-bottom:16px"><?php echo tra("Discoveries"); ?></h2>
@@ -893,6 +974,217 @@ page_head(tra("Search progress"));
 
   paginateTable('hofTable', 'hofPagination', 'hofPrevBtn', 'hofNextBtn', 'hofPageInfo', 25);
   paginateTable('loopsTable', 'loopsPagination', 'loopsPrevBtn', 'loopsNextBtn', 'loopsPageInfo', 25);
+
+  // -------- Macro-Distribution Charting (Native SVG & Chart.js) --------
+  var hist = <?php echo json_encode($histogram); ?>;
+  var svgBox = document.getElementById('svgContainer');
+  var containerWrap = document.getElementById('chartContainerWrap');
+  var toggleBtns = document.querySelectorAll('#chartViewToggle button');
+
+  if (toggleBtns.length && containerWrap) {
+    toggleBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        toggleBtns.forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        var view = btn.dataset.view;
+        containerWrap.className = 'chart-view-' + view;
+        if (view === 'chartjs' || view === 'side-by-side') {
+          renderChartJs();
+        }
+      });
+    });
+  }
+
+  if (!hist || !hist.buckets || !hist.buckets.length || (parseFloat(hist.total_deals) <= 0)) {
+    if (svgBox) {
+      svgBox.innerHTML = '<div class="empty-state"><?php echo tra("No histogram data recorded yet -- check back once workunits are assimilated."); ?></div>';
+    }
+  } else {
+    // 1. Render Native SVG
+    function renderSvg() {
+      if (!svgBox) return;
+
+      var buckets = hist.buckets;
+      var maxPct = 0;
+      for (var i = 0; i < buckets.length; i++) {
+        if (buckets[i].percentage > maxPct) maxPct = buckets[i].percentage;
+      }
+      if (maxPct <= 0) maxPct = 1.0;
+      var yMax = Math.ceil(maxPct * 1.15 * 10) / 10;
+      if (yMax < 1) yMax = 1;
+
+      var W = 1000;
+      var H = 280;
+      var padLeft = 45;
+      var padRight = 15;
+      var padTop = 20;
+      var padBottom = 35;
+      var chartW = W - padLeft - padRight;
+      var chartH = H - padTop - padBottom;
+
+      var numBars = buckets.length;
+      var barWidth = chartW / numBars;
+
+      var svgHtml = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+      svgHtml += '<defs>';
+      svgHtml += '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">';
+      svgHtml += '<stop offset="0%" stop-color="#f5d77f"/>';
+      svgHtml += '<stop offset="100%" stop-color="#b8860b"/>';
+      svgHtml += '</linearGradient>';
+      svgHtml += '</defs>';
+
+      var gridSteps = 4;
+      for (var g = 0; g <= gridSteps; g++) {
+        var val = (yMax * (g / gridSteps)).toFixed(1);
+        var y = padTop + chartH - (g / gridSteps) * chartH;
+        svgHtml += '<line x1="' + padLeft + '" y1="' + y + '" x2="' + (W - padRight) + '" y2="' + y + '" stroke="rgba(245,215,127,0.12)" stroke-dasharray="3,3"/>';
+        svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (y + 4) + '" fill="var(--cream-dim)" font-size="10" text-anchor="end">' + val + '%</text>';
+      }
+
+      svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
+
+      for (var b = 0; b < numBars; b++) {
+        var pct = buckets[b].percentage;
+        var h = (pct / yMax) * chartH;
+        if (h < 1 && pct > 0) h = 1;
+        var x = padLeft + b * barWidth;
+        var y = padTop + chartH - h;
+
+        svgHtml += '<rect class="chart-bar-hover" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 2) + '" height="' + h + '" rx="1" fill="url(#barGrad)" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + buckets[b].count + '" data-pct="' + pct + '"/>';
+      }
+
+      var keyBuckets = [
+        { idx: 0, text: '0' },
+        { idx: 10, text: '100' },
+        { idx: 20, text: '200' },
+        { idx: 30, text: '300' },
+        { idx: 40, text: '400' },
+        { idx: 46, text: '1000' },
+        { idx: 56, text: '2000' },
+        { idx: 63, text: '5500+' }
+      ];
+      for (var k = 0; k < keyBuckets.length; k++) {
+        var kb = keyBuckets[k];
+        var kx = padLeft + kb.idx * barWidth + barWidth / 2;
+        svgHtml += '<text x="' + kx + '" y="' + (H - 12) + '" fill="var(--cream-dim)" font-size="10" text-anchor="middle">' + kb.text + '</text>';
+      }
+      svgHtml += '<text x="' + (W / 2) + '" y="' + (H - 0) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" text-anchor="middle">Cards Played</text>';
+
+      svgHtml += '</svg>';
+      svgHtml += '<div class="chart-tooltip" id="svgTooltip"></div>';
+
+      svgBox.innerHTML = svgHtml;
+
+      var tooltip = document.getElementById('svgTooltip');
+      var rects = svgBox.querySelectorAll('rect.chart-bar-hover');
+      rects.forEach(function(r) {
+        r.addEventListener('mouseenter', function() {
+          var range = r.dataset.range;
+          var count = Number(r.dataset.count).toLocaleString();
+          var pct = Number(r.dataset.pct).toFixed(4) + '%';
+          tooltip.innerHTML = '<strong style="color:var(--gold)">' + range + ' cards</strong><br>' + count + ' deals (' + pct + ')';
+          tooltip.style.display = 'block';
+        });
+        r.addEventListener('mousemove', function(e) {
+          var rect = svgBox.getBoundingClientRect();
+          var x = e.clientX - rect.left + 12;
+          var y = e.clientY - rect.top - 36;
+          if (x + 140 > rect.width) x -= 150;
+          tooltip.style.left = x + 'px';
+          tooltip.style.top = y + 'px';
+        });
+        r.addEventListener('mouseleave', function() {
+          tooltip.style.display = 'none';
+        });
+      });
+    }
+
+    renderSvg();
+
+    // 2. Render Chart.js
+    var chartJsRendered = false;
+    function renderChartJs() {
+      if (chartJsRendered) return;
+      if (typeof Chart === 'undefined') {
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+        s.onload = function() {
+          buildChartJs();
+        };
+        document.head.appendChild(s);
+      } else {
+        buildChartJs();
+      }
+    }
+
+    function buildChartJs() {
+      var ctx = document.getElementById('chartjsCanvas');
+      if (!ctx) return;
+      chartJsRendered = true;
+
+      var labels = hist.buckets.map(function(b) { return b.range; });
+      var data = hist.buckets.map(function(b) { return b.percentage; });
+      var counts = hist.buckets.map(function(b) { return b.count; });
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Frequency (%)',
+            data: data,
+            backgroundColor: '#f5d77f',
+            hoverBackgroundColor: '#ffe082',
+            borderRadius: 2,
+            borderSkipped: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0d1e16',
+              borderColor: '#f5d77f',
+              borderWidth: 1,
+              titleColor: '#f5d77f',
+              bodyColor: '#fff',
+              callbacks: {
+                title: function(items) {
+                  return items[0].label + ' cards';
+                },
+                label: function(item) {
+                  var c = Number(counts[item.dataIndex]).toLocaleString();
+                  return c + ' deals (' + item.raw.toFixed(4) + '%)';
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: '#d4af37',
+                font: { size: 9 },
+                maxRotation: 45,
+                callback: function(val, index) {
+                  return (index % 8 === 0 || index === 63) ? this.getLabelForValue(val) : '';
+                }
+              }
+            },
+            y: {
+              grid: { color: 'rgba(245, 215, 127, 0.12)' },
+              ticks: {
+                color: '#c9b896',
+                callback: function(val) { return val + '%'; }
+              }
+            }
+          }
+        }
+      });
+    }
+  }
 })();
 </script>
 <?php

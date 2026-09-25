@@ -19,6 +19,7 @@ struct GameResult {
     std::string status; // "finished" or "loop"
     long long cards;
     long long tricks;
+    uint8_t winner = 0; // 0 = loop/none, 1 = Player 1 (A), 2 = Player 2 (B)
 };
 
 // Fixed-capacity ring buffer for zero heap allocations.

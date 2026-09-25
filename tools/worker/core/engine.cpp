@@ -125,7 +125,7 @@ GameResult CamiciaGame::simulate(const Card* playerA, size_t sizeA, const Card* 
         if (penaltyRemaining == 0 && pile.empty()) {
             State currentState = fingerprintState(turn, deckA, deckB);
             if (!seenStates.insert(currentState)) {
-                return {"loop", totalCardsPlayed, totalTricks};
+                return {"loop", totalCardsPlayed, totalTricks, 0};
             }
         }
 
@@ -133,10 +133,11 @@ GameResult CamiciaGame::simulate(const Card* playerA, size_t sizeA, const Card* 
         CardQueue& opponentDeck = (turn == 0) ? deckB : deckA;
 
         if (activeDeck.empty()) {
-            if (pile.empty()) return {"finished", totalCardsPlayed, totalTricks};
+            uint8_t winner = (turn == 0) ? 2 : 1;
+            if (pile.empty()) return {"finished", totalCardsPlayed, totalTricks, winner};
             while (!pile.empty()) opponentDeck.push_back(pile.pop_front());
             totalTricks++;
-            if (opponentDeck.size() == 52) return {"finished", totalCardsPlayed, totalTricks};
+            if (opponentDeck.size() == 52) return {"finished", totalCardsPlayed, totalTricks, winner};
             turn = 1 - turn;
             penaltyRemaining = 0;
             lastPaymentPlayer = -1;
@@ -159,7 +160,10 @@ GameResult CamiciaGame::simulate(const Card* playerA, size_t sizeA, const Card* 
                     CardQueue& winnerDeck = (lastPaymentPlayer == 0) ? deckA : deckB;
                     while (!pile.empty()) winnerDeck.push_back(pile.pop_front());
                     totalTricks++;
-                    if (winnerDeck.size() == 52) return {"finished", totalCardsPlayed, totalTricks};
+                    if (winnerDeck.size() == 52) {
+                        uint8_t winner = (lastPaymentPlayer == 0) ? 1 : 2;
+                        return {"finished", totalCardsPlayed, totalTricks, winner};
+                    }
                     turn = lastPaymentPlayer;
                     lastPaymentPlayer = -1;
                 }

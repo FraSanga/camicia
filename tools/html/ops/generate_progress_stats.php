@@ -239,6 +239,70 @@ if ($res) {
     $res->free();
 }
 
+// -------- macro-distribution & statistical histograms --------
+$histogram = null;
+$res = $db->do_query("SELECT * FROM camicia_histogram_totals WHERE id = 1");
+if ($res && ($row = $res->fetch_assoc())) {
+    $total_deals = (float)$row['total_deals'];
+    $total_cards = (float)$row['total_cards'];
+    $total_tricks = (float)$row['total_tricks'];
+    $total_cards_sq = (float)$row['total_cards_sq'];
+    $p1_wins = (float)$row['p1_wins'];
+
+    // Guard against division by zero on fresh DB
+    $mean_cards = $total_deals > 0 ? ($total_cards / $total_deals) : 0.0;
+    $mean_tricks = $total_deals > 0 ? ($total_tricks / $total_deals) : 0.0;
+
+    // Variance = E[X^2] - (E[X])^2
+    $variance = $total_deals > 0 ? (($total_cards_sq / $total_deals) - ($mean_cards * $mean_cards)) : 0.0;
+    $std_dev = $variance > 0 ? sqrt($variance) : 0.0;
+
+    $p1_win_pct = $total_deals > 0 ? (($p1_wins / $total_deals) * 100.0) : 0.0;
+    $p2_win_pct = $total_deals > 0 ? (100.0 - $p1_win_pct) : 0.0;
+
+    $buckets = [];
+    for ($i = 0; $i < 64; $i++) {
+        $count = (float)($row["bucket_$i"] ?? 0);
+        $pct = $total_deals > 0 ? (($count / $total_deals) * 100.0) : 0.0;
+
+        if ($i < 40) {
+            $b_start = $i * 10;
+            $b_end = $b_start + 9;
+            $label = "$b_start-$b_end";
+        } elseif ($i < 56) {
+            $b_start = 400 + ($i - 40) * 100;
+            $b_end = $b_start + 99;
+            $label = "$b_start-$b_end";
+        } elseif ($i < 63) {
+            $b_start = 2000 + ($i - 56) * 500;
+            $b_end = $b_start + 499;
+            $label = "$b_start-$b_end";
+        } else {
+            $label = "5500+";
+        }
+
+        $buckets[] = [
+            'bucket' => $i,
+            'range' => $label,
+            'count' => (string)$count,
+            'percentage' => round($pct, 6),
+        ];
+    }
+
+    $histogram = [
+        'total_deals' => (string)$total_deals,
+        'total_cards' => (string)$total_cards,
+        'total_tricks' => (string)$total_tricks,
+        'mean_cards' => round($mean_cards, 4),
+        'mean_tricks' => round($mean_tricks, 4),
+        'std_dev_cards' => round($std_dev, 4),
+        'p1_win_pct' => round($p1_win_pct, 4),
+        'p2_win_pct' => round($p2_win_pct, 4),
+        'buckets' => $buckets,
+    ];
+    $res->free();
+}
+
 $stats = [
     'generated_at' => $now,
     'search_space_blocks' => SEARCH_SPACE_BLOCKS,
@@ -250,6 +314,7 @@ $stats = [
     'longest_history' => $longest_history,
     'loops' => $loops_found,
     'top_explorers' => $top_explorers,
+    'histogram' => $histogram,
 ];
 
 } catch (Throwable $e) {

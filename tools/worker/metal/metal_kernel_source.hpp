@@ -242,7 +242,7 @@ kernel void camicia_simulate_batch(
                 out_deals[gid].status = 0;
                 out_deals[gid].cards = totalCardsPlayed;
                 out_deals[gid].tricks = totalTricks;
-                out_deals[gid].pad = 0;
+                out_deals[gid].pad = (turn == 0) ? 2 : 1;
                 out_deals[gid].index_hi = deal_idx.hi;
                 out_deals[gid].index_lo = deal_idx.lo;
                 return;
@@ -253,7 +253,7 @@ kernel void camicia_simulate_batch(
                 out_deals[gid].status = 0;
                 out_deals[gid].cards = totalCardsPlayed;
                 out_deals[gid].tricks = totalTricks;
-                out_deals[gid].pad = 0;
+                out_deals[gid].pad = (turn == 0) ? 2 : 1;
                 out_deals[gid].index_hi = deal_idx.hi;
                 out_deals[gid].index_lo = deal_idx.lo;
                 return;
@@ -284,7 +284,7 @@ kernel void camicia_simulate_batch(
                         out_deals[gid].status = 0;
                         out_deals[gid].cards = totalCardsPlayed;
                         out_deals[gid].tricks = totalTricks;
-                        out_deals[gid].pad = 0;
+                        out_deals[gid].pad = (lastPaymentPlayer == 0) ? 1 : 2;
                         out_deals[gid].index_hi = deal_idx.hi;
                         out_deals[gid].index_lo = deal_idx.lo;
                         return;

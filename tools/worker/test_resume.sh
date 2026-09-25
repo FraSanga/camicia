@@ -47,6 +47,7 @@ echo "=== Straight-through run: [$START, $END] ==="
 echo "$START $END" > in
 "$WORKER"
 straight_loop_count=$(count_loop_lines_for_mid out)
+straight_summary=$(grep "^summary," out || true)
 echo "loop entries for MID in straight-through run: $straight_loop_count"
 rm -f in out camicia_state camicia_loops
 
@@ -168,6 +169,24 @@ echo "exit code for oversized camicia_loops: $too_many_loops_rc"
 rm -f in out camicia_state camicia_loops
 
 echo
+echo "=== SummaryStats: checkpoint halfway then resume to completion ==="
+echo "$START $MID" > in
+CAMICIA_FORCE_CHECKPOINT=1 "$WORKER"
+python3 -c "
+lines = open('camicia_state').read().splitlines()
+p = lines[0].split()
+p[2] = '$END'
+print(' '.join(p))
+print(lines[1])
+" > camicia_state.tmp
+mv camicia_state.tmp camicia_state
+echo "$START $END" > in
+"$WORKER"
+resumed_summary=$(grep "^summary," out || true)
+echo "summary line after checkpoint resume: $resumed_summary"
+rm -f in out camicia_state camicia_loops
+
+echo
 pass=1
 if [ "$straight_loop_count" != "1" ]; then
     echo "❌ FAIL: straight-through run should find exactly 1 loop entry for MID, got $straight_loop_count"
@@ -204,6 +223,15 @@ if [ "$mismatch_finished_for_real_range" != "1" ]; then
     echo "   mismatched checkpoint is correctly discarded, got $mismatch_finished_for_real_range --"
     echo "   the worker isn't falling back to processing its own real input file."
     pass=0
+fi
+
+if [ -z "$straight_summary" ] || [ "$straight_summary" != "$resumed_summary" ]; then
+    echo "❌ FAIL: resumed summary line does not match straight-through run!"
+    echo "   straight: $straight_summary"
+    echo "   resumed:  $resumed_summary"
+    pass=0
+else
+    echo "✅ SummaryStats: checkpoint resume preserves summary metrics byte-for-byte"
 fi
 
 if [ "$bad_range_rc" = "1" ]; then
