@@ -255,11 +255,17 @@ page_head(tra("Search progress"));
     .progress-page .hero { padding: 28px 16px 24px; margin: 24px 0; }
     .progress-page .hero-number { font-size: clamp(16px, 5.5vw, 32px); }
 }
-.progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--felt-line); border-radius: 14px; padding: 24px 20px 16px; margin-top: 20px; }
+.progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--felt-line); border-radius: 14px; padding: 20px 20px 16px; margin-top: 20px; }
+.progress-page .chart-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.progress-page .chart-ctrl-group { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cream-dim); }
+.progress-page .chart-select { background: var(--felt); border: 1px solid var(--felt-line); color: var(--cream); border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: inherit; outline: none; cursor: pointer; transition: border-color 0.15s ease; }
+.progress-page .chart-select:hover, .progress-page .chart-select:focus { border-color: var(--gold-dim); }
 .progress-page .svg-chart-container { position: relative; width: 100%; height: 320px; }
 .progress-page .svg-chart-container svg { width: 100%; height: 100%; overflow: visible; display: block; }
 .progress-page .chart-tooltip { position: absolute; pointer-events: none; background: #0d1e16; border: 1px solid var(--gold); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 .progress-page .chart-bar-hover:hover { fill: #ffe082 !important; cursor: pointer; }
+.progress-page .chart-record-pin:hover rect { fill: #4a2f05 !important; stroke: #ffe082 !important; filter: drop-shadow(0 0 6px rgba(245,215,127,0.6)); }
+.progress-page .chart-wr-pin:hover rect { fill: #2e1e4f !important; stroke: #c4b5fd !important; filter: drop-shadow(0 0 6px rgba(167,139,250,0.6)); }
 </style>
 
 <div class="progress-page">
@@ -339,6 +345,23 @@ page_head(tra("Search progress"));
     </div>
 
     <div class="chart-box" id="svgChartBox">
+      <div class="chart-toolbar">
+        <div class="chart-ctrl-group">
+          <label for="chartScaleSelect"><?php echo tra("Scale:"); ?></label>
+          <select id="chartScaleSelect" class="chart-select">
+            <option value="linear"><?php echo tra("Linear"); ?></option>
+            <option value="log"><?php echo tra("Logarithmic"); ?></option>
+          </select>
+        </div>
+        <div class="chart-ctrl-group">
+          <label for="chartRangeSelect"><?php echo tra("Range:"); ?></label>
+          <select id="chartRangeSelect" class="chart-select">
+            <option value="all"><?php echo tra("All (0 &ndash; 5,500+)"); ?></option>
+            <option value="peak"><?php echo tra("Peak (0 &ndash; 399)"); ?></option>
+            <option value="tail"><?php echo tra("Rare Tails (400+)"); ?></option>
+          </select>
+        </div>
+      </div>
       <div class="svg-chart-container" id="svgContainer"></div>
     </div>
 
@@ -946,34 +969,90 @@ page_head(tra("Search progress"));
   // -------- Macro-Distribution Charting (Responsive Native SVG) --------
   var hist = <?php echo json_encode($histogram); ?>;
   var svgBox = document.getElementById('svgContainer');
+  var scaleSelect = document.getElementById('chartScaleSelect');
+  var rangeSelect = document.getElementById('chartRangeSelect');
 
   if (!hist || !hist.buckets || !hist.buckets.length || (parseFloat(hist.total_deals) <= 0)) {
     if (svgBox) {
       svgBox.innerHTML = '<div class="empty-state"><?php echo tra("No histogram data recorded yet -- check back once workunits are assimilated."); ?></div>';
     }
   } else {
+    var currentScale = 'linear';
+    var currentRange = 'all';
+
+    function getBucketIndex(cards) {
+      if (cards < 400) return Math.floor(cards / 10);
+      if (cards < 2000) return 40 + Math.floor((cards - 400) / 100);
+      if (cards < 5500) return 56 + Math.floor((cards - 2000) / 500);
+      return 63;
+    }
+
     function renderSvg() {
       if (!svgBox) return;
 
-      var buckets = hist.buckets;
-      var maxPct = 0;
-      for (var i = 0; i < buckets.length; i++) {
-        if (buckets[i].percentage > maxPct) maxPct = buckets[i].percentage;
+      var allBuckets = hist.buckets;
+      var startBucket = 0;
+      var endBucket = allBuckets.length - 1;
+      var keyBuckets = [];
+
+      if (currentRange === 'peak') {
+        startBucket = 0;
+        endBucket = 39;
+        keyBuckets = [
+          { idx: 0, text: '0' },
+          { idx: 5, text: '50' },
+          { idx: 10, text: '100' },
+          { idx: 15, text: '150' },
+          { idx: 20, text: '200' },
+          { idx: 25, text: '250' },
+          { idx: 30, text: '300' },
+          { idx: 35, text: '350' },
+          { idx: 39, text: '399' }
+        ];
+      } else if (currentRange === 'tail') {
+        startBucket = 40;
+        endBucket = 63;
+        keyBuckets = [
+          { idx: 40, text: '400' },
+          { idx: 44, text: '800' },
+          { idx: 48, text: '1200' },
+          { idx: 52, text: '1600' },
+          { idx: 56, text: '2000' },
+          { idx: 58, text: '3000' },
+          { idx: 60, text: '4000' },
+          { idx: 62, text: '5000' },
+          { idx: 63, text: '5500+' }
+        ];
+      } else {
+        startBucket = 0;
+        endBucket = 63;
+        keyBuckets = [
+          { idx: 0, text: '0' },
+          { idx: 10, text: '100' },
+          { idx: 20, text: '200' },
+          { idx: 30, text: '300' },
+          { idx: 40, text: '400' },
+          { idx: 46, text: '1000' },
+          { idx: 56, text: '2000' },
+          { idx: 63, text: '5500+' }
+        ];
       }
-      if (maxPct <= 0) maxPct = 1.0;
-      var yMax = Math.ceil(maxPct * 1.15 * 10) / 10;
-      if (yMax < 1) yMax = 1;
+
+      var visibleBuckets = [];
+      for (var bIdx = startBucket; bIdx <= endBucket; bIdx++) {
+        visibleBuckets.push(allBuckets[bIdx]);
+      }
 
       var W = svgBox.clientWidth || 900;
-      var H = 300;
-      var padLeft = 45;
-      var padRight = 15;
-      var padTop = 20;
+      var H = 320;
+      var padLeft = 54;
+      var padRight = 24;
+      var padTop = 32;
       var padBottom = 55;
       var chartW = Math.max(10, W - padLeft - padRight);
       var chartH = H - padTop - padBottom;
 
-      var numBars = buckets.length;
+      var numBars = visibleBuckets.length;
       var barWidth = chartW / numBars;
 
       var svgHtml = '<svg width="100%" height="100%" viewBox="0 0 ' + W + ' ' + H + '">';
@@ -984,46 +1063,157 @@ page_head(tra("Search progress"));
       svgHtml += '</linearGradient>';
       svgHtml += '</defs>';
 
-      var gridSteps = 4;
-      for (var g = 0; g <= gridSteps; g++) {
-        var val = (yMax * (g / gridSteps)).toFixed(1);
-        var y = padTop + chartH - (g / gridSteps) * chartH;
-        svgHtml += '<line x1="' + padLeft + '" y1="' + y + '" x2="' + (W - padRight) + '" y2="' + y + '" stroke="rgba(245,215,127,0.12)" stroke-dasharray="3,3"/>';
-        svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (y + 4) + '" fill="var(--cream-dim)" font-size="10" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + val + '%</text>';
+      if (currentScale === 'log') {
+        var maxPct = 0;
+        var minNonZeroPct = 100;
+        for (var i = 0; i < visibleBuckets.length; i++) {
+          var p = visibleBuckets[i].percentage;
+          if (p > maxPct) maxPct = p;
+          if (p > 0 && p < minNonZeroPct) minNonZeroPct = p;
+        }
+        if (maxPct <= 0) maxPct = 1.0;
+        if (minNonZeroPct >= 100) minNonZeroPct = 0.00000001;
+
+        var maxLog = Math.log10(maxPct * 1.35);
+        var minLog = Math.floor(Math.log10(minNonZeroPct));
+        if (minLog < -8) minLog = -8;
+        if (minLog > maxLog - 2.5) minLog = maxLog - 2.5;
+        var logSpan = maxLog - minLog;
+
+        var topDecade = Math.floor(maxLog);
+        var bottomDecade = Math.ceil(minLog);
+        for (var dec = topDecade; dec >= bottomDecade; dec--) {
+          var yRatio = (dec - minLog) / logSpan;
+          if (yRatio < 0 || yRatio > 1) continue;
+          var gy = padTop + chartH - yRatio * chartH;
+          var decVal = Math.pow(10, dec);
+          var decLabel;
+          if (dec >= 0) {
+            decLabel = Math.round(decVal) + '%';
+          } else if (dec === -1) {
+            decLabel = '0.1%';
+          } else if (dec === -2) {
+            decLabel = '0.01%';
+          } else if (dec === -3) {
+            decLabel = '0.001%';
+          } else if (dec === -4) {
+            decLabel = '10⁻⁴%';
+          } else {
+            decLabel = '10⁻' + Math.abs(dec) + '%';
+          }
+          svgHtml += '<line x1="' + padLeft + '" y1="' + gy + '" x2="' + (W - padRight) + '" y2="' + gy + '" stroke="rgba(245,215,127,0.12)" stroke-dasharray="3,3"/>';
+          svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (gy + 4) + '" fill="var(--cream-dim)" font-size="10" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + decLabel + '</text>';
+        }
+
+        svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
+
+        for (var b = 0; b < numBars; b++) {
+          var bObj = visibleBuckets[b];
+          var count = parseFloat(bObj.count) || 0;
+          var pct = bObj.percentage;
+          var h = 0;
+          if (count > 0 && pct > 0) {
+            var valLog = Math.log10(pct);
+            var ratio = (valLog - minLog) / logSpan;
+            if (ratio < 0.01) ratio = 0.01;
+            h = ratio * chartH;
+          } else if (count > 0) {
+            h = 2.5;
+          }
+          if (count > 0 && h < 2.5) h = 2.5;
+          var x = padLeft + b * barWidth;
+          var y = padTop + chartH - h;
+
+          var actualBucketIdx = startBucket + b;
+          svgHtml += '<rect id="chartBar_' + actualBucketIdx + '" class="chart-bar" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)"/>';
+          svgHtml += '<rect class="chart-col-hit" x="' + x + '" y="' + padTop + '" width="' + barWidth + '" height="' + chartH + '" fill="transparent" style="cursor:pointer" data-bucket="' + actualBucketIdx + '" data-range="' + bObj.range + '" data-count="' + count + '" data-pct="' + pct + '"/>';
+        }
+      } else {
+        // LINEAR MODE
+        var maxPct = 0;
+        for (var i = 0; i < visibleBuckets.length; i++) {
+          if (visibleBuckets[i].percentage > maxPct) maxPct = visibleBuckets[i].percentage;
+        }
+        if (maxPct <= 0) maxPct = 1.0;
+
+        var yMax;
+        var decPlaces = 1;
+        if (maxPct >= 1) {
+          yMax = Math.ceil(maxPct * 1.15 * 10) / 10;
+          if (yMax < 1) yMax = 1;
+          decPlaces = 1;
+        } else {
+          var order = Math.pow(10, Math.floor(Math.log10(maxPct)));
+          yMax = Math.ceil((maxPct * 1.15) / order) * order;
+          if (yMax <= 0) yMax = 0.01;
+          decPlaces = Math.max(1, -Math.floor(Math.log10(order)));
+        }
+
+        var gridSteps = 4;
+        for (var g = 0; g <= gridSteps; g++) {
+          var val = (yMax * (g / gridSteps)).toFixed(decPlaces);
+          var gy = padTop + chartH - (g / gridSteps) * chartH;
+          svgHtml += '<line x1="' + padLeft + '" y1="' + gy + '" x2="' + (W - padRight) + '" y2="' + gy + '" stroke="rgba(245,215,127,0.12)" stroke-dasharray="3,3"/>';
+          svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (gy + 4) + '" fill="var(--cream-dim)" font-size="10" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + val + '%</text>';
+        }
+
+        svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
+
+        for (var b = 0; b < numBars; b++) {
+          var bObj = visibleBuckets[b];
+          var count = parseFloat(bObj.count) || 0;
+          var pct = bObj.percentage;
+          var h = (pct / yMax) * chartH;
+          if (count > 0 && h < 2.5) h = 2.5;
+          var x = padLeft + b * barWidth;
+          var y = padTop + chartH - h;
+
+          var actualBucketIdx = startBucket + b;
+          svgHtml += '<rect id="chartBar_' + actualBucketIdx + '" class="chart-bar" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)"/>';
+          svgHtml += '<rect class="chart-col-hit" x="' + x + '" y="' + padTop + '" width="' + barWidth + '" height="' + chartH + '" fill="transparent" style="cursor:pointer" data-bucket="' + actualBucketIdx + '" data-range="' + bObj.range + '" data-count="' + count + '" data-pct="' + pct + '"/>';
+        }
       }
 
-      svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
-
-      for (var b = 0; b < numBars; b++) {
-        var count = parseFloat(buckets[b].count) || 0;
-        var pct = buckets[b].percentage;
-        var h = (pct / yMax) * chartH;
-        if (count > 0 && h < 2.5) h = 2.5;
-        var x = padLeft + b * barWidth;
-        var y = padTop + chartH - h;
-
-        svgHtml += '<rect id="chartBar_' + b + '" class="chart-bar" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)"/>';
-        svgHtml += '<rect class="chart-col-hit" x="' + x + '" y="' + padTop + '" width="' + barWidth + '" height="' + chartH + '" fill="transparent" style="cursor:pointer" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + count + '" data-pct="' + pct + '"/>';
-      }
-
-      var keyBuckets = [
-        { idx: 0, text: '0' },
-        { idx: 10, text: '100' },
-        { idx: 20, text: '200' },
-        { idx: 30, text: '300' },
-        { idx: 40, text: '400' },
-        { idx: 46, text: '1000' },
-        { idx: 56, text: '2000' },
-        { idx: 63, text: '5500+' }
-      ];
+      // X-Axis Ticks & Labels
       for (var k = 0; k < keyBuckets.length; k++) {
         var kb = keyBuckets[k];
-        var kx = padLeft + kb.idx * barWidth + barWidth / 2;
+        if (kb.idx < startBucket || kb.idx > endBucket) continue;
+        var relIdx = kb.idx - startBucket;
+        var kx = padLeft + relIdx * barWidth + barWidth / 2;
         var ky = padTop + chartH + 7;
         svgHtml += '<line x1="' + kx + '" y1="' + (padTop + chartH) + '" x2="' + kx + '" y2="' + (padTop + chartH + 4) + '" stroke="var(--felt-line)" stroke-width="1"/>';
         svgHtml += '<text x="' + kx + '" y="' + ky + '" transform="rotate(-45 ' + kx + ' ' + ky + ')" fill="var(--cream-dim)" font-size="11" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + kb.text + '</text>';
       }
       svgHtml += '<text x="' + (padLeft + chartW / 2) + '" y="' + (H - 4) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">Cards Played</text>';
+
+      // PINS OVERLAY
+      // Pin 1: Camicia Champion (Project Record)
+      var champBucket = (championDeal && championDeal.cards) ? getBucketIndex(championDeal.cards) : -1;
+      if (champBucket >= startBucket && champBucket <= endBucket && championDeal.cards > 0) {
+        var relIdx = champBucket - startBucket;
+        var pinX = padLeft + relIdx * barWidth + barWidth / 2;
+        var pinY = padTop + 8;
+        svgHtml += '<line x1="' + pinX + '" y1="' + (pinY + 10) + '" x2="' + pinX + '" y2="' + (padTop + chartH) + '" stroke="#f5d77f" stroke-dasharray="2,2" stroke-width="1.2" opacity="0.65"/>';
+        svgHtml += '<g class="chart-record-pin" id="pinChamp" style="cursor:pointer">';
+        svgHtml += '<rect x="' + (pinX - 32) + '" y="' + (pinY - 9) + '" width="64" height="20" rx="10" fill="#2d1c02" stroke="#f5d77f" stroke-width="1.2"/>';
+        svgHtml += '<text x="' + pinX + '" y="' + (pinY + 5) + '" fill="#f5d77f" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">★ ' + Number(championDeal.cards).toLocaleString() + '</text>';
+        svgHtml += '</g>';
+      }
+
+      // Pin 2: World Record Horizon (8,344 cards in Bucket 63)
+      if (63 >= startBucket && 63 <= endBucket) {
+        var wrRelIdx = 63 - startBucket;
+        var wrX = padLeft + wrRelIdx * barWidth + barWidth / 2;
+        var wrY = padTop + 8;
+        if (champBucket === 63) {
+          wrY = padTop + 32;
+        }
+        svgHtml += '<line x1="' + wrX + '" y1="' + (wrY + 10) + '" x2="' + wrX + '" y2="' + (padTop + chartH) + '" stroke="#a78bfa" stroke-dasharray="2,2" stroke-width="1.2" opacity="0.55"/>';
+        svgHtml += '<g class="chart-wr-pin" id="pinWr" style="cursor:pointer">';
+        svgHtml += '<rect x="' + (wrX - 32) + '" y="' + (wrY - 9) + '" width="64" height="20" rx="10" fill="#1e1333" stroke="#a78bfa" stroke-width="1.2"/>';
+        svgHtml += '<text x="' + wrX + '" y="' + (wrY + 5) + '" fill="#d8b4fe" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">🏆 8,344</text>';
+        svgHtml += '</g>';
+      }
 
       svgHtml += '</svg>';
       svgHtml += '<div class="chart-tooltip" id="svgTooltip"></div>';
@@ -1031,6 +1221,7 @@ page_head(tra("Search progress"));
       svgBox.innerHTML = svgHtml;
 
       var tooltip = document.getElementById('svgTooltip');
+
       var hitZones = svgBox.querySelectorAll('rect.chart-col-hit');
       hitZones.forEach(function(r) {
         var b = r.dataset.bucket;
@@ -1055,7 +1246,7 @@ page_head(tra("Search progress"));
           var rect = svgBox.getBoundingClientRect();
           var x = e.clientX - rect.left + 12;
           var y = e.clientY - rect.top - 36;
-          if (x + 140 > rect.width) x -= 150;
+          if (x + 160 > rect.width) x -= 170;
           tooltip.style.left = x + 'px';
           tooltip.style.top = y + 'px';
         });
@@ -1063,6 +1254,64 @@ page_head(tra("Search progress"));
           if (bar) bar.style.fill = '';
           tooltip.style.display = 'none';
         });
+      });
+
+      var champPinEl = document.getElementById('pinChamp');
+      if (champPinEl) {
+        champPinEl.addEventListener('mouseenter', function() {
+          var authorText = championDeal.author ? ('Discovered by: ' + championDeal.author + '<br>') : '';
+          var dealText = championDeal.deal ? ('Deal #' + championDeal.deal + '<br>') : '';
+          tooltip.innerHTML = '<strong style="color:var(--gold)">★ Project Record: ' + Number(championDeal.cards).toLocaleString() + ' cards</strong><br>' + dealText + authorText + '<span style="color:#7ee787;font-size:11px;font-weight:600">▶ Click to replay in visualizer</span>';
+          tooltip.style.display = 'block';
+        });
+        champPinEl.addEventListener('mousemove', function(e) {
+          var rect = svgBox.getBoundingClientRect();
+          var x = e.clientX - rect.left + 12;
+          var y = e.clientY - rect.top - 36;
+          if (x + 200 > rect.width) x -= 210;
+          tooltip.style.left = x + 'px';
+          tooltip.style.top = y + 'px';
+        });
+        champPinEl.addEventListener('mouseleave', function() {
+          tooltip.style.display = 'none';
+        });
+        champPinEl.addEventListener('click', function() {
+          if (typeof loadDeal === 'function') {
+            loadDeal(championDeal);
+          }
+        });
+      }
+
+      var wrPinEl = document.getElementById('pinWr');
+      if (wrPinEl) {
+        wrPinEl.addEventListener('mouseenter', function() {
+          tooltip.innerHTML = '<strong style="color:#d8b4fe">🏆 World Record Benchmark</strong><br>8,344 cards &middot; Mann &amp; Su (2024)<br><span style="color:var(--cream-dim);font-size:11px">Target benchmark to surpass</span>';
+          tooltip.style.display = 'block';
+        });
+        wrPinEl.addEventListener('mousemove', function(e) {
+          var rect = svgBox.getBoundingClientRect();
+          var x = e.clientX - rect.left + 12;
+          var y = e.clientY - rect.top - 36;
+          if (x + 200 > rect.width) x -= 210;
+          tooltip.style.left = x + 'px';
+          tooltip.style.top = y + 'px';
+        });
+        wrPinEl.addEventListener('mouseleave', function() {
+          tooltip.style.display = 'none';
+        });
+      }
+    }
+
+    if (scaleSelect) {
+      scaleSelect.addEventListener('change', function() {
+        currentScale = this.value;
+        renderSvg();
+      });
+    }
+    if (rangeSelect) {
+      rangeSelect.addEventListener('change', function() {
+        currentRange = this.value;
+        renderSvg();
       });
     }
 
