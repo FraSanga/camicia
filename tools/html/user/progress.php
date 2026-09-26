@@ -995,13 +995,15 @@ page_head(tra("Search progress"));
       svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
 
       for (var b = 0; b < numBars; b++) {
+        var count = parseFloat(buckets[b].count) || 0;
         var pct = buckets[b].percentage;
         var h = (pct / yMax) * chartH;
-        if (h < 1 && pct > 0) h = 1;
+        if (count > 0 && h < 2.5) h = 2.5;
         var x = padLeft + b * barWidth;
         var y = padTop + chartH - h;
 
-        svgHtml += '<rect class="chart-bar-hover" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + buckets[b].count + '" data-pct="' + pct + '"/>';
+        svgHtml += '<rect id="chartBar_' + b + '" class="chart-bar" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)"/>';
+        svgHtml += '<rect class="chart-col-hit" x="' + x + '" y="' + padTop + '" width="' + barWidth + '" height="' + chartH + '" fill="transparent" style="cursor:pointer" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + count + '" data-pct="' + pct + '"/>';
       }
 
       var keyBuckets = [
@@ -1029,13 +1031,24 @@ page_head(tra("Search progress"));
       svgBox.innerHTML = svgHtml;
 
       var tooltip = document.getElementById('svgTooltip');
-      var rects = svgBox.querySelectorAll('rect.chart-bar-hover');
-      rects.forEach(function(r) {
+      var hitZones = svgBox.querySelectorAll('rect.chart-col-hit');
+      hitZones.forEach(function(r) {
+        var b = r.dataset.bucket;
+        var bar = document.getElementById('chartBar_' + b);
         r.addEventListener('mouseenter', function() {
+          if (bar) bar.style.fill = '#ffe082';
           var range = r.dataset.range;
-          var count = Number(r.dataset.count).toLocaleString();
-          var pct = Number(r.dataset.pct).toFixed(4) + '%';
-          tooltip.innerHTML = '<strong style="color:var(--gold)">' + range + ' cards</strong><br>' + count + ' deals (' + pct + ')';
+          var count = Number(r.dataset.count);
+          var pct = Number(r.dataset.pct);
+          var pctStr;
+          if (count === 0) {
+            pctStr = '0%';
+          } else if (pct < 0.0001) {
+            pctStr = '< 0.0001%';
+          } else {
+            pctStr = pct.toFixed(4) + '%';
+          }
+          tooltip.innerHTML = '<strong style="color:var(--gold)">' + range + ' cards</strong><br>' + count.toLocaleString() + ' deals (' + pctStr + ')';
           tooltip.style.display = 'block';
         });
         r.addEventListener('mousemove', function(e) {
@@ -1047,6 +1060,7 @@ page_head(tra("Search progress"));
           tooltip.style.top = y + 'px';
         });
         r.addEventListener('mouseleave', function() {
+          if (bar) bar.style.fill = '';
           tooltip.style.display = 'none';
         });
       });
