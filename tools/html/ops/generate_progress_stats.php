@@ -285,7 +285,7 @@ if ($res && ($row = $res->fetch_assoc())) {
             'bucket' => $i,
             'range' => $label,
             'count' => (string)$count,
-            'percentage' => round($pct, 6),
+            'percentage' => round($pct, 8),
         ];
     }
 
