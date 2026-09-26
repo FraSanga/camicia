@@ -1046,7 +1046,7 @@ page_head(tra("Search progress"));
       var W = svgBox.clientWidth || 900;
       var H = 320;
       var padLeft = 54;
-      var padRight = 24;
+      var padRight = 30;
       var padTop = 32;
       var padBottom = 55;
       var chartW = Math.max(10, W - padLeft - padRight);
@@ -1187,31 +1187,30 @@ page_head(tra("Search progress"));
       svgHtml += '<text x="' + (padLeft + chartW / 2) + '" y="' + (H - 4) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">Cards Played</text>';
 
       // PINS OVERLAY
-      // Pin 1: Camicia Champion (Project Record)
+      // Pin 1: Camicia Champion (Project Record) - Tier 2 (lower)
       var champBucket = (championDeal && championDeal.cards) ? getBucketIndex(championDeal.cards) : -1;
       if (champBucket >= startBucket && champBucket <= endBucket && championDeal.cards > 0) {
         var relIdx = champBucket - startBucket;
         var pinX = padLeft + relIdx * barWidth + barWidth / 2;
-        var pinY = padTop + 8;
+        var pinY = padTop + 34; // Positioned lower so it never overlaps with the World Record pin
+        var badgeX = Math.max(34, Math.min(W - 34, pinX));
         svgHtml += '<line x1="' + pinX + '" y1="' + (pinY + 10) + '" x2="' + pinX + '" y2="' + (padTop + chartH) + '" stroke="#f5d77f" stroke-dasharray="2,2" stroke-width="1.2" opacity="0.65"/>';
         svgHtml += '<g class="chart-record-pin" id="pinChamp" style="cursor:pointer">';
-        svgHtml += '<rect x="' + (pinX - 32) + '" y="' + (pinY - 9) + '" width="64" height="20" rx="10" fill="#2d1c02" stroke="#f5d77f" stroke-width="1.2"/>';
-        svgHtml += '<text x="' + pinX + '" y="' + (pinY + 5) + '" fill="#f5d77f" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">★ ' + Number(championDeal.cards).toLocaleString() + '</text>';
+        svgHtml += '<rect x="' + (badgeX - 32) + '" y="' + (pinY - 9) + '" width="64" height="20" rx="10" fill="#2d1c02" stroke="#f5d77f" stroke-width="1.2"/>';
+        svgHtml += '<text x="' + badgeX + '" y="' + (pinY + 5) + '" fill="#f5d77f" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">★ ' + Number(championDeal.cards).toLocaleString() + '</text>';
         svgHtml += '</g>';
       }
 
-      // Pin 2: World Record Horizon (8,344 cards in Bucket 63)
+      // Pin 2: World Record Horizon (8,344 cards in Bucket 63) - Tier 1 (top)
       if (63 >= startBucket && 63 <= endBucket) {
         var wrRelIdx = 63 - startBucket;
         var wrX = padLeft + wrRelIdx * barWidth + barWidth / 2;
         var wrY = padTop + 8;
-        if (champBucket === 63) {
-          wrY = padTop + 32;
-        }
+        var wrBadgeX = Math.max(34, Math.min(W - 34, wrX));
         svgHtml += '<line x1="' + wrX + '" y1="' + (wrY + 10) + '" x2="' + wrX + '" y2="' + (padTop + chartH) + '" stroke="#a78bfa" stroke-dasharray="2,2" stroke-width="1.2" opacity="0.55"/>';
         svgHtml += '<g class="chart-wr-pin" id="pinWr" style="cursor:pointer">';
-        svgHtml += '<rect x="' + (wrX - 32) + '" y="' + (wrY - 9) + '" width="64" height="20" rx="10" fill="#1e1333" stroke="#a78bfa" stroke-width="1.2"/>';
-        svgHtml += '<text x="' + wrX + '" y="' + (wrY + 5) + '" fill="#d8b4fe" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">🏆 8,344</text>';
+        svgHtml += '<rect x="' + (wrBadgeX - 32) + '" y="' + (wrY - 9) + '" width="64" height="20" rx="10" fill="#1e1333" stroke="#a78bfa" stroke-width="1.2"/>';
+        svgHtml += '<text x="' + wrBadgeX + '" y="' + (wrY + 5) + '" fill="#d8b4fe" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">🏆 8,344</text>';
         svgHtml += '</g>';
       }
 
@@ -1285,7 +1284,7 @@ page_head(tra("Search progress"));
       var wrPinEl = document.getElementById('pinWr');
       if (wrPinEl) {
         wrPinEl.addEventListener('mouseenter', function() {
-          tooltip.innerHTML = '<strong style="color:#d8b4fe">🏆 World Record Benchmark</strong><br>8,344 cards &middot; Mann &amp; Su (2024)<br><span style="color:var(--cream-dim);font-size:11px">Target benchmark to surpass</span>';
+          tooltip.innerHTML = '<strong style="color:#d8b4fe">🏆 World Record Benchmark</strong><br>8,344 cards &middot; Reed Nessler (2022)<br><span style="color:var(--cream-dim);font-size:11px">Target benchmark to surpass</span>';
           tooltip.style.display = 'block';
         });
         wrPinEl.addEventListener('mousemove', function(e) {
