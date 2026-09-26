@@ -980,6 +980,14 @@ page_head(tra("Search progress"));
     var currentScale = 'linear';
     var currentRange = 'all';
 
+    var chartLabelCardsPlayed = <?php echo json_encode(tra("Cards Played")); ?>;
+    var chartLabelCards = <?php echo json_encode(tra("cards")); ?>;
+    var chartLabelDeals = <?php echo json_encode(tra("deals")); ?>;
+    var chartTplProjectRecord = <?php echo json_encode(tra("★ Project Record: %1 cards")); ?>;
+    var chartTextReplay = <?php echo json_encode(tra("▶ Click to replay in visualizer")); ?>;
+    var chartTplWorldRecord = '🏆 ' + <?php echo json_encode(tra("World Record")); ?>;
+    var chartTextWorldRecordSub = <?php echo json_encode(tra("Target benchmark to surpass")); ?>;
+
     function getBucketIndex(cards) {
       if (cards < 400) return Math.floor(cards / 10);
       if (cards < 2000) return 40 + Math.floor((cards - 400) / 100);
@@ -1184,7 +1192,7 @@ page_head(tra("Search progress"));
         svgHtml += '<line x1="' + kx + '" y1="' + (padTop + chartH) + '" x2="' + kx + '" y2="' + (padTop + chartH + 4) + '" stroke="var(--felt-line)" stroke-width="1"/>';
         svgHtml += '<text x="' + kx + '" y="' + ky + '" transform="rotate(-45 ' + kx + ' ' + ky + ')" fill="var(--cream-dim)" font-size="11" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + kb.text + '</text>';
       }
-      svgHtml += '<text x="' + (padLeft + chartW / 2) + '" y="' + (H - 4) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">Cards Played</text>';
+      svgHtml += '<text x="' + (padLeft + chartW / 2) + '" y="' + (H - 4) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">' + chartLabelCardsPlayed + '</text>';
 
       // PINS OVERLAY
       // Pin 1: Camicia Champion (Project Record) - Tier 2 (lower)
@@ -1238,7 +1246,7 @@ page_head(tra("Search progress"));
           } else {
             pctStr = pct.toFixed(4) + '%';
           }
-          tooltip.innerHTML = '<strong style="color:var(--gold)">' + range + ' cards</strong><br>' + count.toLocaleString() + ' deals (' + pctStr + ')';
+          tooltip.innerHTML = '<strong style="color:var(--gold)">' + range + ' ' + chartLabelCards + '</strong><br>' + count.toLocaleString() + ' ' + chartLabelDeals + ' (' + pctStr + ')';
           tooltip.style.display = 'block';
         });
         r.addEventListener('mousemove', function(e) {
@@ -1260,7 +1268,7 @@ page_head(tra("Search progress"));
         champPinEl.addEventListener('mouseenter', function() {
           var authorText = championDeal.author ? ('Discovered by: ' + championDeal.author + '<br>') : '';
           var dealText = championDeal.deal ? ('Deal #' + championDeal.deal + '<br>') : '';
-          tooltip.innerHTML = '<strong style="color:var(--gold)">★ Project Record: ' + Number(championDeal.cards).toLocaleString() + ' cards</strong><br>' + dealText + authorText + '<span style="color:#7ee787;font-size:11px;font-weight:600">▶ Click to replay in visualizer</span>';
+          tooltip.innerHTML = '<strong style="color:var(--gold)">' + chartTplProjectRecord.replace('%1', Number(championDeal.cards).toLocaleString()) + '</strong><br>' + dealText + authorText + '<span style="color:#7ee787;font-size:11px;font-weight:600">' + chartTextReplay + '</span>';
           tooltip.style.display = 'block';
         });
         champPinEl.addEventListener('mousemove', function(e) {
@@ -1284,7 +1292,7 @@ page_head(tra("Search progress"));
       var wrPinEl = document.getElementById('pinWr');
       if (wrPinEl) {
         wrPinEl.addEventListener('mouseenter', function() {
-          tooltip.innerHTML = '<strong style="color:#d8b4fe">🏆 World Record Benchmark</strong><br>8,344 cards &middot; Reed Nessler (2022)<br><span style="color:var(--cream-dim);font-size:11px">Target benchmark to surpass</span>';
+          tooltip.innerHTML = '<strong style="color:#d8b4fe">' + chartTplWorldRecord + '</strong><br>8,344 ' + chartLabelCards + ' &middot; Reed Nessler (2022)<br><span style="color:var(--cream-dim);font-size:11px">' + chartTextWorldRecordSub + '</span>';
           tooltip.style.display = 'block';
         });
         wrPinEl.addEventListener('mousemove', function(e) {
