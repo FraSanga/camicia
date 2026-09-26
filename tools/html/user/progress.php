@@ -255,8 +255,8 @@ page_head(tra("Search progress"));
     .progress-page .hero { padding: 28px 16px 24px; margin: 24px 0; }
     .progress-page .hero-number { font-size: clamp(16px, 5.5vw, 32px); }
 }
-.progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--border-gold); border-radius: 8px; padding: 16px; margin-top: 12px; }
-.progress-page .svg-chart-container { position: relative; width: 100%; height: 300px; }
+.progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--felt-line); border-radius: 14px; padding: 24px 20px 16px; margin-top: 20px; }
+.progress-page .svg-chart-container { position: relative; width: 100%; height: 320px; }
 .progress-page .svg-chart-container svg { width: 100%; height: 100%; overflow: visible; display: block; }
 .progress-page .chart-tooltip { position: absolute; pointer-events: none; background: #0d1e16; border: 1px solid var(--gold); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 .progress-page .chart-bar-hover:hover { fill: #ffe082 !important; cursor: pointer; }
@@ -309,6 +309,7 @@ page_head(tra("Search progress"));
         <p class="section-sub" style="margin-bottom:0">
           <?php echo tra("Complete statistical survey of game lengths across %1 confirmed deals", ($histogram && !empty($histogram['total_deals'])) ? number_format((float)$histogram['total_deals']) : "all"); ?>
         </p>
+      </div>
     </div>
 
     <div class="stat-grid" style="margin-bottom:20px">
