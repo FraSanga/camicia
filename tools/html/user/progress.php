@@ -841,34 +841,34 @@ page_head(tra("Search progress"));
 
     if (isChampion) {
       if (championDeal.isWr) {
-        vizTagContainer.innerHTML = '<span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>';
+        vizTagContainer.innerHTML = '<span class="discovery-tag world-record">' + <?php echo json_encode(tra("World record breakthrough (>8,344 cards)")); ?> + '</span>';
       } else {
-        vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Found by Camicia"); ?></span>';
+        vizTagContainer.innerHTML = '<span class="discovery-tag camicia">' + <?php echo json_encode(tra("Found by Camicia")); ?> + '</span>';
       }
-      vizSubtitle.innerHTML = '<?php echo tra("The longest game found so far"); ?>';
-      vizMoveCount.innerHTML = formatNum(championDeal.cards) + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(championDeal.tricks) + ' <?php echo tra("tricks"); ?></span>';
-      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>"); ?>';
-      if (vizMetaDate) vizMetaDate.textContent = '<?php echo tra("Confirmed on"); ?> ' + championDeal.date;
-      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + championDeal.deal;
+      vizSubtitle.innerHTML = <?php echo json_encode(tra("The longest game found so far")); ?>;
+      vizMoveCount.innerHTML = formatNum(championDeal.cards) + ' ' + <?php echo json_encode(tra("cards played")); ?> + ' <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(championDeal.tricks) + ' ' + <?php echo json_encode(tra("tricks")); ?> + '</span>';
+      vizPlaybackDesc.innerHTML = <?php echo json_encode(tra("Below, %1the actual longest game found%2, played back move by move.", "<em>", "</em>")); ?>;
+      if (vizMetaDate) vizMetaDate.textContent = <?php echo json_encode(tra("Confirmed on")); ?> + ' ' + championDeal.date;
+      if (vizMetaDeal) vizMetaDeal.textContent = <?php echo json_encode(tra("Deal #%1", "")); ?> + championDeal.deal;
       if (vizMetaAuthor) {
         if (championDeal.author) {
           vizMetaAuthor.style.display = '';
-          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + championDeal.author;
+          vizMetaAuthor.innerHTML = <?php echo json_encode(tra("Discovered by")); ?> + ' ' + championDeal.author;
         } else {
           vizMetaAuthor.style.display = 'none';
         }
       }
     } else if (info.type === 'loop') {
-      vizTagContainer.innerHTML = '<span class="discovery-tag camicia"><?php echo tra("Loop Discovery"); ?></span>';
-      vizSubtitle.innerHTML = '<?php echo tra("Non-terminating loop game"); ?>';
-      vizMoveCount.innerHTML = '<?php echo tra("Infinite loop"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; <?php echo tra("never terminates"); ?></span>';
-      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, the non-terminating game, played back move by move."); ?>';
-      if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
-      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
+      vizTagContainer.innerHTML = '<span class="discovery-tag camicia">' + <?php echo json_encode(tra("Loop Discovery")); ?> + '</span>';
+      vizSubtitle.innerHTML = <?php echo json_encode(tra("Non-terminating loop game")); ?>;
+      vizMoveCount.innerHTML = <?php echo json_encode(tra("Infinite loop")); ?> + ' <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + <?php echo json_encode(tra("never terminates")); ?> + '</span>';
+      vizPlaybackDesc.innerHTML = <?php echo json_encode(tra("Below, the non-terminating game, played back move by move.")); ?>;
+      if (vizMetaDate) vizMetaDate.textContent = info.date ? (<?php echo json_encode(tra("Confirmed on")); ?> + ' ' + info.date) : '';
+      if (vizMetaDeal) vizMetaDeal.textContent = <?php echo json_encode(tra("Deal #%1", "")); ?> + info.deal;
       if (vizMetaAuthor) {
         if (info.author) {
           vizMetaAuthor.style.display = '';
-          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + info.author;
+          vizMetaAuthor.innerHTML = <?php echo json_encode(tra("Discovered by")); ?> + ' ' + info.author;
         } else {
           vizMetaAuthor.style.display = 'none';
         }
@@ -876,19 +876,19 @@ page_head(tra("Search progress"));
     } else {
       var isWr = (info.wr === '1' || info.wr === 1 || info.isWr);
       if (isWr) {
-        vizTagContainer.innerHTML = '<span class="discovery-tag world-record"><?php echo tra("World record breakthrough (>8,344 cards)"); ?></span>';
+        vizTagContainer.innerHTML = '<span class="discovery-tag world-record">' + <?php echo json_encode(tra("World record breakthrough (>8,344 cards)")); ?> + '</span>';
       } else {
-        vizTagContainer.innerHTML = '<span class="discovery-tag" style="background:var(--felt);border:1px solid var(--gold-dim);color:var(--gold)"><?php echo tra("Historical Milestone"); ?></span>';
+        vizTagContainer.innerHTML = '<span class="discovery-tag" style="background:var(--felt);border:1px solid var(--gold-dim);color:var(--gold)">' + <?php echo json_encode(tra("Historical Milestone")); ?> + '</span>';
       }
-      vizSubtitle.innerHTML = '<?php echo tra("Historical record milestone"); ?>';
-      vizMoveCount.innerHTML = formatNum(info.cards) + ' <?php echo tra("cards played"); ?> <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(info.tricks) + ' <?php echo tra("tricks"); ?></span>';
-      vizPlaybackDesc.innerHTML = '<?php echo tra("Below, the historical milestone record, played back move by move."); ?>';
-      if (vizMetaDate) vizMetaDate.textContent = info.date ? '<?php echo tra("Confirmed on"); ?> ' + info.date : '';
-      if (vizMetaDeal) vizMetaDeal.textContent = '<?php echo tra("Deal #%1", ""); ?>' + info.deal;
+      vizSubtitle.innerHTML = <?php echo json_encode(tra("Historical record milestone")); ?>;
+      vizMoveCount.innerHTML = formatNum(info.cards) + ' ' + <?php echo json_encode(tra("cards played")); ?> + ' <span style="font-size:18px;color:var(--cream-dim)">&middot; ' + formatNum(info.tricks) + ' ' + <?php echo json_encode(tra("tricks")); ?> + '</span>';
+      vizPlaybackDesc.innerHTML = <?php echo json_encode(tra("Below, the historical milestone record, played back move by move.")); ?>;
+      if (vizMetaDate) vizMetaDate.textContent = info.date ? (<?php echo json_encode(tra("Confirmed on")); ?> + ' ' + info.date) : '';
+      if (vizMetaDeal) vizMetaDeal.textContent = <?php echo json_encode(tra("Deal #%1", "")); ?> + info.deal;
       if (vizMetaAuthor) {
         if (info.author) {
           vizMetaAuthor.style.display = '';
-          vizMetaAuthor.innerHTML = '<?php echo tra("Discovered by"); ?> ' + info.author;
+          vizMetaAuthor.innerHTML = <?php echo json_encode(tra("Discovered by")); ?> + ' ' + info.author;
         } else {
           vizMetaAuthor.style.display = 'none';
         }
@@ -937,7 +937,7 @@ page_head(tra("Search progress"));
       rows.forEach(function(row, idx) {
         row.style.display = (idx >= start && idx < end) ? '' : 'none';
       });
-      pageInfo.textContent = '<?php echo tra("Page"); ?> ' + currentPage + ' <?php echo tra("of"); ?> ' + totalPages + ' (' + rows.length + ' <?php echo tra("total"); ?>)';
+      pageInfo.textContent = <?php echo json_encode(tra("Page")); ?> + ' ' + currentPage + ' ' + <?php echo json_encode(tra("of")); ?> + ' ' + totalPages + ' (' + rows.length + ' ' + <?php echo json_encode(tra("total")); ?> + ')';
       prevBtn.disabled = currentPage === 1;
       nextBtn.disabled = currentPage === totalPages;
     }
@@ -974,7 +974,7 @@ page_head(tra("Search progress"));
 
   if (!hist || !hist.buckets || !hist.buckets.length || (parseFloat(hist.total_deals) <= 0)) {
     if (svgBox) {
-      svgBox.innerHTML = '<div class="empty-state"><?php echo tra("No histogram data recorded yet -- check back once workunits are assimilated."); ?></div>';
+      svgBox.innerHTML = '<div class="empty-state">' + <?php echo json_encode(tra("No histogram data recorded yet -- check back once workunits are assimilated.")); ?> + '</div>';
     }
   } else {
     var currentScale = 'linear';
