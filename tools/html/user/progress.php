@@ -256,19 +256,8 @@ page_head(tra("Search progress"));
     .progress-page .hero-number { font-size: clamp(16px, 5.5vw, 32px); }
 }
 .progress-page .chart-box { background: var(--felt-2); border: 1px solid var(--border-gold); border-radius: 8px; padding: 16px; margin-top: 12px; }
-.progress-page .chart-box-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-family: Georgia, serif; font-size: 14px; color: var(--gold); }
-.progress-page #chartContainerWrap.chart-view-svg #chartjsChartBox { display: none; }
-.progress-page #chartContainerWrap.chart-view-svg #svgChartBox { display: block; width: 100%; }
-.progress-page #chartContainerWrap.chart-view-chartjs #svgChartBox { display: none; }
-.progress-page #chartContainerWrap.chart-view-chartjs #chartjsChartBox { display: block; width: 100%; }
-.progress-page #chartContainerWrap.chart-view-side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.progress-page #chartContainerWrap.chart-view-side-by-side #svgChartBox,
-.progress-page #chartContainerWrap.chart-view-side-by-side #chartjsChartBox { display: block; margin-top: 0; }
-@media (max-width: 900px) {
-    .progress-page #chartContainerWrap.chart-view-side-by-side { grid-template-columns: 1fr; }
-}
-.progress-page .svg-chart-container { position: relative; width: 100%; height: 320px; }
-.progress-page .svg-chart-container svg { width: 100%; height: 100%; overflow: visible; }
+.progress-page .svg-chart-container { position: relative; width: 100%; height: 300px; }
+.progress-page .svg-chart-container svg { width: 100%; height: 100%; overflow: visible; display: block; }
 .progress-page .chart-tooltip { position: absolute; pointer-events: none; background: #0d1e16; border: 1px solid var(--gold); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 .progress-page .chart-bar-hover:hover { fill: #ffe082 !important; cursor: pointer; }
 </style>
@@ -320,12 +309,6 @@ page_head(tra("Search progress"));
         <p class="section-sub" style="margin-bottom:0">
           <?php echo tra("Complete statistical survey of game lengths across %1 confirmed deals", ($histogram && !empty($histogram['total_deals'])) ? number_format((float)$histogram['total_deals']) : "all"); ?>
         </p>
-      </div>
-      <div class="period-toggle" id="chartViewToggle">
-        <button data-view="svg" class="active"><?php echo tra("Native SVG"); ?></button>
-        <button data-view="chartjs"><?php echo tra("Chart.js"); ?></button>
-        <button data-view="side-by-side"><?php echo tra("Side by Side"); ?></button>
-      </div>
     </div>
 
     <div class="stat-grid" style="margin-bottom:20px">
@@ -354,24 +337,8 @@ page_head(tra("Search progress"));
       </div>
     </div>
 
-    <div id="chartContainerWrap" class="chart-view-svg">
-      <div class="chart-box" id="svgChartBox">
-        <div class="chart-box-title">
-          <span><?php echo tra("Native SVG Vector Render"); ?></span>
-          <span style="font-size:11px;color:var(--cream-dim)"><?php echo tra("Ultra-crisp zero-dependency vector graphics"); ?></span>
-        </div>
-        <div class="svg-chart-container" id="svgContainer"></div>
-      </div>
-
-      <div class="chart-box" id="chartjsChartBox">
-        <div class="chart-box-title">
-          <span><?php echo tra("Chart.js Canvas Render"); ?></span>
-          <span style="font-size:11px;color:var(--cream-dim)"><?php echo tra("Canvas-accelerated responsive chart library"); ?></span>
-        </div>
-        <div class="chartjs-container" style="position:relative;height:320px;width:100%">
-          <canvas id="chartjsCanvas"></canvas>
-        </div>
-      </div>
+    <div class="chart-box" id="svgChartBox">
+      <div class="svg-chart-container" id="svgContainer"></div>
     </div>
 
     <p class="legend-note" style="margin-top:14px">
@@ -975,32 +942,15 @@ page_head(tra("Search progress"));
   paginateTable('hofTable', 'hofPagination', 'hofPrevBtn', 'hofNextBtn', 'hofPageInfo', 25);
   paginateTable('loopsTable', 'loopsPagination', 'loopsPrevBtn', 'loopsNextBtn', 'loopsPageInfo', 25);
 
-  // -------- Macro-Distribution Charting (Native SVG & Chart.js) --------
+  // -------- Macro-Distribution Charting (Responsive Native SVG) --------
   var hist = <?php echo json_encode($histogram); ?>;
   var svgBox = document.getElementById('svgContainer');
-  var containerWrap = document.getElementById('chartContainerWrap');
-  var toggleBtns = document.querySelectorAll('#chartViewToggle button');
-
-  if (toggleBtns.length && containerWrap) {
-    toggleBtns.forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        toggleBtns.forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        var view = btn.dataset.view;
-        containerWrap.className = 'chart-view-' + view;
-        if (view === 'chartjs' || view === 'side-by-side') {
-          renderChartJs();
-        }
-      });
-    });
-  }
 
   if (!hist || !hist.buckets || !hist.buckets.length || (parseFloat(hist.total_deals) <= 0)) {
     if (svgBox) {
       svgBox.innerHTML = '<div class="empty-state"><?php echo tra("No histogram data recorded yet -- check back once workunits are assimilated."); ?></div>';
     }
   } else {
-    // 1. Render Native SVG
     function renderSvg() {
       if (!svgBox) return;
 
@@ -1013,19 +963,19 @@ page_head(tra("Search progress"));
       var yMax = Math.ceil(maxPct * 1.15 * 10) / 10;
       if (yMax < 1) yMax = 1;
 
-      var W = 1000;
-      var H = 280;
+      var W = svgBox.clientWidth || 900;
+      var H = 300;
       var padLeft = 45;
       var padRight = 15;
       var padTop = 20;
-      var padBottom = 35;
-      var chartW = W - padLeft - padRight;
+      var padBottom = 55;
+      var chartW = Math.max(10, W - padLeft - padRight);
       var chartH = H - padTop - padBottom;
 
       var numBars = buckets.length;
       var barWidth = chartW / numBars;
 
-      var svgHtml = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+      var svgHtml = '<svg width="100%" height="100%" viewBox="0 0 ' + W + ' ' + H + '">';
       svgHtml += '<defs>';
       svgHtml += '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">';
       svgHtml += '<stop offset="0%" stop-color="#f5d77f"/>';
@@ -1038,7 +988,7 @@ page_head(tra("Search progress"));
         var val = (yMax * (g / gridSteps)).toFixed(1);
         var y = padTop + chartH - (g / gridSteps) * chartH;
         svgHtml += '<line x1="' + padLeft + '" y1="' + y + '" x2="' + (W - padRight) + '" y2="' + y + '" stroke="rgba(245,215,127,0.12)" stroke-dasharray="3,3"/>';
-        svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (y + 4) + '" fill="var(--cream-dim)" font-size="10" text-anchor="end">' + val + '%</text>';
+        svgHtml += '<text x="' + (padLeft - 6) + '" y="' + (y + 4) + '" fill="var(--cream-dim)" font-size="10" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + val + '%</text>';
       }
 
       svgHtml += '<line x1="' + padLeft + '" y1="' + (padTop + chartH) + '" x2="' + (W - padRight) + '" y2="' + (padTop + chartH) + '" stroke="var(--felt-line)" stroke-width="1.5"/>';
@@ -1050,7 +1000,7 @@ page_head(tra("Search progress"));
         var x = padLeft + b * barWidth;
         var y = padTop + chartH - h;
 
-        svgHtml += '<rect class="chart-bar-hover" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 2) + '" height="' + h + '" rx="1" fill="url(#barGrad)" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + buckets[b].count + '" data-pct="' + pct + '"/>';
+        svgHtml += '<rect class="chart-bar-hover" x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(1, barWidth - 1.5) + '" height="' + h + '" rx="1" fill="url(#barGrad)" data-bucket="' + b + '" data-range="' + buckets[b].range + '" data-count="' + buckets[b].count + '" data-pct="' + pct + '"/>';
       }
 
       var keyBuckets = [
@@ -1066,9 +1016,11 @@ page_head(tra("Search progress"));
       for (var k = 0; k < keyBuckets.length; k++) {
         var kb = keyBuckets[k];
         var kx = padLeft + kb.idx * barWidth + barWidth / 2;
-        svgHtml += '<text x="' + kx + '" y="' + (H - 12) + '" fill="var(--cream-dim)" font-size="10" text-anchor="middle">' + kb.text + '</text>';
+        var ky = padTop + chartH + 7;
+        svgHtml += '<line x1="' + kx + '" y1="' + (padTop + chartH) + '" x2="' + kx + '" y2="' + (padTop + chartH + 4) + '" stroke="var(--felt-line)" stroke-width="1"/>';
+        svgHtml += '<text x="' + kx + '" y="' + ky + '" transform="rotate(-45 ' + kx + ' ' + ky + ')" fill="var(--cream-dim)" font-size="11" font-family="system-ui, -apple-system, sans-serif" text-anchor="end">' + kb.text + '</text>';
       }
-      svgHtml += '<text x="' + (W / 2) + '" y="' + (H - 0) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" text-anchor="middle">Cards Played</text>';
+      svgHtml += '<text x="' + (padLeft + chartW / 2) + '" y="' + (H - 4) + '" fill="var(--gold-dim)" font-size="11" font-weight="600" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle">Cards Played</text>';
 
       svgHtml += '</svg>';
       svgHtml += '<div class="chart-tooltip" id="svgTooltip"></div>';
@@ -1101,88 +1053,13 @@ page_head(tra("Search progress"));
 
     renderSvg();
 
-    // 2. Render Chart.js
-    var chartJsRendered = false;
-    function renderChartJs() {
-      if (chartJsRendered) return;
-      if (typeof Chart === 'undefined') {
-        var s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-        s.onload = function() {
-          buildChartJs();
-        };
-        document.head.appendChild(s);
-      } else {
-        buildChartJs();
-      }
-    }
-
-    function buildChartJs() {
-      var ctx = document.getElementById('chartjsCanvas');
-      if (!ctx) return;
-      chartJsRendered = true;
-
-      var labels = hist.buckets.map(function(b) { return b.range; });
-      var data = hist.buckets.map(function(b) { return b.percentage; });
-      var counts = hist.buckets.map(function(b) { return b.count; });
-
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Frequency (%)',
-            data: data,
-            backgroundColor: '#f5d77f',
-            hoverBackgroundColor: '#ffe082',
-            borderRadius: 2,
-            borderSkipped: false
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: '#0d1e16',
-              borderColor: '#f5d77f',
-              borderWidth: 1,
-              titleColor: '#f5d77f',
-              bodyColor: '#fff',
-              callbacks: {
-                title: function(items) {
-                  return items[0].label + ' cards';
-                },
-                label: function(item) {
-                  var c = Number(counts[item.dataIndex]).toLocaleString();
-                  return c + ' deals (' + item.raw.toFixed(4) + '%)';
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              grid: { display: false },
-              ticks: {
-                color: '#d4af37',
-                font: { size: 9 },
-                maxRotation: 45,
-                callback: function(val, index) {
-                  return (index % 8 === 0 || index === 63) ? this.getLabelForValue(val) : '';
-                }
-              }
-            },
-            y: {
-              grid: { color: 'rgba(245, 215, 127, 0.12)' },
-              ticks: {
-                color: '#c9b896',
-                callback: function(val) { return val + '%'; }
-              }
-            }
-          }
-        }
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(function() {
+        renderSvg();
       });
+      ro.observe(svgBox);
+    } else {
+      window.addEventListener('resize', renderSvg);
     }
   }
 })();
