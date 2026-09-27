@@ -6,6 +6,27 @@
 #include <ctime>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/file.h>
+#include <fcntl.h>
+
+// RAII POSIX file locker for safe concurrency across sharded daemon processes.
+class FileLockGuard {
+    int fd;
+public:
+    FileLockGuard(const char* lock_path) : fd(-1) {
+        fd = open(lock_path, O_RDWR | O_CREAT, 0664);
+        if (fd >= 0) {
+            flock(fd, LOCK_EX);
+        }
+    }
+    ~FileLockGuard() {
+        if (fd >= 0) {
+            flock(fd, LOCK_UN);
+            close(fd);
+        }
+    }
+    bool is_locked() const { return fd >= 0; }
+};
 
 #ifndef CAMICIA_TEST_RECORDS
 #include "boinc_db.h"
@@ -218,6 +239,10 @@ void send_notify(const string& title, const string& message, const string& prior
 void log_verify_rejection(
     WORKUNIT& wu, vector<RESULT>& results, bool loop_related
 ) {
+    char lock_path[1024];
+    snprintf(lock_path, sizeof(lock_path), "%s/verify_rejections.lock", outdir);
+    FileLockGuard lock(lock_path);
+
     char path[1024];
     snprintf(path, sizeof(path), "%s/verify_rejections.log", outdir);
     FILE* f = fopen(path, "a");
@@ -237,7 +262,7 @@ void log_verify_rejection(
 // still use, which aren't things a redispatch would fix).
 int write_verify_rejected(WORKUNIT &wu, const string& detail) {
     char batch_dir[1024];
-    char path[1024];
+    char path[2048];
     snprintf(batch_dir, sizeof(batch_dir), "%s/%d", outdir, wu.batch);
     int retval = boinc_mkdir(batch_dir);
     if (retval) return retval;
@@ -266,6 +291,9 @@ void maybe_update_longest_record(
 ) {
     const char* path = "../records_longest.txt";
     const char* history_path = "../records_longest_history.txt";
+    const char* lock_path = "../records_longest.lock";
+    FileLockGuard lock(lock_path);
+
     long long best_cards = -1;
     FILE* f = fopen(path, "r");
     if (f) {
@@ -280,8 +308,9 @@ void maybe_update_longest_record(
     // <cards> <tricks> <deal_index> <wu_name> <timestamp> <userid> <hostid>
     // Keeping timestamp as 5th field preserves backward compatibility with
     // any consumer reading $parts[0..4].
+    // Unique per-process PID avoids temporary file name collisions across shards.
     char tmp_path[256];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    snprintf(tmp_path, sizeof(tmp_path), "%s.%d.tmp", path, (int)getpid());
     FILE* tmp = fopen(tmp_path, "w");
     if (!tmp) return;
     fprintf(tmp, "%lld %lld %s %s %ld %lld %lld\n",
@@ -318,6 +347,9 @@ void record_loop_found(
     long long cards = 0, long long tricks = 0,
     long long userid = 0, long long hostid = 0
 ) {
+    const char* lock_path = "../records_loops.lock";
+    FileLockGuard lock(lock_path);
+
     time_t now = time(0);
 
     // 1. Append to records_loops.txt:
@@ -514,7 +546,7 @@ void track_result_line(
 
 int write_error(WORKUNIT &wu, char* p) {
     char batch_dir[1024];
-    char path[1024];
+    char path[2048];
     snprintf(batch_dir, sizeof(batch_dir), "%s/%d", outdir, wu.batch);
     int retval = boinc_mkdir(batch_dir);
     if (retval) return retval;
@@ -526,13 +558,23 @@ int write_error(WORKUNIT &wu, char* p) {
     return 0;
 }
 
+static int g_mod_m = 1;
+static int g_mod_n = 0;
+
 int assimilate_handler_init(int argc, char** argv) {
-    for (int i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "--outdir")) {
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--outdir") && i + 1 < argc) {
             outdir = argv[++i];
-        } else {
-            fprintf(stderr, "bad arg %s\n", argv[i]);
+        } else if ((!strcmp(argv[i], "--mod") || !strcmp(argv[i], "-mod")) && i + 2 < argc) {
+            g_mod_m = atoi(argv[++i]);
+            g_mod_n = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--shard") && i + 1 < argc) {
+            g_mod_n = atoi(argv[++i]);
         }
+        // Silently accept standard BOINC args (--app, -app, -d, etc.)
+    }
+    if (g_mod_m > 1) {
+        fprintf(stderr, "Assimilator running as shard %d of %d\n", g_mod_n, g_mod_m);
     }
     return 0;
 }
@@ -541,7 +583,8 @@ void assimilate_handler_usage() {
     // describe the project specific arguments here
     fprintf(stderr,
         "    Custom options:\n"
-        "    [--outdir X]  output dir for result files\n"
+        "    [--outdir X]       output dir for result files\n"
+        "    [--mod M N]        run as shard N of M (0 <= N < M)\n"
     );
 }
 
@@ -628,19 +671,7 @@ int assimilate_handler(
             return write_verify_rejected(wu, full_msg);
         }
 
-        // Safe only because config.xml runs a single, unsharded assimilator
-        // daemon -- writes are strictly sequential from one process. If a
-        // second --mod-sharded instance is ever added to relieve backlog,
-        // concurrent buffered fopen("a") writes from two processes can
-        // interleave mid-flush and corrupt results.txt; switch to raw
-        // O_APPEND writes or per-shard output files first.
-        snprintf(buf, sizeof(buf), "%s/results.txt", outdir);
-        FILE* f_out = fopen(buf, "a");
-        if (!f_out) {
-            fprintf(stderr, "Error opening %s\n", buf);
-            return ERR_FOPEN; 
-        }
-
+        string results_buffer;
         string best_deal_index;
         long long best_cards = -1;
         long long best_tricks = 0;
@@ -703,22 +734,37 @@ int assimilate_handler(
                         }
                     }
 
-                    fprintf(f_out, "%s,%s", wu.name, line);
-                    if (len == 0 || line[len - 1] != '\n') fprintf(f_out, "\n");
+                    results_buffer += wu.name;
+                    results_buffer += ",";
+                    results_buffer += line;
+                    if (len == 0 || line[len - 1] != '\n') results_buffer += "\n";
                 }
                 free(line);
                 fclose(f_in);
             } else {
-                fflush(f_out);
-                fsync(fileno(f_out));
-                fclose(f_out);
                 fprintf(stderr, "Error while reading %s\n", fi.path.c_str());
                 return ERR_FOPEN; 
             }
         }
-        fflush(f_out);
-        fsync(fileno(f_out));
-        fclose(f_out);
+
+        // Multi-process safe append: acquire results.lock, append the entire workunit
+        // buffer in one contiguous write, fsync, and close.
+        if (!results_buffer.empty()) {
+            char lock_path[1024];
+            snprintf(lock_path, sizeof(lock_path), "%s/results.lock", outdir);
+            FileLockGuard lock(lock_path);
+
+            snprintf(buf, sizeof(buf), "%s/results.txt", outdir);
+            FILE* f_out = fopen(buf, "a");
+            if (!f_out) {
+                fprintf(stderr, "Error opening %s\n", buf);
+                return ERR_FOPEN;
+            }
+            fwrite(results_buffer.data(), 1, results_buffer.size(), f_out);
+            fflush(f_out);
+            fsync(fileno(f_out));
+            fclose(f_out);
+        }
 
         // Persist completed range in unpurged MariaDB ledger and histogram totals
         if (!best_deal_index.empty() || loops_count > 0 || has_summary) {
@@ -932,12 +978,101 @@ int main() {
     check("summary line ignored by record tracker", file_contains(longest_path, "600 300 5000 wu_c"));
     check("summary line not in loops", !file_contains(loops_path, "wu_f"));
 
+    // 11) Multi-process concurrent record updates (8 processes racing with ascending values)
+    {
+        const int NUM_PROCS = 8;
+        const int WRITES_PER_PROC = 25;
+        pid_t pids[NUM_PROCS];
+        for (int p = 0; p < NUM_PROCS; p++) {
+            pids[p] = fork();
+            if (pids[p] == 0) {
+                for (int w = 1; w <= WRITES_PER_PROC; w++) {
+                    long long cards = 1000 + p * 100 + w;
+                    char line[256];
+                    snprintf(line, sizeof(line), "finished,10000,%lld,%lld\n", cards, cards / 2);
+                    char wu[64];
+                    snprintf(wu, sizeof(wu), "wu_p%d_w%d", p, w);
+                    track_result_line(wu, line, 100 + p, 200 + p);
+                    usleep(100);
+                }
+                if (p == 7) {
+                    track_result_line("wu_champion", "finished,99999,50000,25000\n", 999, 888);
+                }
+                _exit(0);
+            }
+        }
+        int status;
+        int exited_ok = 0;
+        for (int p = 0; p < NUM_PROCS; p++) {
+            waitpid(pids[p], &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) exited_ok++;
+        }
+        check("concurrent record writers all exited cleanly", exited_ok == NUM_PROCS);
+        check("concurrent record final best is the champion (50000 cards)",
+            file_contains(longest_path, "50000 25000 99999 wu_champion"));
+
+        FILE* hf = fopen(history_path, "r");
+        long long prev_c = 0;
+        bool history_monotonic = true;
+        char h_line[512];
+        int h_count = 0;
+        while (hf && fgets(h_line, sizeof(h_line), hf)) {
+            long long c = 0;
+            if (sscanf(h_line, "%lld", &c) == 1) {
+                if (c < prev_c) history_monotonic = false;
+                prev_c = c;
+                h_count++;
+            }
+        }
+        if (hf) fclose(hf);
+        check("concurrent record history is strictly monotonic", history_monotonic);
+        check("concurrent record history has multiple advances", h_count > 2);
+    }
+
+    // 12) Multi-process concurrent loop finds (8 processes appending 25 loops each)
+    {
+        long long before_loops = file_line_count(loops_path);
+        const int NUM_PROCS = 8;
+        const int LOOPS_PER_PROC = 25;
+        pid_t pids[NUM_PROCS];
+        for (int p = 0; p < NUM_PROCS; p++) {
+            pids[p] = fork();
+            if (pids[p] == 0) {
+                for (int l = 1; l <= LOOPS_PER_PROC; l++) {
+                    char line[256];
+                    snprintf(line, sizeof(line), "loop,8%03d%03d,10,5\n", p, l);
+                    char wu[64];
+                    snprintf(wu, sizeof(wu), "wu_loop_p%d_l%d", p, l);
+                    track_result_line(wu, line, 500 + p, 600 + p);
+                    usleep(100);
+                }
+                _exit(0);
+            }
+        }
+        int status;
+        int exited_ok = 0;
+        for (int p = 0; p < NUM_PROCS; p++) {
+            waitpid(pids[p], &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) exited_ok++;
+        }
+        check("concurrent loop writers all exited cleanly", exited_ok == NUM_PROCS);
+        long long after_loops = file_line_count(loops_path);
+        check("concurrent loops count exactly matches 200 additions",
+            after_loops == before_loops + (NUM_PROCS * LOOPS_PER_PROC));
+    }
+
     remove(longest_path);
     char longest_tmp_path[320];
     snprintf(longest_tmp_path, sizeof(longest_tmp_path), "%s.tmp", longest_path);
     remove(longest_tmp_path);
+    char longest_lock_path[320];
+    snprintf(longest_lock_path, sizeof(longest_lock_path), "%s/records_longest.lock", tmpdir);
+    remove(longest_lock_path);
     remove(history_path);
     remove(loops_path);
+    char loops_lock_path[320];
+    snprintf(loops_lock_path, sizeof(loops_lock_path), "%s/records_loops.lock", tmpdir);
+    remove(loops_lock_path);
     rmdir(subdir);
     rmdir(tmpdir);
 

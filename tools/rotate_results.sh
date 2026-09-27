@@ -17,6 +17,7 @@ cd "$(dirname "$0")/.."
 
 ROTATE_THRESHOLD_BYTES=$((100 * 1024 * 1024))
 RESULTS_FILE="results/results.txt"
+LOCK_FILE="results/results.lock"
 ALERT_LOG="./results_rotate_alerts.log"
 
 # Retry any segment left uncompressed by a previous run's failed gzip (see
@@ -39,13 +40,21 @@ for LEFTOVER in results/results_*.txt; do
 done
 shopt -u nullglob
 
+# Coordinate with sharded assimilator daemons using results.lock to prevent
+# mv while an assimilator writes.
+mkdir -p results
+exec 200>"$LOCK_FILE"
+flock -x 200
+
 if [ ! -f "$RESULTS_FILE" ]; then
+    flock -u 200
     echo "$(date '+%Y-%m-%d %H:%M:%S') OK: no $RESULTS_FILE yet, nothing to rotate"
     exit 0
 fi
 
 SIZE=$(stat -c%s "$RESULTS_FILE")
 if [ "$SIZE" -lt "$ROTATE_THRESHOLD_BYTES" ]; then
+    flock -u 200
     echo "$(date '+%Y-%m-%d %H:%M:%S') OK: $RESULTS_FILE is ${SIZE} bytes, below the $((ROTATE_THRESHOLD_BYTES / 1024 / 1024))MB rotation threshold"
     exit 0
 fi
@@ -54,12 +63,16 @@ TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 ROTATED="results/results_${TIMESTAMP}.txt"
 
 if ! mv "$RESULTS_FILE" "$ROTATED"; then
+    flock -u 200
     MSG="CRITICAL: failed to rotate $RESULTS_FILE (mv failed)"
     echo "$(date '+%Y-%m-%d %H:%M:%S') $MSG" | tee -a "$ALERT_LOG"
     logger -t camicia_rotate_results "$MSG" 2>/dev/null || true
     notify "Camicia: results rotation failed" "$MSG" "high"
     exit 1
 fi
+
+# Release lock immediately after mv so assimilators can begin writing to fresh results.txt
+flock -u 200
 
 if ! gzip "$ROTATED"; then
     MSG="CRITICAL: rotated $RESULTS_FILE to $ROTATED but gzip failed -- uncompressed segment left in place, will retry on the next run"

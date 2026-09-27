@@ -291,8 +291,14 @@
         </task>
     </tasks>
     <daemons>
+        <!-- Sharded assimilators: 2 parallel instances partitioning workunit.id -->
         <daemon>
-            <cmd>assimilator --app simulator -d 3</cmd>
+            <cmd>assimilator --app simulator --mod 2 0 -d 3</cmd>
+            <output>assimilator_0.log</output>
+        </daemon>
+        <daemon>
+            <cmd>assimilator --app simulator --mod 2 1 -d 3</cmd>
+            <output>assimilator_1.log</output>
         </daemon>
         <daemon>
             <cmd>sample_bitwise_validator -app simulator -d 3</cmd>
