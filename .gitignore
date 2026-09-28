@@ -11,3 +11,10 @@ tools/worker/worker_app_macos
 # wrangler's own local cache/build state for landing/'s Cloudflare Workers
 # deploy -- ephemeral and machine-specific, not meant for version control.
 landing/.wrangler/
+
+# Discord bot local virtualenv and runtime state
+tools/discord_bot/.venv/
+tools/discord_bot/watcher_state.json
+tools/discord_bot/lucky_state.json
+__pycache__/
+*.py[cod]
