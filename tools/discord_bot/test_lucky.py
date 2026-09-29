@@ -1,6 +1,15 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
+
+if "discord" not in sys.modules:
+    try:
+        import discord
+    except ImportError:
+        sys.modules["discord"] = MagicMock()
+
 from lucky import LuckyManager
 
 

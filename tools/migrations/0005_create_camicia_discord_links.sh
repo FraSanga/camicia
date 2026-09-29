@@ -61,10 +61,20 @@ CREATE TABLE IF NOT EXISTS camicia_discord_links (
     pin_requested_at DATETIME NULL,
     pin_expires_at DATETIME NULL,
     linked_at DATETIME NULL,
+    unlinked_at DATETIME NULL,
     UNIQUE KEY uq_boinc_user (boinc_user_id),
     UNIQUE KEY uq_discord_id (discord_id),
-    INDEX idx_pin (pin)
+    INDEX idx_pin (pin),
+    INDEX idx_unlinked (unlinked_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Ensure unlinked_at column and index exist if table was already created
+ALTER TABLE camicia_discord_links ADD COLUMN IF NOT EXISTS unlinked_at DATETIME NULL;
+SET @exist := (SELECT count(*) FROM information_schema.statistics WHERE table_name='camicia_discord_links' AND index_name='idx_unlinked' AND table_schema='$DB_NAME');
+SET @sqlstmt := IF(@exist = 0, 'CREATE INDEX idx_unlinked ON camicia_discord_links (unlinked_at)', 'SELECT 1');
+PREPARE stmt FROM @sqlstmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 "
 
 echo "== Verifying table creation =="

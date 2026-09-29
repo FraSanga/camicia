@@ -429,7 +429,7 @@ function show_community_private($user) {
     $discord_val = "<a href=\"discord_link.php\">" . tra("Link Discord account") . "</a>";
     $table_check = BoincDb::get()->do_query("SHOW TABLES LIKE 'camicia_discord_links'");
     if ($table_check && $table_check->num_rows > 0) {
-        $link_res = BoincDb::get()->do_query("SELECT discord_id, discord_username FROM camicia_discord_links WHERE boinc_user_id = " . (int)$user->id . " AND linked_at IS NOT NULL");
+        $link_res = BoincDb::get()->do_query("SELECT discord_id, discord_username FROM camicia_discord_links WHERE boinc_user_id = " . (int)$user->id . " AND linked_at IS NOT NULL AND unlinked_at IS NULL");
         if ($link_res && ($link = $link_res->fetch_assoc())) {
             $dname = !empty($link['discord_username']) ? htmlspecialchars($link['discord_username']) : ("ID: " . $link['discord_id']);
             $discord_val = "Linked as <strong>@" . $dname . "</strong> &middot; <a href=\"discord_link.php\">" . tra("Manage") . "</a>";

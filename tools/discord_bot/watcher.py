@@ -119,7 +119,7 @@ class RecordsWatcher:
                         await cur.execute(
                             "SELECT u.name, l.discord_id "
                             "FROM user u "
-                            "LEFT JOIN camicia_discord_links l ON l.boinc_user_id = u.id AND l.linked_at IS NOT NULL "
+                            "LEFT JOIN camicia_discord_links l ON l.boinc_user_id = u.id AND l.linked_at IS NOT NULL AND l.unlinked_at IS NULL "
                             "WHERE u.id = %s",
                             (userid,),
                         )
