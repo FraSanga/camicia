@@ -35,30 +35,60 @@ db_pool = None
 
 
 async def init_db_pool():
-    """Initializes MariaDB connection pool if aiomysql is installed and password is set."""
+    """Initializes MariaDB connection pool with fallback hosts and clear logging."""
     if not config.DB_PASSWD:
-        logger.info("Database password not provided; running volunteer lookup in fallback mode.")
+        logger.warning(
+            "MariaDB password not found in environment (MARIADB_PASSWORD/MARIADB_ROOT_PASSWORD) "
+            "or config.xml; database features will be disabled."
+        )
         return None
 
     try:
         import aiomysql
-
-        pool = await aiomysql.create_pool(
-            host=config.DB_HOST,
-            port=config.DB_PORT,
-            user=config.DB_USER,
-            password=config.DB_PASSWD,
-            db=config.DB_NAME,
-            autocommit=True,
-            minsize=1,
-            maxsize=5,
-            connect_timeout=5,
-        )
-        logger.info("Connected to MariaDB at %s:%s (%s)", config.DB_HOST, config.DB_PORT, config.DB_NAME)
-        return pool
-    except Exception as e:
-        logger.warning("Could not connect to MariaDB (%s). Running with volunteer ID fallback.", e)
+    except ImportError:
+        logger.error("aiomysql library is not installed; database features cannot be used.")
         return None
+
+    # Try configured host, then service name fallback 'database', then localhost
+    hosts_to_try = [config.DB_HOST]
+    for fallback in ("database", "127.0.0.1"):
+        if fallback not in hosts_to_try:
+            hosts_to_try.append(fallback)
+
+    for host in hosts_to_try:
+        try:
+            pool = await aiomysql.create_pool(
+                host=host,
+                port=config.DB_PORT,
+                user=config.DB_USER,
+                password=config.DB_PASSWD,
+                db=config.DB_NAME,
+                autocommit=True,
+                minsize=1,
+                maxsize=5,
+                connect_timeout=5,
+            )
+            logger.info("Connected to MariaDB at %s:%s (user=%s, db=%s)", host, config.DB_PORT, config.DB_USER, config.DB_NAME)
+            return pool
+        except Exception as e:
+            logger.warning("Could not connect to MariaDB at %s:%s (user=%s, db=%s): %s", host, config.DB_PORT, config.DB_USER, config.DB_NAME, e)
+
+    return None
+
+
+async def get_db_pool():
+    """Returns active DB pool, attempting to reconnect if not connected or closed."""
+    global db_pool, watcher
+    if db_pool is not None:
+        try:
+            if not db_pool._closed:
+                return db_pool
+        except Exception:
+            pass
+    db_pool = await init_db_pool()
+    if watcher is not None and db_pool is not None:
+        watcher.db_pool = db_pool
+    return db_pool
 
 
 async def get_volunteer_role(guild: discord.Guild) -> Optional[discord.Role]:
@@ -92,10 +122,11 @@ async def get_guild_member(user_id: int) -> Optional[discord.Member]:
 
 async def is_discord_user_linked(discord_id: int) -> Tuple[bool, Optional[int], Optional[str]]:
     """Checks if a Discord user is linked to a BOINC account. Returns (is_linked, boinc_uid, volunteer_name)."""
-    if db_pool is None:
+    pool = await get_db_pool()
+    if pool is None:
         return False, None, None
     try:
-        async with db_pool.acquire() as conn:
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT l.boinc_user_id, u.name "
@@ -119,7 +150,8 @@ async def link_discord_user(
     Validates a 6-digit PIN and links the Discord account to the BOINC account.
     Returns: (success, message, boinc_user_id, volunteer_name)
     """
-    if db_pool is None:
+    pool = await get_db_pool()
+    if pool is None:
         return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
 
     clean_pin = pin.strip()
@@ -127,7 +159,7 @@ async def link_discord_user(
         return False, "Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`).", None, None
 
     try:
-        async with db_pool.acquire() as conn:
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 # 1. Check if this Discord user is already linked to another BOINC account
                 await cur.execute(
@@ -196,11 +228,12 @@ async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int]
     Unlinks a Discord account from its BOINC account.
     Returns: (success, message, boinc_user_id, volunteer_name)
     """
-    if db_pool is None:
+    pool = await get_db_pool()
+    if pool is None:
         return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
 
     try:
-        async with db_pool.acquire() as conn:
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT l.boinc_user_id, u.name "
@@ -234,7 +267,11 @@ async def unlink_queue_loop():
     Removes the Volunteer role from the member on Discord, and purges the row from the database.
     This keeps Discord bot credentials completely off the web server.
     """
-    if not config.DISCORD_GUILD_ID or db_pool is None:
+    if not config.DISCORD_GUILD_ID:
+        return
+
+    pool = await get_db_pool()
+    if pool is None:
         return
 
     guild = bot.get_guild(config.DISCORD_GUILD_ID)
@@ -249,7 +286,7 @@ async def unlink_queue_loop():
     volunteer_role = await get_volunteer_role(guild)
 
     try:
-        async with db_pool.acquire() as conn:
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT id, discord_id, boinc_user_id FROM camicia_discord_links WHERE unlinked_at IS NOT NULL"

@@ -74,9 +74,41 @@ if not PROJECT_DOMAIN or PROJECT_DOMAIN in ("127.0.0.1", "localhost"):
     PROJECT_DOMAIN = "camicia.dev"
 PROJECT_ICON_URL = f"https://{PROJECT_DOMAIN}/favicon_round.png"
 
-# MariaDB (optional user lookup)
-DB_HOST = os.getenv("MARIADB_HOST", os.getenv("DATABASE_CONTAINER_NAME", "127.0.0.1"))
+# MariaDB configuration
+DB_HOST = os.getenv("MARIADB_HOST", os.getenv("DATABASE_CONTAINER_NAME", "database"))
 DB_PORT = int(os.getenv("MARIADB_PORT", "3306"))
-DB_USER = os.getenv("MARIADB_USER", "boincadm")
+DB_USER = os.getenv("MARIADB_USER", "")
 DB_PASSWD = os.getenv("MARIADB_PASSWORD", "")
 DB_NAME = os.getenv("MARIADB_DATABASE", "camicia")
+
+# Fallback 1: Read database credentials directly from project config.xml if available
+config_xml = CAMICIA_PROJECT_DIR / "config.xml"
+if config_xml.exists():
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(config_xml)
+        cfg = tree.getroot().find("config")
+        if cfg is not None:
+            xml_host = cfg.findtext("db_host")
+            xml_user = cfg.findtext("db_user")
+            xml_pass = cfg.findtext("db_passwd")
+            xml_name = cfg.findtext("db_name")
+            if not DB_PASSWD and xml_pass:
+                DB_PASSWD = xml_pass
+            if not DB_USER and xml_user:
+                DB_USER = xml_user
+            if (not DB_HOST or DB_HOST in ("127.0.0.1", "localhost")) and xml_host:
+                DB_HOST = xml_host
+            if (not DB_NAME or DB_NAME == "camicia") and xml_name:
+                DB_NAME = xml_name
+    except Exception:
+        pass
+
+# Fallback 2: Check MARIADB_ROOT_PASSWORD from environment
+if not DB_PASSWD:
+    DB_PASSWD = os.getenv("MARIADB_ROOT_PASSWORD", "")
+    if DB_PASSWD and not DB_USER:
+        DB_USER = "root"
+
+if not DB_USER:
+    DB_USER = "root"
