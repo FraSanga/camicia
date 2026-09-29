@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import discord
 
 import config
-from config import PROJECT_ICON_URL, REAL_WORLD_RECORD_CARDS
+from config import REAL_WORLD_RECORD_CARDS
 
 logger = logging.getLogger("camicia.watcher")
 
@@ -20,10 +20,12 @@ class RecordsWatcher:
         project_dir: Path,
         state_file: Path,
         db_pool: Optional[Any] = None,
+        icon_provider: Optional[Any] = None,
     ):
         self.project_dir = Path(project_dir)
         self.state_file = Path(state_file)
         self.db_pool = db_pool
+        self.icon_provider = icon_provider
 
         self.longest_history_file = self.project_dir / "records_longest_history.txt"
         self.longest_file = self.project_dir / "records_longest.txt"
@@ -190,6 +192,14 @@ class RecordsWatcher:
             logger.error("Failed to parse loop line '%s': %s", line, e)
             return None
 
+    def _get_icon_url(self) -> Optional[str]:
+        if callable(self.icon_provider):
+            try:
+                return self.icon_provider()
+            except Exception:
+                pass
+        return None
+
     async def build_longest_embed(self, record: Dict[str, Any]) -> discord.Embed:
         """Constructs a Discord Embed for a new longest game record."""
         cards = record["cards"]
@@ -201,7 +211,6 @@ class RecordsWatcher:
 
         volunteer_str = await self.resolve_username(userid)
         is_world_record = cards > REAL_WORLD_RECORD_CARDS
-
         dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         time_tag = f"<t:{timestamp}:F> (<t:{timestamp}:R>)"
 
@@ -236,7 +245,7 @@ class RecordsWatcher:
 
         embed.set_footer(
             text="Camicia BOINC Project • Beggar-My-Neighbour Search",
-            icon_url=config.PROJECT_ICON_URL,
+            icon_url=self._get_icon_url(),
         )
         return embed
 
@@ -267,7 +276,7 @@ class RecordsWatcher:
 
         embed.set_footer(
             text="Camicia BOINC Project • Infinite Cycle Proof",
-            icon_url=config.PROJECT_ICON_URL,
+            icon_url=self._get_icon_url(),
         )
         return embed
 

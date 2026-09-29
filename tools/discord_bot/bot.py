@@ -34,6 +34,13 @@ lucky_mgr = LuckyManager(config.LUCKY_STATE_FILE)
 db_pool = None
 
 
+def get_bot_avatar_url() -> Optional[str]:
+    """Returns the bot's own Discord CDN avatar URL, eliminating external HTTP fetches."""
+    if bot.user and bot.user.display_avatar:
+        return bot.user.display_avatar.url
+    return None
+
+
 async def init_db_pool():
     """Initializes MariaDB connection pool with fallback hosts and clear logging."""
     if not config.DB_PASSWD:
@@ -503,7 +510,7 @@ async def records_cmd(interaction: discord.Interaction):
 
     embed.set_footer(
         text="Camicia BOINC Project",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     await interaction.response.send_message(embed=embed)
 
@@ -622,7 +629,7 @@ async def lucky_cmd(interaction: discord.Interaction):
 
     embed.set_footer(
         text=footer_text,
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
 
     await interaction.followup.send(embed=embed)
@@ -656,7 +663,7 @@ async def lucky_cmd(interaction: discord.Interaction):
                 b_embed.add_field(name="⏱️ Verified At", value=time_tag, inline=False)
                 b_embed.set_footer(
                     text="Camicia BOINC Project • /lucky Discovery",
-                    icon_url=config.PROJECT_ICON_URL,
+                    icon_url=get_bot_avatar_url(),
                 )
             else:
                 b_content = "@everyone"
@@ -676,7 +683,7 @@ async def lucky_cmd(interaction: discord.Interaction):
                 b_embed.add_field(name="⏱️ Discovered", value=time_tag, inline=False)
                 b_embed.set_footer(
                     text="Camicia BOINC Project • /lucky Record",
-                    icon_url=config.PROJECT_ICON_URL,
+                    icon_url=get_bot_avatar_url(),
                 )
                 if watcher:
                     watcher.state["last_best_cards"] = cards
@@ -718,7 +725,7 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
 
     embed.set_footer(
         text="Camicia BOINC Project • /lucky",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     await interaction.response.send_message(embed=embed)
 
@@ -756,7 +763,7 @@ def get_link_instructions_embed() -> discord.Embed:
     )
     embed.set_footer(
         text="Camicia BOINC Project • Verification codes expire in 15 minutes",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     return embed
 
@@ -775,7 +782,7 @@ def get_already_linked_embed(boinc_uid: int, volunteer_name: Optional[str]) -> d
     )
     embed.set_footer(
         text="Camicia BOINC Project • Account Active",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     return embed
 
@@ -824,7 +831,7 @@ async def execute_link_flow(
     )
     embed.set_footer(
         text="Camicia BOINC Project • Thank you for your contribution!",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     logger.info("User %s linked to BOINC account #%s (%s)", user, boinc_uid, volunteer_name)
     return True, embed
@@ -856,7 +863,7 @@ async def execute_unlink_flow(
     embed.add_field(name="Status", value="Volunteer role removed • /lucky rolls reset to 3/day", inline=False)
     embed.set_footer(
         text=f"You can re-link anytime at {link_url}",
-        icon_url=config.PROJECT_ICON_URL,
+        icon_url=get_bot_avatar_url(),
     )
     logger.info("User %s unlinked from BOINC account #%s (%s)", user, boinc_uid, volunteer_name)
     return True, embed
@@ -980,6 +987,7 @@ async def main():
         project_dir=config.CAMICIA_PROJECT_DIR,
         state_file=config.WATCHER_STATE_FILE,
         db_pool=db_pool,
+        icon_provider=get_bot_avatar_url,
     )
 
     async with bot:
