@@ -3,7 +3,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -59,6 +59,168 @@ async def init_db_pool():
     except Exception as e:
         logger.warning("Could not connect to MariaDB (%s). Running with volunteer ID fallback.", e)
         return None
+
+
+async def get_volunteer_role(guild: discord.Guild) -> Optional[discord.Role]:
+    """Finds the Volunteer role by ID or by name 'Volunteer'."""
+    if config.DISCORD_VOLUNTEER_ROLE_ID:
+        role = guild.get_role(config.DISCORD_VOLUNTEER_ROLE_ID)
+        if role:
+            return role
+    return discord.utils.get(guild.roles, name="Volunteer")
+
+
+async def get_guild_member(user_id: int) -> Optional[discord.Member]:
+    """Gets the Member object for a user in the configured guild."""
+    if not config.DISCORD_GUILD_ID:
+        return None
+    guild = bot.get_guild(config.DISCORD_GUILD_ID)
+    if guild is None:
+        try:
+            guild = await bot.fetch_guild(config.DISCORD_GUILD_ID)
+        except Exception as e:
+            logger.warning("Could not fetch guild %s: %s", config.DISCORD_GUILD_ID, e)
+            return None
+    member = guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(user_id)
+        except Exception:
+            return None
+    return member
+
+
+async def is_discord_user_linked(discord_id: int) -> Tuple[bool, Optional[int], Optional[str]]:
+    """Checks if a Discord user is linked to a BOINC account. Returns (is_linked, boinc_uid, volunteer_name)."""
+    if db_pool is None:
+        return False, None, None
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT l.boinc_user_id, u.name "
+                    "FROM camicia_discord_links l "
+                    "LEFT JOIN user u ON u.id = l.boinc_user_id "
+                    "WHERE l.discord_id = %s AND l.linked_at IS NOT NULL",
+                    (discord_id,),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return True, row[0], row[1]
+    except Exception as e:
+        logger.debug("Error checking discord user link for %s: %s", discord_id, e)
+    return False, None, None
+
+
+async def link_discord_user(
+    discord_id: int, discord_username: str, pin: str
+) -> Tuple[bool, str, Optional[int], Optional[str]]:
+    """
+    Validates a 6-digit PIN and links the Discord account to the BOINC account.
+    Returns: (success, message, boinc_user_id, volunteer_name)
+    """
+    if db_pool is None:
+        return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
+
+    clean_pin = pin.strip()
+    if not clean_pin.isdigit() or len(clean_pin) != 6:
+        return False, "Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`).", None, None
+
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # 1. Check if this Discord user is already linked to another BOINC account
+                await cur.execute(
+                    "SELECT boinc_user_id FROM camicia_discord_links WHERE discord_id = %s AND linked_at IS NOT NULL",
+                    (discord_id,),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return (
+                        False,
+                        f"Your Discord account is already linked to BOINC volunteer #{row[0]}. Run `/unlink` first if you wish to switch accounts.",
+                        None,
+                        None,
+                    )
+
+                # 2. Look up the PIN in camicia_discord_links
+                await cur.execute(
+                    "SELECT l.boinc_user_id, l.pin_expires_at, l.linked_at, u.name "
+                    "FROM camicia_discord_links l "
+                    "LEFT JOIN user u ON u.id = l.boinc_user_id "
+                    "WHERE l.pin = %s",
+                    (clean_pin,),
+                )
+                rows = await cur.fetchall()
+                if not rows:
+                    return False, "❌ Invalid verification code. Please check that you entered the code correctly.", None, None
+
+                if len(rows) > 1:
+                    logger.warning("Collision detected for PIN %s across %d rows: %s", clean_pin, len(rows), [r[0] for r in rows])
+                    return (
+                        False,
+                        "❌ Code collision detected. For security, please request a fresh code on the website and try again.",
+                        None,
+                        None,
+                    )
+
+                boinc_user_id, pin_expires_at, linked_at, volunteer_name = rows[0]
+                volunteer_name = volunteer_name or f"Volunteer #{boinc_user_id}"
+
+                if linked_at is not None:
+                    return False, "❌ This verification code has already been used.", None, None
+
+                now_utc = datetime.now(timezone.utc)
+                if pin_expires_at and pin_expires_at.replace(tzinfo=timezone.utc) < now_utc:
+                    return False, "❌ This verification code has expired (valid for 15 minutes). Please request a new code on the website.", None, None
+
+                # 3. Complete the link
+                await cur.execute(
+                    "UPDATE camicia_discord_links "
+                    "SET discord_id = %s, discord_username = %s, linked_at = NOW(), pin = NULL, pin_expires_at = NULL "
+                    "WHERE boinc_user_id = %s",
+                    (discord_id, discord_username, boinc_user_id),
+                )
+                return True, "Success", boinc_user_id, volunteer_name
+
+    except Exception as e:
+        logger.exception("Error linking discord user %s: %s", discord_id, e)
+        return False, "An unexpected error occurred while linking accounts. Please try again later.", None, None
+
+
+async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int], Optional[str]]:
+    """
+    Unlinks a Discord account from its BOINC account.
+    Returns: (success, message, boinc_user_id, volunteer_name)
+    """
+    if db_pool is None:
+        return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
+
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT l.boinc_user_id, u.name "
+                    "FROM camicia_discord_links l "
+                    "LEFT JOIN user u ON u.id = l.boinc_user_id "
+                    "WHERE l.discord_id = %s AND l.linked_at IS NOT NULL",
+                    (discord_id,),
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return False, "❌ Your Discord account is not currently linked to any Camicia BOINC account.", None, None
+
+                boinc_user_id, volunteer_name = row
+                volunteer_name = volunteer_name or f"Volunteer #{boinc_user_id}"
+
+                await cur.execute(
+                    "DELETE FROM camicia_discord_links WHERE discord_id = %s",
+                    (discord_id,),
+                )
+                return True, "Success", boinc_user_id, volunteer_name
+    except Exception as e:
+        logger.exception("Error unlinking discord user %s: %s", discord_id, e)
+        return False, "An unexpected error occurred while unlinking accounts. Please try again later.", None, None
 
 
 @tasks.loop(seconds=config.POLL_INTERVAL_SECONDS)
@@ -127,6 +289,30 @@ def is_bot_commands_channel():
         target_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
         raise app_commands.CheckFailure(
             f"❌ Bot commands can only be used in {target_mention} to keep discussions clean!"
+        )
+    return app_commands.check(predicate)
+
+
+def is_bot_commands_or_dm():
+    """Allows command execution in the #bot-commands channel OR in Direct Messages (DMs)."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        # Direct Messages (DMs) are always allowed
+        if interaction.guild is None:
+            return True
+
+        # Administrators can test anywhere
+        if interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
+            return True
+
+        allowed_id = config.DISCORD_BOT_COMMANDS_CHANNEL_ID
+        if allowed_id and interaction.channel_id == allowed_id:
+            return True
+        if interaction.channel and getattr(interaction.channel, "name", "") == "bot-commands":
+            return True
+
+        target_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
+        raise app_commands.CheckFailure(
+            f"❌ This command can only be used in {target_mention} or in a Direct Message (DM) to CamiciaBot!"
         )
     return app_commands.check(predicate)
 
@@ -212,17 +398,24 @@ async def records_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="lucky", description="Draw a random Beggar-My-Neighbour deal and test your luck! (3 rolls/day)")
+@bot.tree.command(name="lucky", description="Draw a random Beggar-My-Neighbour deal and test your luck! (3-5 rolls/day)")
 @is_bot_commands_channel()
 @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
 async def lucky_cmd(interaction: discord.Interaction):
-    can_roll, used_att, max_att = lucky_mgr.can_roll(interaction.user.id)
+    # Check if user is linked to BOINC account
+    is_linked, boinc_uid, vol_name = await is_discord_user_linked(interaction.user.id)
+
+    can_roll, used_att, max_att = lucky_mgr.can_roll(interaction.user.id, is_linked=is_linked)
     if not can_roll:
         next_ts = lucky_mgr.next_midnight_timestamp()
+        if not is_linked:
+            bonus_hint = "\n\n💡 *Tip: Link your BOINC account with `/link` to unlock 5 daily rolls!*"
+        else:
+            bonus_hint = ""
         await interaction.response.send_message(
             f"⏳ **Daily Limit Reached!**\n"
             f"You have used all **{max_att} of your /lucky attempts** for today.\n"
-            f"Your rolls will reset at **00:00 UTC** (<t:{next_ts}:R>).",
+            f"Your rolls will reset at **00:00 UTC** (<t:{next_ts}:R>).{bonus_hint}",
             ephemeral=True,
         )
         return
@@ -251,6 +444,7 @@ async def lucky_cmd(interaction: discord.Interaction):
         tricks,
         deal_index_str,
         status,
+        is_linked=is_linked,
     )
 
     # Check and award roles: Loop Discoverer or Record Holder
@@ -309,8 +503,14 @@ async def lucky_cmd(interaction: discord.Interaction):
     index_display = deal_index_str if len(deal_index_str) <= 30 else f"{deal_index_str[:27]}..."
     embed.add_field(name="🔢 Deal Index", value=f"`{index_display}`", inline=True)
 
+    footer_text = f"Attempt {used_att}/{max_att} today • Resets at 00:00 UTC"
+    if is_linked:
+        footer_text += " • Volunteer Bonus Active"
+    else:
+        footer_text += " • Link BOINC account for 5 rolls/day"
+
     embed.set_footer(
-        text=f"Attempt {used_att}/{max_att} today • Resets at 00:00 UTC",
+        text=footer_text,
         icon_url=config.PROJECT_ICON_URL,
     )
 
@@ -409,6 +609,115 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
         icon_url=config.PROJECT_ICON_URL,
     )
     await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="link", description="Link your Discord account to your Camicia BOINC volunteer account")
+@app_commands.describe(code="The 6-digit verification code sent to your registered BOINC email")
+@is_bot_commands_or_dm()
+async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None):
+    """Links Discord account to BOINC profile using email verification code, or shows instructions."""
+    if code is None or not code.strip():
+        embed = discord.Embed(
+            title="🔗 Link Your Camicia BOINC Account",
+            description=(
+                "Connect your account to earn the **Volunteer** role on Discord "
+                "and unlock **5 daily rolls** on `/lucky` (instead of 3)!\n\n"
+                "**How to link:**\n"
+                "1️⃣ Log in to your account at **https://camicia.dev** (or your staging URL)\n"
+                "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account**.\n"
+                "3️⃣ Click **Send Verification Code via Email** to receive your 6-digit PIN.\n"
+                "4️⃣ Return here (in `#bot-commands` or in a Direct Message to me) and run:\n"
+                "```\n/link <your-6-digit-code>\n```\n"
+                "*(When typing `/link`, select the `code` parameter and enter your digits, e.g. `/link 123456`)*"
+            ),
+            color=0x1B4332,
+        )
+        embed.set_footer(
+            text="Camicia BOINC Project • Verification codes expire in 15 minutes",
+            icon_url=config.PROJECT_ICON_URL,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    discord_username = str(interaction.user)
+    success, msg, boinc_uid, volunteer_name = await link_discord_user(
+        interaction.user.id, discord_username, code
+    )
+
+    if not success:
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    # Assign Volunteer role on guild
+    role_status = "Volunteer role granted 🏅"
+    member = await get_guild_member(interaction.user.id)
+    if member and member.guild:
+        volunteer_role = await get_volunteer_role(member.guild)
+        if volunteer_role:
+            try:
+                await member.add_roles(volunteer_role, reason="Linked Camicia BOINC account")
+                role_status = f"Assigned **@{volunteer_role.name}** role 🏅"
+            except Exception as e:
+                logger.warning("Could not add Volunteer role to %s: %s", member, e)
+                role_status = "⚠️ Linked, but could not assign role (bot lacks Manage Roles permission)"
+        else:
+            role_status = "⚠️ Linked, but 'Volunteer' role was not found on server"
+
+    embed = discord.Embed(
+        title="🎉 Account Linked Successfully!",
+        description=(
+            f"Welcome, **{volunteer_name}**! Your Discord account is now linked to your Camicia BOINC profile (ID: `{boinc_uid}`)."
+        ),
+        color=0x2ECC71,  # Emerald Green
+    )
+    embed.add_field(name="🏅 Server Role", value=role_status, inline=False)
+    embed.add_field(
+        name="🎲 Lucky Mini-Game",
+        value="**5 attempts/day** unlocked (+2 bonus rolls every day!)",
+        inline=False,
+    )
+    embed.set_footer(
+        text="Camicia BOINC Project • Thank you for your contribution!",
+        icon_url=config.PROJECT_ICON_URL,
+    )
+    await interaction.followup.send(embed=embed, ephemeral=True)
+    logger.info("User %s linked to BOINC account #%s (%s)", interaction.user, boinc_uid, volunteer_name)
+
+
+@bot.tree.command(name="unlink", description="Unlink your Discord account from your Camicia BOINC account")
+@is_bot_commands_or_dm()
+async def unlink_cmd(interaction: discord.Interaction):
+    """Unlinks Discord account from BOINC profile."""
+    await interaction.response.defer(ephemeral=True)
+    success, msg, boinc_uid, volunteer_name = await unlink_discord_user(interaction.user.id)
+
+    if not success:
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    # Remove Volunteer role if present
+    member = await get_guild_member(interaction.user.id)
+    if member and member.guild:
+        volunteer_role = await get_volunteer_role(member.guild)
+        if volunteer_role and volunteer_role in member.roles:
+            try:
+                await member.remove_roles(volunteer_role, reason="Unlinked Camicia BOINC account")
+            except Exception as e:
+                logger.warning("Could not remove Volunteer role from %s: %s", member, e)
+
+    embed = discord.Embed(
+        title="✅ Account Unlinked",
+        description=f"Your Discord account has been disconnected from BOINC volunteer **{volunteer_name}**.",
+        color=0x95A5A6,
+    )
+    embed.add_field(name="Status", value="Volunteer role removed • /lucky rolls reset to 3/day", inline=False)
+    embed.set_footer(
+        text="You can re-link anytime from your account page at https://camicia.dev",
+        icon_url=config.PROJECT_ICON_URL,
+    )
+    await interaction.followup.send(embed=embed, ephemeral=True)
+    logger.info("User %s unlinked from BOINC account #%s (%s)", interaction.user, boinc_uid, volunteer_name)
 
 
 @bot.tree.error

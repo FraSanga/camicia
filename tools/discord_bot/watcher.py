@@ -116,10 +116,19 @@ class RecordsWatcher:
             try:
                 async with self.db_pool.acquire() as conn:
                     async with conn.cursor() as cur:
-                        await cur.execute("SELECT name FROM user WHERE id = %s", (userid,))
+                        await cur.execute(
+                            "SELECT u.name, l.discord_id "
+                            "FROM user u "
+                            "LEFT JOIN camicia_discord_links l ON l.boinc_user_id = u.id AND l.linked_at IS NOT NULL "
+                            "WHERE u.id = %s",
+                            (userid,),
+                        )
                         row = await cur.fetchone()
                         if row and row[0]:
-                            username = f"{row[0]} (ID: {userid})"
+                            if row[1]:
+                                username = f"{row[0]} (<@{row[1]}>)"
+                            else:
+                                username = f"{row[0]} (ID: {userid})"
                             self.user_cache[userid] = username
                             return username
             except Exception as e:

@@ -29,6 +29,11 @@ DISCORD_BOT_COMMANDS_CHANNEL_ID = (
     int(DISCORD_BOT_COMMANDS_CHANNEL_ID_RAW) if DISCORD_BOT_COMMANDS_CHANNEL_ID_RAW.isdigit() else 0
 )
 
+DISCORD_VOLUNTEER_ROLE_ID_RAW = os.getenv("DISCORD_VOLUNTEER_ROLE_ID", "").strip()
+DISCORD_VOLUNTEER_ROLE_ID = (
+    int(DISCORD_VOLUNTEER_ROLE_ID_RAW) if DISCORD_VOLUNTEER_ROLE_ID_RAW.isdigit() else 0
+)
+
 # Project path resolution (where records_longest_history.txt / records_loops.txt reside)
 candidate_paths = [
     os.getenv("CAMICIA_PROJECT_DIR", "").strip(),

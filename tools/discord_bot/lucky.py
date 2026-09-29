@@ -11,6 +11,7 @@ from engine import get_rarity
 logger = logging.getLogger("camicia.lucky")
 
 DEFAULT_DAILY_ATTEMPTS = 3
+LINKED_DAILY_ATTEMPTS = 5
 
 
 class LuckyManager:
@@ -66,21 +67,20 @@ class LuckyManager:
             }
             self._save_state()
 
-    def get_max_attempts(self, user_id: int) -> int:
+    def get_max_attempts(self, user_id: int, is_linked: bool = False) -> int:
         """
         Returns max attempts for user today.
-        Base is 3. Extensible for BOINC volunteer cruncher bonus (+2 if active today).
+        Base is 3. Linked BOINC volunteers get 5 (+2 bonus rolls).
         """
-        # Future: check if user linked BOINC account and completed at least 1 workunit today
-        return DEFAULT_DAILY_ATTEMPTS
+        return LINKED_DAILY_ATTEMPTS if is_linked else DEFAULT_DAILY_ATTEMPTS
 
-    def can_roll(self, user_id: int) -> Tuple[bool, int, int]:
+    def can_roll(self, user_id: int, is_linked: bool = False) -> Tuple[bool, int, int]:
         """Returns (can_roll, used_attempts, max_attempts)."""
         self._ensure_current_day()
         uid_str = str(user_id)
         user_info = self.state["users"].get(uid_str, {})
         used = user_info.get("attempts", 0)
-        max_att = self.get_max_attempts(user_id)
+        max_att = self.get_max_attempts(user_id, is_linked=is_linked)
         return (used < max_att, used, max_att)
 
     def record_roll(
@@ -91,6 +91,7 @@ class LuckyManager:
         tricks: int,
         deal_index: str,
         status: str,
+        is_linked: bool = False,
     ) -> Tuple[int, int, Optional[int]]:
         """
         Records a roll for today.
@@ -114,7 +115,7 @@ class LuckyManager:
             user_info["best_cards"] = cards
 
         used = user_info["attempts"]
-        max_att = self.get_max_attempts(user_id)
+        max_att = self.get_max_attempts(user_id, is_linked=is_linked)
 
         # Update leaderboard: keep each user's highest roll of the day
         lb = self.state.setdefault("leaderboard", [])

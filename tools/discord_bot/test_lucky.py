@@ -38,10 +38,28 @@ class TestLuckyManager(unittest.TestCase):
         self.assertEqual(used, 2)
         self.manager.record_roll(user_id, username, 150, 20, "125", "finished")
 
-        # Attempt 4 (Exceeded)
+        # Attempt 4 (Exceeded for unlinked user)
         can_roll, used, max_att = self.manager.can_roll(user_id)
         self.assertFalse(can_roll)
         self.assertEqual(used, 3)
+
+    def test_linked_user_attempts(self):
+        user_id = 99999
+        username = "LinkedVolunteer"
+
+        # Verify linked user can roll up to 5 times
+        for i in range(5):
+            can_roll, used, max_att = self.manager.can_roll(user_id, is_linked=True)
+            self.assertTrue(can_roll)
+            self.assertEqual(used, i)
+            self.assertEqual(max_att, 5)
+            self.manager.record_roll(user_id, username, 100 + i, 10, f"idx_{i}", "finished", is_linked=True)
+
+        # Attempt 6 should be blocked
+        can_roll, used, max_att = self.manager.can_roll(user_id, is_linked=True)
+        self.assertFalse(can_roll)
+        self.assertEqual(used, 5)
+        self.assertEqual(max_att, 5)
 
     def test_daily_leaderboard_sorting(self):
         self.manager.record_roll(1, "Alice", 200, 30, "idx1", "finished")
