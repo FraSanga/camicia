@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -37,8 +38,81 @@ db_pool = None
 LINK_LOCKOUT_MAX_ATTEMPTS = 5
 LINK_LOCKOUT_DURATION_SECONDS = 900  # 15 minutes in seconds
 UNLINK_COOLDOWN_SECONDS = 3600  # 1 hour cooldown after unlinking
+LINK_SPAM_COOLDOWN_SECONDS = 3.0  # 3s per-user cooldown on /link
+UNLINK_SPAM_COOLDOWN_SECONDS = 5.0  # 5s per-user cooldown on /unlink
+SPAM_STRIKE_MAX_ATTEMPTS = 5  # 5 strikes trigger temporary ignore
+SPAM_STRIKE_WINDOW_SECONDS = 300.0  # 5 minutes sliding window for strikes
+SPAM_MUTE_DURATION_SECONDS = 900  # 15 minutes temporary ignore
 
 _failed_link_attempts: dict[int, list[float]] = {}
+_dm_cooldowns: dict[Tuple[int, str], float] = {}
+_user_spam_strikes: dict[int, list[float]] = {}
+_user_mute_until: dict[int, float] = {}
+
+
+def check_user_muted(discord_id: int) -> Tuple[bool, int]:
+    """
+    Checks if a user is currently muted/ignored for spamming.
+    Returns (is_muted, remaining_seconds).
+    If the mute duration has expired, clears mute and strikes and returns (False, 0).
+    """
+    now = time.monotonic()
+    mute_expiry = _user_mute_until.get(discord_id, 0.0)
+    if now < mute_expiry:
+        return True, max(1, int(round(mute_expiry - now)))
+    if discord_id in _user_mute_until:
+        _user_mute_until.pop(discord_id, None)
+        _user_spam_strikes.pop(discord_id, None)
+    return False, 0
+
+
+def record_spam_strike(discord_id: int) -> Tuple[int, bool, int]:
+    """
+    Records an abusive spam attempt (e.g. repeated unlinking when unlinked,
+    hammering while on cooldown, or spamming /link on active unlink cooldown).
+    Returns (current_strike_count, is_now_muted, remaining_mute_seconds).
+    """
+    now = time.monotonic()
+    is_muted, rem = check_user_muted(discord_id)
+    if is_muted:
+        return SPAM_STRIKE_MAX_ATTEMPTS, True, rem
+
+    strikes = [t for t in _user_spam_strikes.get(discord_id, []) if now - t < SPAM_STRIKE_WINDOW_SECONDS]
+    strikes.append(now)
+    _user_spam_strikes[discord_id] = strikes
+
+    if len(strikes) >= SPAM_STRIKE_MAX_ATTEMPTS:
+        _user_mute_until[discord_id] = now + SPAM_MUTE_DURATION_SECONDS
+        _user_spam_strikes.pop(discord_id, None)
+        return SPAM_STRIKE_MAX_ATTEMPTS, True, SPAM_MUTE_DURATION_SECONDS
+
+    return len(strikes), False, 0
+
+
+def clear_spam_strikes(discord_id: int):
+    """Resets strikes and mute for a user (e.g. on successful link or unlink)."""
+    _user_spam_strikes.pop(discord_id, None)
+    _user_mute_until.pop(discord_id, None)
+
+
+def check_dm_cooldown(discord_id: int, action: str, cooldown_seconds: float) -> Tuple[bool, float]:
+    """
+    Checks if a user is currently on cooldown for a given action in DMs.
+    Returns (is_on_cooldown, remaining_seconds).
+    If not on cooldown, sets the cooldown and returns (False, 0.0).
+    """
+    now = time.monotonic()
+    if len(_dm_cooldowns) > 500:
+        expired = [k for k, exp in _dm_cooldowns.items() if now >= exp]
+        for k in expired:
+            _dm_cooldowns.pop(k, None)
+
+    key = (discord_id, action)
+    expire_at = _dm_cooldowns.get(key, 0.0)
+    if now < expire_at:
+        return True, expire_at - now
+    _dm_cooldowns[key] = now + cooldown_seconds
+    return False, 0.0
 
 
 def check_link_lockout(discord_id: int) -> Tuple[bool, int]:
@@ -282,7 +356,7 @@ def get_already_linked_embed(boinc_uid: int, volunteer_name: Optional[str]) -> d
     return embed
 
 
-def get_unlink_cooldown_embed(remaining_seconds: int, account_type: str = "Discord") -> discord.Embed:
+def get_unlink_cooldown_embed(remaining_seconds: int, account_type: str = "Discord", strike_count: int = 0) -> discord.Embed:
     link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php")
     rem_min = max(1, (remaining_seconds + 59) // 60)
     now_ts = int(datetime.now(timezone.utc).timestamp())
@@ -307,6 +381,15 @@ def get_unlink_cooldown_embed(remaining_seconds: int, account_type: str = "Disco
         value=f"**{rem_min} minute{'s' if rem_min != 1 else ''}** ({remaining_seconds}s) • Unlocks <t:{unfreeze_ts}:R> (<t:{unfreeze_ts}:T>)",
         inline=False,
     )
+    if strike_count > 0:
+        embed.add_field(
+            name="⚠️ Anti-Spam Notice",
+            value=(
+                f"Please wait for the cooldown to expire. Continued repeated requests will cause the bot "
+                f"to ignore your messages for 15 minutes. (**Strike {strike_count}/5**)"
+            ),
+            inline=False,
+        )
     embed.add_field(
         name="🔗 Next Steps",
         value=(
@@ -317,6 +400,37 @@ def get_unlink_cooldown_embed(remaining_seconds: int, account_type: str = "Disco
     )
     embed.set_footer(
         text=f"Camicia BOINC Project • Anti-Abuse Cooldown",
+        icon_url=get_bot_avatar_url(),
+    )
+    return embed
+
+
+def get_spam_muted_embed(remaining_seconds: int) -> discord.Embed:
+    rem_min = max(1, (remaining_seconds + 59) // 60)
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    unlock_ts = now_ts + remaining_seconds
+
+    embed = discord.Embed(
+        title="🔇 Commands Temporarily Ignored",
+        description=(
+            "You have sent too many repeated or spammed requests in a short period.\n\n"
+            "To prevent service disruption, CamiciaBot will temporarily ignore commands "
+            "and messages from your Discord account."
+        ),
+        color=0xE74C3C,  # Crimson Red
+    )
+    embed.add_field(
+        name="⏱️ Ignored Remaining",
+        value=f"**{rem_min} minute{'s' if rem_min != 1 else ''}** ({remaining_seconds}s) • Resumes <t:{unlock_ts}:R> (<t:{unlock_ts}:T>)",
+        inline=False,
+    )
+    embed.add_field(
+        name="💡 What should I do?",
+        value="Please take a break. Access to the bot will automatically resume once the timer expires.",
+        inline=False,
+    )
+    embed.set_footer(
+        text="Camicia BOINC Project • Anti-Spam Protection",
         icon_url=get_bot_avatar_url(),
     )
     return embed
@@ -364,7 +478,16 @@ async def link_discord_user(
     Enforces brute-force lockout (5 attempts -> 15 min) and 1-hour unlink cooldown.
     Returns: (success, message_or_embed, boinc_user_id, volunteer_name)
     """
-    # 0. Check brute-force lockout
+    # 0. Check spam mute & brute-force lockout
+    is_muted, remaining_mute = check_user_muted(discord_id)
+    if is_muted:
+        return (
+            False,
+            get_spam_muted_embed(remaining_mute),
+            None,
+            None,
+        )
+
     is_locked, remaining_lockout = check_link_lockout(discord_id)
     if is_locked:
         return (
@@ -374,9 +497,24 @@ async def link_discord_user(
             None,
         )
 
-    clean_pin = pin.strip()
+    clean_pin = pin.strip().replace(" ", "").replace("-", "").lstrip("#")
     if not clean_pin.isdigit() or len(clean_pin) != 6:
-        return False, "❌ Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`).", None, None
+        rem_att = record_failed_link_attempt(discord_id)
+        if rem_att > 0:
+            return (
+                False,
+                f"❌ **Invalid verification code format.** The code must be a 6-digit number (e.g. `/link 123456`).\n"
+                f"*(**{rem_att}** attempt{'s' if rem_att != 1 else ''} remaining before a 15-minute temporary lockout)*",
+                None,
+                None,
+            )
+        else:
+            return (
+                False,
+                get_lockout_embed(LINK_LOCKOUT_DURATION_SECONDS),
+                None,
+                None,
+            )
 
     pool = await get_db_pool()
     if pool is None:
@@ -400,9 +538,17 @@ async def link_discord_user(
                         diff_sec = (now_utc - u_at).total_seconds()
                         if diff_sec < UNLINK_COOLDOWN_SECONDS:
                             rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
+                            strike_cnt, is_muted, rem_mute = record_spam_strike(discord_id)
+                            if is_muted:
+                                return (
+                                    False,
+                                    get_spam_muted_embed(rem_mute),
+                                    None,
+                                    None,
+                                )
                             return (
                                 False,
-                                get_unlink_cooldown_embed(rem_sec, account_type="Discord"),
+                                get_unlink_cooldown_embed(rem_sec, account_type="Discord", strike_count=strike_cnt),
                                 None,
                                 None,
                             )
@@ -467,9 +613,17 @@ async def link_discord_user(
                     diff_sec = (now_utc - unlinked_at).total_seconds()
                     if diff_sec < UNLINK_COOLDOWN_SECONDS:
                         rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
+                        strike_cnt, is_muted, rem_mute = record_spam_strike(discord_id)
+                        if is_muted:
+                            return (
+                                False,
+                                get_spam_muted_embed(rem_mute),
+                                None,
+                                None,
+                            )
                         return (
                             False,
-                            get_unlink_cooldown_embed(rem_sec, account_type="BOINC"),
+                            get_unlink_cooldown_embed(rem_sec, account_type="BOINC", strike_count=strike_cnt),
                             None,
                             None,
                         )
@@ -499,6 +653,7 @@ async def link_discord_user(
                 )
 
                 clear_failed_link_attempts(discord_id)
+                clear_spam_strikes(discord_id)
                 return True, "Success", boinc_user_id, volunteer_name
 
     except Exception as e:
@@ -506,12 +661,18 @@ async def link_discord_user(
         return False, "An unexpected error occurred while linking accounts. Please try again later.", None, None
 
 
-async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int], Optional[str]]:
+async def unlink_discord_user(
+    discord_id: int,
+) -> Tuple[bool, Union[str, discord.Embed], Optional[int], Optional[str]]:
     """
     Unlinks a Discord account from its BOINC account.
     Records unlinked_at timestamp in MariaDB to enforce the 1-hour anti-abuse cooldown.
-    Returns: (success, message, boinc_user_id, volunteer_name)
+    Returns: (success, message_or_embed, boinc_user_id, volunteer_name)
     """
+    is_muted, rem_mute = check_user_muted(discord_id)
+    if is_muted:
+        return False, get_spam_muted_embed(rem_mute), None, None
+
     pool = await get_db_pool()
     if pool is None:
         return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
@@ -528,7 +689,16 @@ async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int]
                 )
                 row = await cur.fetchone()
                 if not row:
-                    return False, "❌ Your Discord account is not currently linked to any Camicia BOINC account.", None, None
+                    strike_cnt, is_muted, rem_mute = record_spam_strike(discord_id)
+                    if is_muted:
+                        return False, get_spam_muted_embed(rem_mute), None, None
+                    return (
+                        False,
+                        f"❌ **Your Discord account is not currently linked to any Camicia BOINC account.**\n"
+                        f"*(Strike {strike_cnt}/5: Continued repeated requests will cause the bot to ignore your messages for 15 minutes)*",
+                        None,
+                        None,
+                    )
 
                 boinc_user_id, volunteer_name = row
                 volunteer_name = volunteer_name or f"Volunteer #{boinc_user_id}"
@@ -540,6 +710,7 @@ async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int]
                     "WHERE discord_id = %s",
                     (discord_id,),
                 )
+                clear_spam_strikes(discord_id)
                 return True, "Success", boinc_user_id, volunteer_name
     except Exception as e:
         logger.exception("Error unlinking discord user %s: %s", discord_id, e)
@@ -1017,9 +1188,6 @@ async def execute_link_flow(
     user: Union[discord.User, discord.Member], code: str
 ) -> Tuple[bool, Union[discord.Embed, str]]:
     clean_code = code.strip().replace(" ", "").replace("-", "").lstrip("#")
-    if not clean_code.isdigit() or len(clean_code) != 6:
-        return False, "❌ Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`)."
-
     discord_username = str(user)
     success, msg, boinc_uid, volunteer_name = await link_discord_user(
         user.id, discord_username, clean_code
@@ -1102,9 +1270,15 @@ async def execute_unlink_flow(
 
 @bot.tree.command(name="link", description="Link your Discord account to your Camicia BOINC volunteer account (DM only)")
 @app_commands.describe(code="The 6-digit verification code sent to your registered BOINC email")
+@app_commands.checks.cooldown(1, LINK_SPAM_COOLDOWN_SECONDS, key=lambda i: i.user.id)
 @is_dm_only()
 async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None):
     """Links Discord account to BOINC profile using email verification code, or shows instructions."""
+    is_muted, rem = check_user_muted(interaction.user.id)
+    if is_muted:
+        await interaction.response.send_message(embed=get_spam_muted_embed(rem), ephemeral=True)
+        return
+
     if code is None or not code.strip():
         is_linked, b_uid, v_name = await is_discord_user_linked(interaction.user.id)
         if is_linked:
@@ -1113,8 +1287,12 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
         else:
             cooldown_rem = await get_unlink_cooldown_remaining(interaction.user.id)
             if cooldown_rem > 0:
-                embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord")
-                await interaction.response.send_message(embed=embed, view=LinkHelpView())
+                strike_cnt, is_muted_after, rem_mute = record_spam_strike(interaction.user.id)
+                if is_muted_after:
+                    await interaction.response.send_message(embed=get_spam_muted_embed(rem_mute), ephemeral=True)
+                else:
+                    embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord", strike_count=strike_cnt)
+                    await interaction.response.send_message(embed=embed, view=LinkHelpView())
             else:
                 embed = get_link_instructions_embed()
                 await interaction.response.send_message(embed=embed, view=LinkHelpView())
@@ -1133,12 +1311,18 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
 
 
 @bot.tree.command(name="unlink", description="Unlink your Discord account from your Camicia BOINC account (DM only)")
+@app_commands.checks.cooldown(1, UNLINK_SPAM_COOLDOWN_SECONDS, key=lambda i: i.user.id)
 @is_dm_only()
 async def unlink_cmd(interaction: discord.Interaction):
     """Unlinks Discord account from BOINC profile."""
+    is_muted, rem = check_user_muted(interaction.user.id)
+    if is_muted:
+        await interaction.response.send_message(embed=get_spam_muted_embed(rem), ephemeral=True)
+        return
+
     await interaction.response.defer()
     success, result = await execute_unlink_flow(interaction.user)
-    if success:
+    if isinstance(result, discord.Embed):
         await interaction.followup.send(embed=result)
     else:
         await interaction.followup.send(result)
@@ -1152,6 +1336,11 @@ async def on_message(message: discord.Message):
 
     # Direct Message interaction
     if message.guild is None:
+        is_muted, rem = check_user_muted(message.author.id)
+        if is_muted:
+            # Completely ignore messages from muted users during 15-minute ignore
+            return
+
         raw_content = message.content.strip()
         parts = raw_content.split(maxsplit=1)
         if not parts:
@@ -1161,9 +1350,21 @@ async def on_message(message: discord.Message):
 
         # Handle unlinking in DM: /unlink, !unlink, unlink
         if cmd in ("/unlink", "!unlink", "unlink"):
+            is_cd, rem = check_dm_cooldown(message.author.id, "unlink", UNLINK_SPAM_COOLDOWN_SECONDS)
+            if is_cd:
+                strike_cnt, is_muted_now, rem_mute = record_spam_strike(message.author.id)
+                if is_muted_now:
+                    await message.channel.send(embed=get_spam_muted_embed(rem_mute))
+                else:
+                    await message.channel.send(
+                        f"⏳ **Slow down!** Please wait **{rem:.1f}s** before requesting account disconnection again.\n"
+                        f"*(Strike {strike_cnt}/5: Continued spam will cause the bot to ignore your messages for 15 minutes)*"
+                    )
+                return
+
             async with message.channel.typing():
                 success, result = await execute_unlink_flow(message.author)
-                if success:
+                if isinstance(result, discord.Embed):
                     await message.channel.send(embed=result)
                 else:
                     await message.channel.send(result)
@@ -1171,6 +1372,18 @@ async def on_message(message: discord.Message):
 
         # Handle link in DM: /link, !link, link
         if cmd in ("/link", "!link", "link"):
+            is_cd, rem = check_dm_cooldown(message.author.id, "link", LINK_SPAM_COOLDOWN_SECONDS)
+            if is_cd:
+                strike_cnt, is_muted_now, rem_mute = record_spam_strike(message.author.id)
+                if is_muted_now:
+                    await message.channel.send(embed=get_spam_muted_embed(rem_mute))
+                else:
+                    await message.channel.send(
+                        f"⏳ **Slow down!** Please wait **{rem:.1f}s** before submitting another verification attempt.\n"
+                        f"*(Strike {strike_cnt}/5: Continued spam will cause the bot to ignore your messages for 15 minutes)*"
+                    )
+                return
+
             if len(parts) > 1:
                 code_arg = parts[1].strip()
                 async with message.channel.typing():
@@ -1192,8 +1405,12 @@ async def on_message(message: discord.Message):
                 else:
                     cooldown_rem = await get_unlink_cooldown_remaining(message.author.id)
                     if cooldown_rem > 0:
-                        embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord")
-                        await message.channel.send(embed=embed, view=LinkHelpView())
+                        strike_cnt, is_muted_now, rem_mute = record_spam_strike(message.author.id)
+                        if is_muted_now:
+                            await message.channel.send(embed=get_spam_muted_embed(rem_mute))
+                        else:
+                            embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord", strike_count=strike_cnt)
+                            await message.channel.send(embed=embed, view=LinkHelpView())
                     else:
                         await message.channel.send(embed=get_link_instructions_embed(), view=LinkHelpView())
         # IMPORTANT: If user writes anything not equal to /link, /unlink, or /link <code>,
@@ -1209,7 +1426,20 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     if isinstance(error, app_commands.CommandOnCooldown):
         cmd_name = interaction.command.name if interaction.command else ""
         retry_seconds = max(1, int(round(error.retry_after)))
-        if cmd_name == "records":
+        if cmd_name in ("link", "unlink"):
+            strike_cnt, is_muted, rem_mute = record_spam_strike(interaction.user.id)
+            if is_muted:
+                embed = get_spam_muted_embed(rem_mute)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            action_desc = "submitting another verification attempt" if cmd_name == "link" else "requesting account disconnection again"
+            msg = (
+                f"⏳ **Slow down!** Please wait **{error.retry_after:.1f}s** before {action_desc}.\n"
+                f"*(Strike {strike_cnt}/5: Continued spam will cause the bot to ignore your messages for 15 minutes)*"
+            )
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+        elif cmd_name == "records":
             msg = (
                 f"⏳ **Recent Request**: The records were just posted in this channel! "
                 f"To keep the channel clean, please check the message above or try again in **{retry_seconds}s**."

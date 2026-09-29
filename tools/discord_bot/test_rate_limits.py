@@ -11,6 +11,9 @@ from discord import app_commands
 class TestRateLimitsAndAntiAbuse(unittest.TestCase):
     def setUp(self):
         bot._failed_link_attempts.clear()
+        bot._dm_cooldowns.clear()
+        bot._user_spam_strikes.clear()
+        bot._user_mute_until.clear()
 
     def test_link_failed_attempts_and_lockout(self):
         user_id = 987654321
@@ -148,6 +151,32 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
             self.assertIn("5.5s", call_args[0][0])
             self.assertTrue(call_args[1].get("ephemeral"))
 
+            # Test /link error message
+            mock_interaction.reset_mock()
+            mock_interaction.command.name = "link"
+            mock_interaction.response.send_message = AsyncMock()
+            cooldown_err = app_commands.CommandOnCooldown(mock_cooldown, retry_after=2.8)
+
+            await bot.on_app_command_error(mock_interaction, cooldown_err)
+            mock_interaction.response.send_message.assert_called_once()
+            call_args = mock_interaction.response.send_message.call_args
+            self.assertIn("Slow down!", call_args[0][0])
+            self.assertIn("2.8s", call_args[0][0])
+            self.assertTrue(call_args[1].get("ephemeral"))
+
+            # Test /unlink error message
+            mock_interaction.reset_mock()
+            mock_interaction.command.name = "unlink"
+            mock_interaction.response.send_message = AsyncMock()
+            cooldown_err = app_commands.CommandOnCooldown(mock_cooldown, retry_after=4.2)
+
+            await bot.on_app_command_error(mock_interaction, cooldown_err)
+            mock_interaction.response.send_message.assert_called_once()
+            call_args = mock_interaction.response.send_message.call_args
+            self.assertIn("Slow down!", call_args[0][0])
+            self.assertIn("4.2s", call_args[0][0])
+            self.assertTrue(call_args[1].get("ephemeral"))
+
         asyncio.run(run_test())
 
     def test_unlink_cooldown_constant(self):
@@ -170,6 +199,228 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
         self.assertEqual(embed.color.value, 0xE74C3C)
         self.assertIn("15 minutes", embed.fields[0].value)
         self.assertIn("900s", embed.fields[0].value)
+
+    def test_malformed_code_counts_toward_lockout(self):
+        async def run_test():
+            user = MagicMock()
+            user.id = 55667788
+
+            # Attempts 1-4 with invalid format (e.g. "123")
+            for i in range(1, 5):
+                success, res = await bot.execute_link_flow(user, "123")
+                self.assertFalse(success)
+                self.assertIsInstance(res, str)
+                self.assertIn("Invalid verification code format", res)
+                expected_rem = 5 - i
+                self.assertIn(f"**{expected_rem}** attempt", res)
+
+            # 5th attempt with invalid format triggers lockout embed
+            success, res = await bot.execute_link_flow(user, "abc")
+            self.assertFalse(success)
+            self.assertIsInstance(res, bot.discord.Embed)
+            self.assertEqual(res.title, "⛔ Verification Temporarily Locked")
+
+            # Subsequent attempt while locked out immediately returns lockout embed
+            success, res = await bot.execute_link_flow(user, "999999")
+            self.assertFalse(success)
+            self.assertIsInstance(res, bot.discord.Embed)
+            self.assertEqual(res.title, "⛔ Verification Temporarily Locked")
+
+        asyncio.run(run_test())
+
+    def test_link_slash_command_cooldown(self):
+        async def run_test():
+            # Find cooldown check on link_cmd
+            cooldown_checks = [c for c in bot.link_cmd.checks if "cooldown" in getattr(c, "__qualname__", "").lower()]
+            self.assertTrue(len(cooldown_checks) > 0)
+            check = cooldown_checks[0]
+
+            mock_inter = MagicMock()
+            mock_inter.created_at = datetime.now(timezone.utc)
+            mock_inter.user.id = 12345
+
+            # 1st call succeeds
+            res1 = await check(mock_inter)
+            self.assertTrue(res1)
+
+            # 2nd call raises CommandOnCooldown (3.0s)
+            with self.assertRaises(app_commands.CommandOnCooldown) as ctx:
+                await check(mock_inter)
+            self.assertEqual(ctx.exception.cooldown.rate, 1)
+            self.assertEqual(ctx.exception.cooldown.per, 3.0)
+
+        asyncio.run(run_test())
+
+    def test_unlink_slash_command_cooldown(self):
+        async def run_test():
+            # Find cooldown check on unlink_cmd
+            cooldown_checks = [c for c in bot.unlink_cmd.checks if "cooldown" in getattr(c, "__qualname__", "").lower()]
+            self.assertTrue(len(cooldown_checks) > 0)
+            check = cooldown_checks[0]
+
+            mock_inter = MagicMock()
+            mock_inter.created_at = datetime.now(timezone.utc)
+            mock_inter.user.id = 67890
+
+            # 1st call succeeds
+            res1 = await check(mock_inter)
+            self.assertTrue(res1)
+
+            # 2nd call raises CommandOnCooldown (5.0s)
+            with self.assertRaises(app_commands.CommandOnCooldown) as ctx:
+                await check(mock_inter)
+            self.assertEqual(ctx.exception.cooldown.rate, 1)
+            self.assertEqual(ctx.exception.cooldown.per, 5.0)
+
+        asyncio.run(run_test())
+
+    def test_dm_cooldown_helper(self):
+        user_id = 998877
+        # 1st check passes
+        is_cd, rem = bot.check_dm_cooldown(user_id, "link", 3.0)
+        self.assertFalse(is_cd)
+        self.assertEqual(rem, 0.0)
+
+        # 2nd check within 3s is on cooldown
+        is_cd, rem = bot.check_dm_cooldown(user_id, "link", 3.0)
+        self.assertTrue(is_cd)
+        self.assertGreater(rem, 1.0)
+        self.assertLessEqual(rem, 3.0)
+
+        # Different action for same user is not on cooldown
+        is_cd, rem = bot.check_dm_cooldown(user_id, "unlink", 5.0)
+        self.assertFalse(is_cd)
+
+        # Different user is not on cooldown
+        is_cd, rem = bot.check_dm_cooldown(112233, "link", 3.0)
+        self.assertFalse(is_cd)
+
+    def test_spam_strikes_accumulation_and_mute(self):
+        user_id = 445566
+        # Strikes 1 to 4
+        for i in range(1, 5):
+            cnt, is_muted, rem_mute = bot.record_spam_strike(user_id)
+            self.assertEqual(cnt, i)
+            self.assertFalse(is_muted)
+            self.assertEqual(rem_mute, 0)
+            is_m, rem = bot.check_user_muted(user_id)
+            self.assertFalse(is_m)
+
+        # 5th strike triggers 15-minute mute
+        cnt, is_muted, rem_mute = bot.record_spam_strike(user_id)
+        self.assertEqual(cnt, 5)
+        self.assertTrue(is_muted)
+        self.assertEqual(rem_mute, 900)
+
+        # check_user_muted returns True
+        is_m, rem = bot.check_user_muted(user_id)
+        self.assertTrue(is_m)
+        self.assertGreater(rem, 890)
+        self.assertLessEqual(rem, 900)
+
+        # 6th attempt while muted returns muted state
+        cnt, is_muted, rem_mute = bot.record_spam_strike(user_id)
+        self.assertTrue(is_muted)
+        self.assertGreater(rem_mute, 890)
+
+    def test_spam_strikes_decay_after_window(self):
+        user_id = 998811
+        import time
+        past = time.monotonic() - 305  # >5 minutes ago
+        bot._user_spam_strikes[user_id] = [past, past, past]
+
+        # Recording a strike now should drop expired strikes
+        cnt, is_muted, rem = bot.record_spam_strike(user_id)
+        self.assertEqual(cnt, 1)  # Only the new strike remains
+        self.assertFalse(is_muted)
+
+    def test_mute_expiration(self):
+        user_id = 332211
+        import time
+        bot._user_mute_until[user_id] = time.monotonic() - 5  # expired 5s ago
+        is_m, rem = bot.check_user_muted(user_id)
+        self.assertFalse(is_m)
+        self.assertEqual(rem, 0)
+        self.assertNotIn(user_id, bot._user_mute_until)
+        self.assertNotIn(user_id, bot._user_spam_strikes)
+
+    def test_clear_spam_strikes(self):
+        user_id = 776655
+        bot.record_spam_strike(user_id)
+        bot.record_spam_strike(user_id)
+        bot.clear_spam_strikes(user_id)
+        self.assertNotIn(user_id, bot._user_spam_strikes)
+        self.assertNotIn(user_id, bot._user_mute_until)
+
+    def test_spam_muted_embed(self):
+        embed = bot.get_spam_muted_embed(900)
+        self.assertEqual(embed.title, "🔇 Commands Temporarily Ignored")
+        self.assertEqual(embed.color.value, 0xE74C3C)
+        self.assertIn("15 minutes", embed.fields[0].value)
+        self.assertIn("900s", embed.fields[0].value)
+
+    def test_unlink_unlinked_user_accumulates_strikes_and_mutes(self):
+        async def run_test():
+            user_id = 121212
+            # Mock DB to return no linked row
+            mock_pool = MagicMock()
+            mock_conn = MagicMock()
+            mock_cur = MagicMock()
+            mock_cur.fetchone = AsyncMock(return_value=None)
+            mock_cur.execute = AsyncMock()
+
+            # Async context manager setup
+            mock_conn.cursor.return_value.__aenter__ = AsyncMock(return_value=mock_cur)
+            mock_conn.cursor.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            original_get_db = bot.get_db_pool
+            bot.get_db_pool = AsyncMock(return_value=mock_pool)
+            try:
+                # 4 unlinked calls accumulate strikes 1-4
+                for i in range(1, 5):
+                    success, msg, uid, vname = await bot.unlink_discord_user(user_id)
+                    self.assertFalse(success)
+                    self.assertIsInstance(msg, str)
+                    self.assertIn(f"Strike {i}/5", msg)
+
+                # 5th call triggers mute embed
+                success, embed, uid, vname = await bot.unlink_discord_user(user_id)
+                self.assertFalse(success)
+                self.assertIsInstance(embed, bot.discord.Embed)
+                self.assertEqual(embed.title, "🔇 Commands Temporarily Ignored")
+
+                # Subsequent call while muted immediately returns mute embed without DB query
+                mock_cur.execute.reset_mock()
+                success, embed2, uid, vname = await bot.unlink_discord_user(user_id)
+                self.assertFalse(success)
+                self.assertIsInstance(embed2, bot.discord.Embed)
+                self.assertEqual(embed2.title, "🔇 Commands Temporarily Ignored")
+                mock_cur.execute.assert_not_called()
+            finally:
+                bot.get_db_pool = original_get_db
+
+        asyncio.run(run_test())
+
+    def test_on_message_silent_drop_when_muted(self):
+        async def run_test():
+            user_id = 999111
+            import time
+            bot._user_mute_until[user_id] = time.monotonic() + 500  # Muted
+
+            mock_msg = MagicMock()
+            mock_msg.author.id = user_id
+            mock_msg.author.bot = False
+            mock_msg.guild = None  # DM
+            mock_msg.content = "/link 123456"
+            mock_msg.channel.send = AsyncMock()
+
+            await bot.on_message(mock_msg)
+            # Message should be silently dropped without any response
+            mock_msg.channel.send.assert_not_called()
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":
