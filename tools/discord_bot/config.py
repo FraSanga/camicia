@@ -125,8 +125,9 @@ def resolve_project_domain() -> str:
 
 
 PROJECT_DOMAIN = resolve_project_domain()
+PROJECT_BASE_URL = f"https://{PROJECT_DOMAIN}/camicia"
 PROJECT_ICON_URL = f"https://{PROJECT_DOMAIN}/favicon_round.png"
-PROJECT_LINK_URL = f"https://{PROJECT_DOMAIN}/discord_link.php"
+PROJECT_LINK_URL = f"https://{PROJECT_DOMAIN}/camicia/discord_link.php"
 
 # MariaDB configuration
 DB_HOST = os.getenv("MARIADB_HOST", os.getenv("DATABASE_CONTAINER_NAME", "database"))

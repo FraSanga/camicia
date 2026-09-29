@@ -729,7 +729,7 @@ class LinkHelpView(discord.ui.View):
         self.add_item(
             discord.ui.Button(
                 label="Open Verification Page",
-                url=getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/discord_link.php"),
+                url=getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php"),
                 emoji="🔗",
                 style=discord.ButtonStyle.link,
             )
@@ -737,7 +737,7 @@ class LinkHelpView(discord.ui.View):
 
 
 def get_link_instructions_embed() -> discord.Embed:
-    base_url = f"https://{config.PROJECT_DOMAIN}"
+    base_url = getattr(config, "PROJECT_BASE_URL", f"https://{config.PROJECT_DOMAIN}/camicia")
     link_url = getattr(config, "PROJECT_LINK_URL", f"{base_url}/discord_link.php")
     embed = discord.Embed(
         title="🔗 Link Your Camicia BOINC Account",
@@ -847,7 +847,7 @@ async def execute_unlink_flow(
             except Exception as e:
                 logger.warning("Could not remove Volunteer role from %s: %s", member, e)
 
-    link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/discord_link.php")
+    link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php")
     embed = discord.Embed(
         title="✅ Account Unlinked",
         description=f"Your Discord account has been disconnected from BOINC volunteer **{volunteer_name}**.",
