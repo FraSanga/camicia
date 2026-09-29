@@ -68,11 +68,65 @@ else:
 # Real-world record benchmark (Nessler 2022, 8344 cards / 1164 tricks)
 REAL_WORLD_RECORD_CARDS = 8344
 
-# Project domain & branding
-PROJECT_DOMAIN = os.getenv("PROJECT_DOMAIN", os.getenv("DOMAIN", "camicia.dev")).strip()
-if not PROJECT_DOMAIN or PROJECT_DOMAIN in ("127.0.0.1", "localhost"):
-    PROJECT_DOMAIN = "camicia.dev"
+# Project domain & branding - dynamic domain builder
+def resolve_project_domain() -> str:
+    """
+    Dynamically determines the project domain based on where the bot is running:
+    1. DOMAIN or PROJECT_DOMAIN environment variable (from .env or docker).
+    2. Master URL in BOINC's config.xml (<master_url>).
+    3. Git branch (e.g. 'staging' -> staging2.camicia.dev).
+    4. Container or hostname hints (containing 'staging').
+    5. Fallback: camicia.dev (production).
+    """
+    # 1. Environment variables
+    env_domain = os.getenv("PROJECT_DOMAIN", os.getenv("DOMAIN", "")).strip()
+    if env_domain and env_domain not in ("127.0.0.1", "localhost", "0.0.0.0"):
+        return env_domain.replace("https://", "").replace("http://", "").split("/")[0]
+
+    # 2. Check BOINC config.xml <master_url>
+    cand_xml = CAMICIA_PROJECT_DIR / "config.xml"
+    if cand_xml.exists():
+        try:
+            import xml.etree.ElementTree as ET
+            from urllib.parse import urlparse
+            tree = ET.parse(cand_xml)
+            cfg = tree.getroot().find("config")
+            if cfg is not None:
+                master_url = cfg.findtext("master_url")
+                if master_url:
+                    parsed = urlparse(master_url)
+                    host = parsed.netloc or parsed.path.split("/")[0]
+                    if host and host not in ("127.0.0.1", "localhost", "0.0.0.0", "server-camicia"):
+                        return host
+        except Exception:
+            pass
+
+    # 3. Check active git branch (default for staging branch is staging.camicia.dev)
+    try:
+        import subprocess
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(REPO_ROOT),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip().lower()
+        if "staging" in branch:
+            return "staging.camicia.dev"
+    except Exception:
+        pass
+
+    # 4. Check container or hostname environment hints
+    for env_var in ("SERVER_CONTAINER_NAME", "HOSTNAME", "DATABASE_CONTAINER_NAME"):
+        val = os.getenv(env_var, "").lower()
+        if "staging" in val:
+            return "staging.camicia.dev"
+
+    return "camicia.dev"
+
+
+PROJECT_DOMAIN = resolve_project_domain()
 PROJECT_ICON_URL = f"https://{PROJECT_DOMAIN}/favicon_round.png"
+PROJECT_LINK_URL = f"https://{PROJECT_DOMAIN}/discord_link.php"
 
 # MariaDB configuration
 DB_HOST = os.getenv("MARIADB_HOST", os.getenv("DATABASE_CONTAINER_NAME", "database"))

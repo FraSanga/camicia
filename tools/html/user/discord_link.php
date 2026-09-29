@@ -505,7 +505,7 @@ page_head(tra("Discord Account Linking"));
         <br>
         <div class="code-box">/link &lt;code&gt;</div>
         <div style="font-size: 12.5px; color: var(--cream-dim); margin-top: 4px;">
-          <?php echo tra("Replace <code>&lt;code&gt;</code> with the 6-digit code from your email (e.g. <code>/link 123456</code>), or simply send the 6 digits directly."); ?>
+          <?php echo tra("Replace <code>&lt;code&gt;</code> with the 6-digit code from your email (e.g. <code>/link 123456</code>)."); ?>
         </div>
       </li>
       <li><?php echo tra("The bot will verify your code and instantly award you the <strong>Volunteer</strong> role!"); ?></li>

@@ -140,6 +140,7 @@ services:
       - MARIADB_USER=${MARIADB_USER}
       - MARIADB_PASSWORD=${MARIADB_PASSWORD}
       - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - DOMAIN=${DOMAIN}
     volumes:
       - ${SERVER_VOLUME_PROJECTS}/camicia:/data/project:ro
       - discord_bot_data:/data/state

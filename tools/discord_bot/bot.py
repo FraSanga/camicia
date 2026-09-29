@@ -3,7 +3,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import discord
 from discord import app_commands
@@ -723,19 +723,34 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
+class LinkHelpView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(
+            discord.ui.Button(
+                label="Open Verification Page",
+                url=getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/discord_link.php"),
+                emoji="🔗",
+                style=discord.ButtonStyle.link,
+            )
+        )
+
+
 def get_link_instructions_embed() -> discord.Embed:
+    base_url = f"https://{config.PROJECT_DOMAIN}"
+    link_url = getattr(config, "PROJECT_LINK_URL", f"{base_url}/discord_link.php")
     embed = discord.Embed(
         title="🔗 Link Your Camicia BOINC Account",
         description=(
             "Connect your account to earn the **Volunteer** role on Discord "
             "and unlock **5 daily rolls** on `/lucky` (instead of 3)!\n\n"
             "**How to link:**\n"
-            "1️⃣ Log in to your account at **https://camicia.dev** (or your staging URL)\n"
-            "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account**.\n"
+            f"1️⃣ Log in to your account at [**{config.PROJECT_DOMAIN}**]({base_url})\n"
+            "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account** (or tap the button below)\n"
             "3️⃣ Click **Send Verification Code via Email** to receive your 6-digit code.\n"
             "4️⃣ In this DM with CamiciaBot, run:\n"
             "```\n/link <code>\n```\n"
-            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`, or simply reply with the 6 digits)*"
+            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`)*"
         ),
         color=0x1B4332,
     )
@@ -746,29 +761,42 @@ def get_link_instructions_embed() -> discord.Embed:
     return embed
 
 
-@bot.tree.command(name="link", description="Link your Discord account to your Camicia BOINC volunteer account (DM only)")
-@app_commands.describe(code="The 6-digit verification code sent to your registered BOINC email")
-@is_dm_only()
-async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None):
-    """Links Discord account to BOINC profile using email verification code, or shows instructions."""
-    if code is None or not code.strip():
-        embed = get_link_instructions_embed()
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    discord_username = str(interaction.user)
-    success, msg, boinc_uid, volunteer_name = await link_discord_user(
-        interaction.user.id, discord_username, code
+def get_already_linked_embed(boinc_uid: int, volunteer_name: Optional[str]) -> discord.Embed:
+    name = volunteer_name or f"Volunteer #{boinc_uid}"
+    embed = discord.Embed(
+        title="🏅 Account Already Linked",
+        description=(
+            f"Your Discord account is already connected to Camicia volunteer **{name}** (BOINC ID: `{boinc_uid}`).\n\n"
+            "• **Server Role**: You have the **Volunteer** role on our Discord server.\n"
+            "• **Mini-Game**: You have **5 daily rolls** unlocked on `/lucky`.\n\n"
+            "To disconnect or switch accounts, run `/unlink` in this DM."
+        ),
+        color=0x2ECC71,
     )
+    embed.set_footer(
+        text="Camicia BOINC Project • Account Active",
+        icon_url=config.PROJECT_ICON_URL,
+    )
+    return embed
 
+
+async def execute_link_flow(
+    user: Union[discord.User, discord.Member], code: str
+) -> Tuple[bool, Union[discord.Embed, str]]:
+    clean_code = code.strip().replace(" ", "").replace("-", "").lstrip("#")
+    if not clean_code.isdigit() or len(clean_code) != 6:
+        return False, "❌ Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`)."
+
+    discord_username = str(user)
+    success, msg, boinc_uid, volunteer_name = await link_discord_user(
+        user.id, discord_username, clean_code
+    )
     if not success:
-        await interaction.followup.send(msg, ephemeral=True)
-        return
+        return False, msg
 
     # Assign Volunteer role on guild
     role_status = "Volunteer role granted 🏅"
-    member = await get_guild_member(interaction.user.id)
+    member = await get_guild_member(user.id)
     if member and member.guild:
         volunteer_role = await get_volunteer_role(member.guild)
         if volunteer_role:
@@ -798,23 +826,19 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
         text="Camicia BOINC Project • Thank you for your contribution!",
         icon_url=config.PROJECT_ICON_URL,
     )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-    logger.info("User %s linked to BOINC account #%s (%s)", interaction.user, boinc_uid, volunteer_name)
+    logger.info("User %s linked to BOINC account #%s (%s)", user, boinc_uid, volunteer_name)
+    return True, embed
 
 
-@bot.tree.command(name="unlink", description="Unlink your Discord account from your Camicia BOINC account (DM only)")
-@is_dm_only()
-async def unlink_cmd(interaction: discord.Interaction):
-    """Unlinks Discord account from BOINC profile."""
-    await interaction.response.defer(ephemeral=True)
-    success, msg, boinc_uid, volunteer_name = await unlink_discord_user(interaction.user.id)
-
+async def execute_unlink_flow(
+    user: Union[discord.User, discord.Member]
+) -> Tuple[bool, Union[discord.Embed, str]]:
+    success, msg, boinc_uid, volunteer_name = await unlink_discord_user(user.id)
     if not success:
-        await interaction.followup.send(msg, ephemeral=True)
-        return
+        return False, msg
 
     # Remove Volunteer role if present
-    member = await get_guild_member(interaction.user.id)
+    member = await get_guild_member(user.id)
     if member and member.guild:
         volunteer_role = await get_volunteer_role(member.guild)
         if volunteer_role and volunteer_role in member.roles:
@@ -823,6 +847,7 @@ async def unlink_cmd(interaction: discord.Interaction):
             except Exception as e:
                 logger.warning("Could not remove Volunteer role from %s: %s", member, e)
 
+    link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/discord_link.php")
     embed = discord.Embed(
         title="✅ Account Unlinked",
         description=f"Your Discord account has been disconnected from BOINC volunteer **{volunteer_name}**.",
@@ -830,111 +855,93 @@ async def unlink_cmd(interaction: discord.Interaction):
     )
     embed.add_field(name="Status", value="Volunteer role removed • /lucky rolls reset to 3/day", inline=False)
     embed.set_footer(
-        text="You can re-link anytime from your account page at https://camicia.dev",
+        text=f"You can re-link anytime at {link_url}",
         icon_url=config.PROJECT_ICON_URL,
     )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-    logger.info("User %s unlinked from BOINC account #%s (%s)", interaction.user, boinc_uid, volunteer_name)
+    logger.info("User %s unlinked from BOINC account #%s (%s)", user, boinc_uid, volunteer_name)
+    return True, embed
+
+
+@bot.tree.command(name="link", description="Link your Discord account to your Camicia BOINC volunteer account (DM only)")
+@app_commands.describe(code="The 6-digit verification code sent to your registered BOINC email")
+@is_dm_only()
+async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None):
+    """Links Discord account to BOINC profile using email verification code, or shows instructions."""
+    if code is None or not code.strip():
+        is_linked, b_uid, v_name = await is_discord_user_linked(interaction.user.id)
+        if is_linked:
+            embed = get_already_linked_embed(b_uid, v_name)
+            await interaction.response.send_message(embed=embed)
+        else:
+            embed = get_link_instructions_embed()
+            await interaction.response.send_message(embed=embed, view=LinkHelpView())
+        return
+
+    await interaction.response.defer()
+    success, result = await execute_link_flow(interaction.user, code)
+    if success:
+        await interaction.followup.send(embed=result)
+    else:
+        await interaction.followup.send(result)
+
+
+@bot.tree.command(name="unlink", description="Unlink your Discord account from your Camicia BOINC account (DM only)")
+@is_dm_only()
+async def unlink_cmd(interaction: discord.Interaction):
+    """Unlinks Discord account from BOINC profile."""
+    await interaction.response.defer()
+    success, result = await execute_unlink_flow(interaction.user)
+    if success:
+        await interaction.followup.send(embed=result)
+    else:
+        await interaction.followup.send(result)
 
 
 @bot.event
 async def on_message(message: discord.Message):
-    """Handles commands in Direct Messages (DMs) where slash commands might not yet be cached."""
+    """Handles commands in Direct Messages (DMs)."""
     if message.author.bot:
         return
 
     # Direct Message interaction
     if message.guild is None:
-        content = message.content.strip()
-        lower_content = content.lower()
-
-        # Handle unlinking in DM
-        if lower_content in ("/unlink", "!unlink", "unlink"):
-            success, msg, boinc_uid, volunteer_name = await unlink_discord_user(message.author.id)
-            if not success:
-                await message.channel.send(msg)
-                return
-
-            member = await get_guild_member(message.author.id)
-            if member and member.guild:
-                volunteer_role = await get_volunteer_role(member.guild)
-                if volunteer_role and volunteer_role in member.roles:
-                    try:
-                        await member.remove_roles(volunteer_role, reason="Unlinked Camicia BOINC account via DM")
-                    except Exception as e:
-                        logger.warning("Could not remove Volunteer role from %s: %s", member, e)
-
-            embed = discord.Embed(
-                title="✅ Account Unlinked",
-                description=f"Your Discord account has been disconnected from BOINC volunteer **{volunteer_name}**.",
-                color=0x95A5A6,
-            )
-            embed.add_field(name="Status", value="Volunteer role removed • /lucky rolls reset to 3/day", inline=False)
-            embed.set_footer(
-                text="You can re-link anytime from your account page at https://camicia.dev",
-                icon_url=config.PROJECT_ICON_URL,
-            )
-            await message.channel.send(embed=embed)
+        raw_content = message.content.strip()
+        parts = raw_content.split(maxsplit=1)
+        if not parts:
             return
 
-        # Handle link command or 6-digit code in DM
-        code = None
-        if lower_content.startswith(("/link", "!link", "link")):
-            parts = content.split(maxsplit=1)
-            if len(parts) > 1:
-                code = parts[1].strip()
-            else:
-                await message.channel.send(embed=get_link_instructions_embed())
-                return
-        elif content.isdigit() and len(content) == 6:
-            code = content
+        cmd = parts[0].lower()
 
-        if code is not None:
-            discord_username = str(message.author)
-            success, msg, boinc_uid, volunteer_name = await link_discord_user(
-                message.author.id, discord_username, code
-            )
-            if not success:
-                await message.channel.send(msg)
-                return
-
-            role_status = "Volunteer role granted 🏅"
-            member = await get_guild_member(message.author.id)
-            if member and member.guild:
-                volunteer_role = await get_volunteer_role(member.guild)
-                if volunteer_role:
-                    try:
-                        await member.add_roles(volunteer_role, reason="Linked Camicia BOINC account via DM")
-                        role_status = f"Assigned **@{volunteer_role.name}** role 🏅"
-                    except Exception as e:
-                        logger.warning("Could not add Volunteer role to %s: %s", member, e)
-                        role_status = "⚠️ Linked, but could not assign role (bot lacks Manage Roles permission)"
+        # Handle unlinking in DM: /unlink, !unlink, unlink
+        if cmd in ("/unlink", "!unlink", "unlink"):
+            async with message.channel.typing():
+                success, result = await execute_unlink_flow(message.author)
+                if success:
+                    await message.channel.send(embed=result)
                 else:
-                    role_status = "⚠️ Linked, but 'Volunteer' role was not found on server"
-
-            embed = discord.Embed(
-                title="🎉 Account Linked Successfully!",
-                description=(
-                    f"Welcome, **{volunteer_name}**! Your Discord account is now linked to your Camicia BOINC profile (ID: `{boinc_uid}`)."
-                ),
-                color=0x2ECC71,
-            )
-            embed.add_field(name="🏅 Server Role", value=role_status, inline=False)
-            embed.add_field(
-                name="🎲 Lucky Mini-Game",
-                value="**5 attempts/day** unlocked (+2 bonus rolls every day!)",
-                inline=False,
-            )
-            embed.set_footer(
-                text="Camicia BOINC Project • Thank you for your contribution!",
-                icon_url=config.PROJECT_ICON_URL,
-            )
-            await message.channel.send(embed=embed)
-            logger.info("User %s linked to BOINC account #%s (%s) via DM", message.author, boinc_uid, volunteer_name)
+                    await message.channel.send(result)
             return
 
-        # General DM message: show link help instructions
-        await message.channel.send(embed=get_link_instructions_embed())
+        # Handle link in DM: /link, !link, link
+        if cmd in ("/link", "!link", "link"):
+            if len(parts) > 1:
+                code_arg = parts[1].strip()
+                async with message.channel.typing():
+                    success, result = await execute_link_flow(message.author, code_arg)
+                    if success:
+                        await message.channel.send(embed=result)
+                    else:
+                        await message.channel.send(result)
+                return
+            else:
+                # User typed just /link or link without a code
+                is_linked, b_uid, v_name = await is_discord_user_linked(message.author.id)
+                if is_linked:
+                    await message.channel.send(embed=get_already_linked_embed(b_uid, v_name))
+                else:
+                    await message.channel.send(embed=get_link_instructions_embed(), view=LinkHelpView())
+        # IMPORTANT: If user writes anything not equal to /link, /unlink, or /link <code>,
+        # the bot does NOT respond anything.
         return
 
     await bot.process_commands(message)
