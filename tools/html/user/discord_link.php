@@ -57,6 +57,16 @@ if ($res && $res->num_rows > 0) {
 
 $is_linked = ($link_data && !empty($link_data['linked_at']) && empty($link_data['unlinked_at']));
 
+$is_unlinked_cooldown = false;
+$unlink_seconds_remaining = 0;
+if ($link_data && !empty($link_data['unlinked_at'])) {
+    $diff_unlink = time() - strtotime($link_data['unlinked_at']);
+    if ($diff_unlink < 3600) {
+        $is_unlinked_cooldown = true;
+        $unlink_seconds_remaining = 3600 - $diff_unlink;
+    }
+}
+
 // Handle live status polling from browser
 if (isset($_GET['action']) && $_GET['action'] === 'status') {
     header('Content-Type: application/json');
@@ -67,7 +77,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'status') {
             'discord_username' => $link_data['discord_username'],
         ]);
     } else {
-        echo json_encode(['linked' => false]);
+        echo json_encode([
+            'linked' => false,
+            'cooldown_remaining' => $is_unlinked_cooldown ? $unlink_seconds_remaining : 0,
+        ]);
     }
     exit;
 }
@@ -84,8 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'send_code') {
         if ($is_linked) {
             $msg_error = tra("Your account is already linked to Discord. Please unlink first if you wish to change accounts.");
-        } elseif ($link_data && !empty($link_data['unlinked_at'])) {
+        } elseif ($link_data && !empty($link_data['pin']) && $link_data['pin'] === 'PENDING_REVOKE') {
             $msg_error = tra("Unlinking is currently being finalized. Please wait a few moments before requesting a new code.");
+        } elseif ($is_unlinked_cooldown) {
+            $mins_rem = max(1, (int)ceil($unlink_seconds_remaining / 60));
+            $msg_error = sprintf(
+                tra("Account was unlinked recently. To prevent abuse, a 1-hour cooldown applies before linking again. Please wait %d minute(s)."),
+                $mins_rem
+            );
         } else {
             // Check 60-second rate limit
             $can_send = true;
@@ -191,23 +210,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'unlink') {
         if ($is_linked) {
-            // Queue the unlink event in the database. The Discord bot's 30s background worker
-            // will detect this, remove the Volunteer role on Discord, and clean up the row.
-            // This keeps Discord bot credentials completely off the web server.
-            $db->do_query("UPDATE camicia_discord_links SET unlinked_at = NOW(), linked_at = NULL WHERE boinc_user_id = $uid");
-            $msg_success = tra("Your Discord account has been unlinked successfully. Your server role will be updated shortly.");
+            // Queue the unlink event with pin = 'PENDING_REVOKE'. The Discord bot's 30s background
+            // worker will detect this, remove the Volunteer role on Discord, and clear pin to NULL,
+            // while preserving unlinked_at for the 1-hour anti-abuse cooldown.
+            $db->do_query("UPDATE camicia_discord_links SET unlinked_at = NOW(), linked_at = NULL, pin = 'PENDING_REVOKE' WHERE boinc_user_id = $uid");
+            $msg_success = tra("Your Discord account has been unlinked successfully. Note that a 1-hour cooldown applies before you can link again. Your server role will be updated shortly.");
             $is_linked = false;
-            $link_data = null;
+            // Refresh link data so the cooldown banner and button state update immediately
+            $res = $db->do_query("SELECT * FROM camicia_discord_links WHERE boinc_user_id = $uid");
+            if ($res && $res->num_rows > 0) {
+                $link_data = $res->fetch_assoc();
+                $res->free();
+            }
+            $is_unlinked_cooldown = true;
+            $unlink_seconds_remaining = 3600;
         }
     }
 }
 
-// Calculate cooldown for the button
+// Calculate cooldown for the button (1-hour unlink cooldown takes priority over 60s resend timer)
 $cooldown_seconds = 0;
-if (!$is_linked && $link_data && !empty($link_data['pin_requested_at'])) {
-    $diff = time() - strtotime($link_data['pin_requested_at']);
-    if ($diff < 60) {
-        $cooldown_seconds = 60 - $diff;
+$is_cooldown_unlink = false;
+if (!$is_linked) {
+    if ($is_unlinked_cooldown) {
+        $cooldown_seconds = $unlink_seconds_remaining;
+        $is_cooldown_unlink = true;
+    } elseif ($link_data && !empty($link_data['pin_requested_at'])) {
+        $diff = time() - strtotime($link_data['pin_requested_at']);
+        if ($diff < 60) {
+            $cooldown_seconds = 60 - $diff;
+        }
     }
 }
 
@@ -435,6 +467,21 @@ page_head(tra("Discord Account Linking"));
   </script>
 
 <?php else: ?>
+  <?php if ($is_unlinked_cooldown): ?>
+  <div class="alert-banner" style="border: 1.5px solid var(--ruby); background: rgba(168, 51, 73, 0.18); margin-bottom: 24px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff6b81" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+    <div>
+      <strong style="color: #ff8599;"><?php echo tra("Account Unlink Cooldown Active"); ?>:</strong>
+      <div style="margin-top: 4px; color: var(--cream-dim); font-size: 13.5px; line-height: 1.5;">
+        <?php echo sprintf(
+          tra("This account was unlinked recently. To prevent abuse, a 1-hour cooldown applies before linking again. You will be able to request a new verification code in %d minute(s)."),
+          max(1, (int)ceil($unlink_seconds_remaining / 60))
+        ); ?>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
+
   <div class="stat-grid">
     <div class="stat-tile">
       <div class="stat-icon">🏅</div>
@@ -467,7 +514,16 @@ page_head(tra("Discord Account Linking"));
       <input type="hidden" name="action" value="send_code">
       <button type="submit" id="btn-send-code" class="btn-gold" <?php echo ($cooldown_seconds > 0 ? 'disabled' : ''); ?>>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-        <span id="btn-send-code-text"><?php echo ($cooldown_seconds > 0 ? sprintf(tra("Resend Code in %ds"), $cooldown_seconds) : tra("Send Verification Code via Email")); ?></span>
+        <span id="btn-send-code-text"><?php
+          if ($cooldown_seconds > 60) {
+              $mins_rem = max(1, (int)ceil($cooldown_seconds / 60));
+              echo sprintf(tra("Cooldown Active (%dm remaining)"), $mins_rem);
+          } elseif ($cooldown_seconds > 0) {
+              echo sprintf(tra("Resend Code in %ds"), $cooldown_seconds);
+          } else {
+              echo tra("Send Verification Code via Email");
+          }
+        ?></span>
       </button>
     </form>
 
@@ -477,14 +533,24 @@ page_head(tra("Discord Account Linking"));
         var seconds = <?php echo (int)$cooldown_seconds; ?>;
         var btn = document.getElementById("btn-send-code");
         var btnText = document.getElementById("btn-send-code-text");
+        if (!btn || !btnText) return;
+
+        function formatLabel(s) {
+            if (s > 60) {
+                var m = Math.ceil(s / 60);
+                return <?php echo json_encode(tra("Cooldown Active")); ?> + " (" + m + "m remaining)";
+            }
+            return <?php echo json_encode(tra("Resend Code in")); ?> + " " + s + "s";
+        }
+
         var timer = setInterval(function() {
             seconds--;
             if (seconds <= 0) {
                 clearInterval(timer);
-                if (btn) btn.disabled = false;
-                if (btnText) btnText.textContent = <?php echo json_encode(tra("Send Verification Code via Email")); ?>;
+                btn.disabled = false;
+                btnText.textContent = <?php echo json_encode(tra("Send Verification Code via Email")); ?>;
             } else {
-                if (btnText) btnText.textContent = <?php echo json_encode(tra("Resend Code in")); ?> + " " + seconds + "s";
+                btnText.textContent = formatLabel(seconds);
             }
         }, 1000);
     })();
@@ -511,12 +577,15 @@ page_head(tra("Discord Account Linking"));
       <li><?php echo tra("The bot will verify your code and instantly award you the <strong>Volunteer</strong> role!"); ?></li>
     </ol>
 
+    <?php if (!$is_unlinked_cooldown && !empty($link_data['pin']) && empty($link_data['linked_at'])): ?>
     <div class="alert-banner info" style="margin-top: 20px; margin-bottom: 0;">
       <span class="spinner">⟳</span>
       <span><?php echo tra("Waiting for verification... This page will update automatically once verified on Discord."); ?></span>
     </div>
+    <?php endif; ?>
   </div>
 
+  <?php if (!$is_unlinked_cooldown && !empty($link_data['pin']) && empty($link_data['linked_at'])): ?>
   <script>
   (function() {
       var checkTimer = setInterval(function() {
@@ -532,6 +601,7 @@ page_head(tra("Discord Account Linking"));
       }, 3000);
   })();
   </script>
+  <?php endif; ?>
 <?php endif; ?>
 
 </div>

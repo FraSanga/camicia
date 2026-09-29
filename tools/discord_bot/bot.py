@@ -33,6 +33,81 @@ watcher: Optional[RecordsWatcher] = None
 lucky_mgr = LuckyManager(config.LUCKY_STATE_FILE)
 db_pool = None
 
+# Rate limiting & Anti-abuse configurations
+LINK_LOCKOUT_MAX_ATTEMPTS = 5
+LINK_LOCKOUT_DURATION_SECONDS = 900  # 15 minutes in seconds
+UNLINK_COOLDOWN_SECONDS = 3600  # 1 hour cooldown after unlinking
+
+_failed_link_attempts: dict[int, list[float]] = {}
+
+
+def check_link_lockout(discord_id: int) -> Tuple[bool, int]:
+    """
+    Checks if a Discord user is locked out due to excessive failed PIN attempts.
+    Returns: (is_locked_out, remaining_seconds)
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = _failed_link_attempts.get(discord_id, [])
+    valid_attempts = [t for t in attempts if now - t < LINK_LOCKOUT_DURATION_SECONDS]
+    _failed_link_attempts[discord_id] = valid_attempts
+
+    if len(valid_attempts) >= LINK_LOCKOUT_MAX_ATTEMPTS:
+        earliest = min(valid_attempts)
+        remaining = int(LINK_LOCKOUT_DURATION_SECONDS - (now - earliest))
+        if remaining > 0:
+            return True, remaining
+        _failed_link_attempts[discord_id] = []
+        return False, 0
+    return False, 0
+
+
+def record_failed_link_attempt(discord_id: int) -> int:
+    """
+    Records a failed PIN attempt.
+    Returns the number of remaining attempts before temporary lockout.
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _failed_link_attempts.get(discord_id, []) if now - t < LINK_LOCKOUT_DURATION_SECONDS]
+    attempts.append(now)
+    _failed_link_attempts[discord_id] = attempts
+    return max(0, LINK_LOCKOUT_MAX_ATTEMPTS - len(attempts))
+
+
+def clear_failed_link_attempts(discord_id: int):
+    """Clears failed attempt history on successful link."""
+    _failed_link_attempts.pop(discord_id, None)
+
+
+async def get_unlink_cooldown_remaining(discord_id: int) -> int:
+    """Returns remaining seconds on 1-hour unlink cooldown for a Discord user, or 0 if none."""
+    pool = await get_db_pool()
+    if pool is None:
+        return 0
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT unlinked_at FROM camicia_discord_links WHERE discord_id = %s AND unlinked_at IS NOT NULL",
+                    (discord_id,),
+                )
+                rows = await cur.fetchall()
+                now_utc = datetime.now(timezone.utc)
+                max_remaining = 0
+                for row in rows:
+                    if row and row[0]:
+                        unlinked_at = row[0]
+                        if unlinked_at.tzinfo is None:
+                            unlinked_at = unlinked_at.replace(tzinfo=timezone.utc)
+                        diff = (now_utc - unlinked_at).total_seconds()
+                        if diff < UNLINK_COOLDOWN_SECONDS:
+                            rem = int(UNLINK_COOLDOWN_SECONDS - diff)
+                            if rem > max_remaining:
+                                max_remaining = rem
+                return max_remaining
+    except Exception as e:
+        logger.debug("Error checking unlink cooldown for Discord ID %s: %s", discord_id, e)
+    return 0
+
 
 def get_bot_avatar_url() -> Optional[str]:
     """Returns the bot's own Discord CDN avatar URL, eliminating external HTTP fetches."""
@@ -155,20 +230,59 @@ async def link_discord_user(
 ) -> Tuple[bool, str, Optional[int], Optional[str]]:
     """
     Validates a 6-digit PIN and links the Discord account to the BOINC account.
+    Enforces brute-force lockout (5 attempts -> 15 min) and 1-hour unlink cooldown.
     Returns: (success, message, boinc_user_id, volunteer_name)
     """
+    # 0. Check brute-force lockout
+    is_locked, remaining_lockout = check_link_lockout(discord_id)
+    if is_locked:
+        mins = max(1, (remaining_lockout + 59) // 60)
+        return (
+            False,
+            f"⛔ **Account Temporarily Locked**: Too many incorrect verification attempts.\n"
+            f"For security, please wait **{mins} minute{'s' if mins != 1 else ''}** ({remaining_lockout}s) before trying again "
+            f"(or request a fresh code on the website).",
+            None,
+            None,
+        )
+
+    clean_pin = pin.strip()
+    if not clean_pin.isdigit() or len(clean_pin) != 6:
+        return False, "❌ Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`).", None, None
+
     pool = await get_db_pool()
     if pool is None:
         return False, "Database connection is currently unavailable. Please try again in a few moments.", None, None
 
-    clean_pin = pin.strip()
-    if not clean_pin.isdigit() or len(clean_pin) != 6:
-        return False, "Invalid verification code format. The code must be a 6-digit number (e.g. `/link 123456`).", None, None
+    now_utc = datetime.now(timezone.utc)
 
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                # 1. Check if this Discord user is already linked to another BOINC account
+                # 1. Check if this Discord user is on 1-hour unlink cooldown
+                await cur.execute(
+                    "SELECT boinc_user_id, unlinked_at FROM camicia_discord_links WHERE discord_id = %s AND unlinked_at IS NOT NULL",
+                    (discord_id,),
+                )
+                unlinked_rows = await cur.fetchall()
+                for b_uid, u_at in unlinked_rows:
+                    if u_at:
+                        if u_at.tzinfo is None:
+                            u_at = u_at.replace(tzinfo=timezone.utc)
+                        diff_sec = (now_utc - u_at).total_seconds()
+                        if diff_sec < UNLINK_COOLDOWN_SECONDS:
+                            rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
+                            rem_min = max(1, (rem_sec + 59) // 60)
+                            return (
+                                False,
+                                f"⏳ **Cooldown Active**: Your Discord account was unlinked recently.\n"
+                                f"To prevent spam and abuse, there is a **1-hour cooldown** before linking again.\n"
+                                f"Please wait **{rem_min} minute{'s' if rem_min != 1 else ''}** ({rem_sec}s remaining).",
+                                None,
+                                None,
+                            )
+
+                # 2. Check if this Discord user is already linked to another BOINC account
                 await cur.execute(
                     "SELECT boinc_user_id FROM camicia_discord_links WHERE discord_id = %s AND linked_at IS NOT NULL AND unlinked_at IS NULL",
                     (discord_id,),
@@ -182,7 +296,7 @@ async def link_discord_user(
                         None,
                     )
 
-                # 2. Look up the PIN in camicia_discord_links
+                # 3. Look up the PIN in camicia_discord_links
                 await cur.execute(
                     "SELECT l.boinc_user_id, l.pin_expires_at, l.linked_at, l.unlinked_at, u.name "
                     "FROM camicia_discord_links l "
@@ -192,7 +306,22 @@ async def link_discord_user(
                 )
                 rows = await cur.fetchall()
                 if not rows:
-                    return False, "❌ Invalid verification code. Please check that you entered the code correctly.", None, None
+                    rem_att = record_failed_link_attempt(discord_id)
+                    if rem_att > 0:
+                        return (
+                            False,
+                            f"❌ **Invalid verification code.** Please check that you entered the code correctly.\n"
+                            f"*(**{rem_att}** attempt{'s' if rem_att != 1 else ''} remaining before a 15-minute temporary lockout)*",
+                            None,
+                            None,
+                        )
+                    else:
+                        return (
+                            False,
+                            "⛔ **Too many failed attempts.** For security, your account has been temporarily locked out from verification for 15 minutes.",
+                            None,
+                            None,
+                        )
 
                 if len(rows) > 1:
                     logger.warning("Collision detected for PIN %s across %d rows: %s", clean_pin, len(rows), [r[0] for r in rows])
@@ -206,23 +335,48 @@ async def link_discord_user(
                 boinc_user_id, pin_expires_at, linked_at, unlinked_at, volunteer_name = rows[0]
                 volunteer_name = volunteer_name or f"Volunteer #{boinc_user_id}"
 
+                # 4. Check if the BOINC account associated with the PIN is on 1-hour unlink cooldown
                 if unlinked_at is not None:
+                    if unlinked_at.tzinfo is None:
+                        unlinked_at = unlinked_at.replace(tzinfo=timezone.utc)
+                    diff_sec = (now_utc - unlinked_at).total_seconds()
+                    if diff_sec < UNLINK_COOLDOWN_SECONDS:
+                        rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
+                        rem_min = max(1, (rem_sec + 59) // 60)
+                        return (
+                            False,
+                            f"⏳ **Cooldown Active**: This BOINC account was unlinked recently.\n"
+                            f"To prevent spam and abuse, there is a **1-hour cooldown** before linking again.\n"
+                            f"Please wait **{rem_min} minute{'s' if rem_min != 1 else ''}** ({rem_sec}s remaining).",
+                            None,
+                            None,
+                        )
                     return False, "❌ This verification code is no longer valid. Please request a new code on the website.", None, None
 
                 if linked_at is not None:
                     return False, "❌ This verification code has already been used.", None, None
 
-                now_utc = datetime.now(timezone.utc)
-                if pin_expires_at and pin_expires_at.replace(tzinfo=timezone.utc) < now_utc:
-                    return False, "❌ This verification code has expired (valid for 15 minutes). Please request a new code on the website.", None, None
+                if pin_expires_at:
+                    if pin_expires_at.tzinfo is None:
+                        pin_expires_at = pin_expires_at.replace(tzinfo=timezone.utc)
+                    if pin_expires_at < now_utc:
+                        return False, "❌ This verification code has expired (valid for 15 minutes). Please request a new code on the website.", None, None
 
-                # 3. Complete the link
+                # 5. Clear any old unlinked row with this discord_id on a different boinc_user_id
+                await cur.execute(
+                    "UPDATE camicia_discord_links SET discord_id = NULL WHERE discord_id = %s AND boinc_user_id != %s",
+                    (discord_id, boinc_user_id),
+                )
+
+                # 6. Complete the link
                 await cur.execute(
                     "UPDATE camicia_discord_links "
                     "SET discord_id = %s, discord_username = %s, linked_at = NOW(), pin = NULL, pin_expires_at = NULL, unlinked_at = NULL "
                     "WHERE boinc_user_id = %s",
                     (discord_id, discord_username, boinc_user_id),
                 )
+
+                clear_failed_link_attempts(discord_id)
                 return True, "Success", boinc_user_id, volunteer_name
 
     except Exception as e:
@@ -233,6 +387,7 @@ async def link_discord_user(
 async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int], Optional[str]]:
     """
     Unlinks a Discord account from its BOINC account.
+    Records unlinked_at timestamp in MariaDB to enforce the 1-hour anti-abuse cooldown.
     Returns: (success, message, boinc_user_id, volunteer_name)
     """
     pool = await get_db_pool()
@@ -256,8 +411,11 @@ async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int]
                 boinc_user_id, volunteer_name = row
                 volunteer_name = volunteer_name or f"Volunteer #{boinc_user_id}"
 
+                # Update row with unlinked_at = NOW() and linked_at = NULL to preserve record for 1-hour cooldown
                 await cur.execute(
-                    "DELETE FROM camicia_discord_links WHERE discord_id = %s",
+                    "UPDATE camicia_discord_links "
+                    "SET unlinked_at = NOW(), linked_at = NULL, pin = NULL "
+                    "WHERE discord_id = %s",
                     (discord_id,),
                 )
                 return True, "Success", boinc_user_id, volunteer_name
@@ -270,8 +428,9 @@ async def unlink_discord_user(discord_id: int) -> Tuple[bool, str, Optional[int]
 async def unlink_queue_loop():
     """
     Transactional Outbox queue worker (30-second interval):
-    Polls camicia_discord_links for rows marked with unlinked_at IS NOT NULL (queued from the website).
-    Removes the Volunteer role from the member on Discord, and purges the row from the database.
+    Polls camicia_discord_links for rows marked with pin = 'PENDING_REVOKE' (queued from website).
+    Removes the Volunteer role on Discord, then clears pin to NULL while preserving unlinked_at
+    for the 1-hour anti-abuse cooldown.
     This keeps Discord bot credentials completely off the web server.
     """
     if not config.DISCORD_GUILD_ID:
@@ -296,7 +455,7 @@ async def unlink_queue_loop():
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT id, discord_id, boinc_user_id FROM camicia_discord_links WHERE unlinked_at IS NOT NULL"
+                    "SELECT id, discord_id, boinc_user_id FROM camicia_discord_links WHERE pin = 'PENDING_REVOKE'"
                 )
                 rows = await cur.fetchall()
                 if not rows:
@@ -321,8 +480,8 @@ async def unlink_queue_loop():
                                 e,
                             )
 
-                    await cur.execute("DELETE FROM camicia_discord_links WHERE id = %s", (row_id,))
-                    logger.info("Unlink worker: purged record ID %s (BOINC #%s)", row_id, boinc_user_id)
+                    await cur.execute("UPDATE camicia_discord_links SET pin = NULL WHERE id = %s", (row_id,))
+                    logger.info("Unlink worker: processed revoke for record ID %s (BOINC #%s)", row_id, boinc_user_id)
     except Exception as e:
         logger.debug("Error in unlink_queue_loop: %s", e)
 
@@ -457,6 +616,7 @@ async def ping_cmd(interaction: discord.Interaction):
 @bot.tree.command(name="records", description="View the current standing longest game and total loops found")
 @app_commands.guild_only()
 @is_bot_commands_channel()
+@app_commands.checks.cooldown(1, 15.0, key=lambda i: i.channel_id)
 async def records_cmd(interaction: discord.Interaction):
     if watcher is None:
         await interaction.response.send_message("Records watcher is not yet initialized.", ephemeral=True)
@@ -699,6 +859,7 @@ async def lucky_cmd(interaction: discord.Interaction):
 @bot.tree.command(name="luckyleaderboard", description="View today's top /lucky rolls on the server")
 @app_commands.guild_only()
 @is_bot_commands_channel()
+@app_commands.checks.cooldown(1, 15.0, key=lambda i: i.channel_id)
 async def luckyleaderboard_cmd(interaction: discord.Interaction):
     lb = lucky_mgr.get_leaderboard()
     next_ts = lucky_mgr.next_midnight_timestamp()
@@ -861,8 +1022,13 @@ async def execute_unlink_flow(
         color=0x95A5A6,
     )
     embed.add_field(name="Status", value="Volunteer role removed • /lucky rolls reset to 3/day", inline=False)
+    embed.add_field(
+        name="⏳ Cooldown Notice",
+        value="To prevent abuse, there is a **1-hour cooldown** before you or this BOINC account can be linked again.",
+        inline=False,
+    )
     embed.set_footer(
-        text=f"You can re-link anytime at {link_url}",
+        text=f"You can re-link after 1 hour at {link_url}",
         icon_url=get_bot_avatar_url(),
     )
     logger.info("User %s unlinked from BOINC account #%s (%s)", user, boinc_uid, volunteer_name)
@@ -880,8 +1046,18 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
             embed = get_already_linked_embed(b_uid, v_name)
             await interaction.response.send_message(embed=embed)
         else:
-            embed = get_link_instructions_embed()
-            await interaction.response.send_message(embed=embed, view=LinkHelpView())
+            cooldown_rem = await get_unlink_cooldown_remaining(interaction.user.id)
+            if cooldown_rem > 0:
+                rem_min = max(1, (cooldown_rem + 59) // 60)
+                await interaction.response.send_message(
+                    f"⏳ **Account Unlink Cooldown Active**\n"
+                    f"Your Discord account was unlinked recently. To prevent abuse, a **1-hour cooldown** applies before linking again.\n"
+                    f"You can link your account in **{rem_min} minute{'s' if rem_min != 1 else ''}** ({cooldown_rem}s remaining).\n\n"
+                    f"*(Head to https://{config.PROJECT_DOMAIN}/camicia/discord_link.php once the cooldown expires)*"
+                )
+            else:
+                embed = get_link_instructions_embed()
+                await interaction.response.send_message(embed=embed, view=LinkHelpView())
         return
 
     await interaction.response.defer()
@@ -946,7 +1122,17 @@ async def on_message(message: discord.Message):
                 if is_linked:
                     await message.channel.send(embed=get_already_linked_embed(b_uid, v_name))
                 else:
-                    await message.channel.send(embed=get_link_instructions_embed(), view=LinkHelpView())
+                    cooldown_rem = await get_unlink_cooldown_remaining(message.author.id)
+                    if cooldown_rem > 0:
+                        rem_min = max(1, (cooldown_rem + 59) // 60)
+                        await message.channel.send(
+                            f"⏳ **Account Unlink Cooldown Active**\n"
+                            f"Your Discord account was unlinked recently. To prevent abuse, a **1-hour cooldown** applies before linking again.\n"
+                            f"You can link your account in **{rem_min} minute{'s' if rem_min != 1 else ''}** ({cooldown_rem}s remaining).\n\n"
+                            f"*(Head to https://{config.PROJECT_DOMAIN}/camicia/discord_link.php once the cooldown expires)*"
+                        )
+                    else:
+                        await message.channel.send(embed=get_link_instructions_embed(), view=LinkHelpView())
         # IMPORTANT: If user writes anything not equal to /link, /unlink, or /link <code>,
         # the bot does NOT respond anything.
         return
@@ -958,10 +1144,24 @@ async def on_message(message: discord.Message):
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Handles cooldowns and channel permission checks gracefully with clear ephemeral messages."""
     if isinstance(error, app_commands.CommandOnCooldown):
-        await interaction.response.send_message(
-            f"⏳ **Slow down!** You can roll again in **{error.retry_after:.1f}s**.",
-            ephemeral=True,
-        )
+        cmd_name = interaction.command.name if interaction.command else ""
+        retry_seconds = max(1, int(round(error.retry_after)))
+        if cmd_name == "records":
+            msg = (
+                f"⏳ **Recent Request**: The records were just posted in this channel! "
+                f"To keep the channel clean, please check the message above or try again in **{retry_seconds}s**."
+            )
+        elif cmd_name == "luckyleaderboard":
+            msg = (
+                f"⏳ **Recent Request**: Today's leaderboard was just posted in this channel! "
+                f"To keep the channel clean, please check the message above or try again in **{retry_seconds}s**."
+            )
+        elif cmd_name == "lucky":
+            msg = f"⏳ **Slow down!** You can roll again in **{error.retry_after:.1f}s**."
+        else:
+            msg = f"⏳ **Cooldown Active**: Please wait **{retry_seconds}s** before using `/{cmd_name}` again."
+
+        await interaction.response.send_message(msg, ephemeral=True)
     elif isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message(str(error), ephemeral=True)
     else:
