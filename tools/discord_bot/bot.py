@@ -408,8 +408,9 @@ def is_dm_only():
     return app_commands.check(predicate)
 
 
-@bot.tree.command(name="ping", description="Check bot latency and project storage status (Admin only)")
+@bot.tree.command(name="ping", description="Check bot latency, database status, and project storage (Admin only)")
 @app_commands.default_permissions(administrator=True)
+@app_commands.guild_only()
 async def ping_cmd(interaction: discord.Interaction):
     latency_ms = round(bot.latency * 1000, 1)
 
@@ -418,9 +419,26 @@ async def ping_cmd(interaction: discord.Interaction):
     has_history = (proj_dir / "records_longest_history.txt").exists()
     has_loops = (proj_dir / "records_loops.txt").exists()
 
+    # Check MariaDB connection
+    db_status = "❌ Not connected"
+    pool = await get_db_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("SELECT VERSION()")
+                    row = await cur.fetchone()
+                    version = row[0] if row else "unknown"
+                    db_status = f"✅ Connected (`MariaDB {version}` at `{config.DB_HOST}`)"
+        except Exception as e:
+            db_status = f"⚠️ Pool initialized but ping query failed: `{e}`"
+    else:
+        db_status = f"❌ Connection failed (`{config.DB_USER}@{config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}`)"
+
     status_lines = [
         f"🏓 **Pong!** Latency: `{latency_ms}ms`",
         f"📂 **Project Dir**: `{proj_dir}`",
+        f"🗄️ **Database**: {db_status}",
         f"• `records_longest.txt`: {'✅' if has_longest else '❌'}",
         f"• `records_longest_history.txt`: {'✅' if has_history else '❌'}",
         f"• `records_loops.txt`: {'✅' if has_loops else '❌'}",
@@ -430,6 +448,7 @@ async def ping_cmd(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="records", description="View the current standing longest game and total loops found")
+@app_commands.guild_only()
 @is_bot_commands_channel()
 async def records_cmd(interaction: discord.Interaction):
     if watcher is None:
@@ -490,6 +509,7 @@ async def records_cmd(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="lucky", description="Draw a random Beggar-My-Neighbour deal and test your luck! (3-5 rolls/day)")
+@app_commands.guild_only()
 @is_bot_commands_channel()
 @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
 async def lucky_cmd(interaction: discord.Interaction):
@@ -670,6 +690,7 @@ async def lucky_cmd(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="luckyleaderboard", description="View today's top /lucky rolls on the server")
+@app_commands.guild_only()
 @is_bot_commands_channel()
 async def luckyleaderboard_cmd(interaction: discord.Interaction):
     lb = lucky_mgr.get_leaderboard()
@@ -712,9 +733,9 @@ def get_link_instructions_embed() -> discord.Embed:
             "1️⃣ Log in to your account at **https://camicia.dev** (or your staging URL)\n"
             "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account**.\n"
             "3️⃣ Click **Send Verification Code via Email** to receive your 6-digit code.\n"
-            "4️⃣ Return here (in `#bot-commands` or in this DM) and run:\n"
+            "4️⃣ In this DM with CamiciaBot, run:\n"
             "```\n/link <code>\n```\n"
-            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`, or simply send the 6 digits in this DM)*"
+            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`, or simply reply with the 6 digits)*"
         ),
         color=0x1B4332,
     )

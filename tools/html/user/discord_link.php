@@ -259,6 +259,66 @@ page_head(tra("Discord Account Linking"));
 .discord-page .active-badge { display: inline-flex; align-items: center; gap: 8px; background: #132a22; border: 1px solid var(--gold); border-radius: 999px; padding: 6px 16px; font-size: 13px; color: var(--gold); font-weight: 600; margin-bottom: 16px; }
 @keyframes spin-camicia { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .discord-page .spinner { display: inline-block; animation: spin-camicia 2s linear infinite; }
+
+/* Custom Confirmation Modal */
+.camicia-modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.78);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 20px;
+    animation: fadeInModal 0.15s ease;
+}
+.camicia-modal-backdrop.active {
+    display: flex;
+}
+.camicia-modal {
+    background: #16302a;
+    border: 1.5px solid var(--gold-dim);
+    border-radius: 16px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7);
+    max-width: 480px;
+    width: 100%;
+    padding: 32px 28px;
+    text-align: center;
+    color: var(--cream);
+    animation: modalPop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.camicia-modal .modal-icon-badge {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: rgba(168, 51, 73, 0.18);
+    border: 1.5px solid var(--ruby);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 18px;
+}
+.camicia-modal h3 {
+    font-family: Georgia, serif;
+    font-size: 21px;
+    color: var(--cream);
+    margin: 0 0 12px;
+}
+.camicia-modal p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--cream-dim);
+    margin: 0 0 26px;
+}
+.camicia-modal .modal-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+@keyframes fadeInModal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalPop { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 </style>
 
 <div class="discord-page">
@@ -270,14 +330,14 @@ page_head(tra("Discord Account Linking"));
 
 <?php if ($msg_success): ?>
   <div class="alert-banner success">
-    <i class="glyphicon glyphicon-ok-sign" style="color: var(--gold); font-size: 18px;"></i>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
     <span><?php echo htmlspecialchars($msg_success); ?></span>
   </div>
 <?php endif; ?>
 
 <?php if ($msg_error): ?>
   <div class="alert-banner danger">
-    <i class="glyphicon glyphicon-exclamation-sign" style="color: #ff6b81; font-size: 18px;"></i>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff6b81" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
     <span><?php echo htmlspecialchars($msg_error); ?></span>
   </div>
 <?php endif; ?>
@@ -311,17 +371,68 @@ page_head(tra("Discord Account Linking"));
       </li>
     </ul>
 
-    <form method="POST" action="discord_link.php" onsubmit="return confirm('<?php echo tra("Are you sure you want to unlink your Discord account? You will lose the Volunteer role and extra /lucky rolls."); ?>');" style="margin: 0;">
+    <form id="unlink-form" method="POST" action="discord_link.php" style="margin: 0;">
       <?php echo form_tokens($user->authenticator); ?>
       <input type="hidden" name="action" value="unlink">
-      <button type="submit" class="btn-ruby">
-        <i class="glyphicon glyphicon-remove"></i> <?php echo tra("Unlink Discord Account"); ?>
+      <button type="button" class="btn-ruby" onclick="openUnlinkModal();">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M18.84 12.25l1.72-1.71a4.8 4.8 0 0 0-.25-7.04 4.8 4.8 0 0 0-7.04.25l-2.07 2.08"/><path d="M5.16 11.75l-1.72 1.71a4.8 4.8 0 0 0 .25 7.04 4.8 4.8 0 0 0 7.04-.25l2.07-2.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+        <?php echo tra("Unlink Discord Account"); ?>
       </button>
       <a href="<?php echo url_base(); ?>home.php" class="btn-ghost">
         <?php echo tra("Back to Account"); ?> &rarr;
       </a>
     </form>
   </div>
+
+  <!-- Custom Unlink Confirmation Modal -->
+  <div id="unlink-modal" class="camicia-modal-backdrop" onclick="if(event.target===this) closeUnlinkModal();">
+    <div class="camicia-modal" role="dialog" aria-modal="true" aria-labelledby="unlink-modal-title">
+      <div class="modal-icon-badge">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e05252" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.84 12.25l1.72-1.71a4.8 4.8 0 0 0-.25-7.04 4.8 4.8 0 0 0-7.04.25l-2.07 2.08"/><path d="M5.16 11.75l-1.72 1.71a4.8 4.8 0 0 0 .25 7.04 4.8 4.8 0 0 0 7.04-.25l2.07-2.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+      </div>
+      <h3 id="unlink-modal-title"><?php echo tra("Unlink Discord Account?"); ?></h3>
+      <p>
+        <?php echo tra("Are you sure you want to disconnect your Discord account? You will immediately lose the Volunteer server role, your extra /lucky rolls, and automated milestone tagging."); ?>
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" onclick="closeUnlinkModal();">
+          <?php echo tra("Cancel"); ?>
+        </button>
+        <button type="button" class="btn-ruby" onclick="submitUnlinkForm();">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M18.84 12.25l1.72-1.71a4.8 4.8 0 0 0-.25-7.04 4.8 4.8 0 0 0-7.04.25l-2.07 2.08"/><path d="M5.16 11.75l-1.72 1.71a4.8 4.8 0 0 0 .25 7.04 4.8 4.8 0 0 0 7.04-.25l2.07-2.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+          <?php echo tra("Yes, Unlink Account"); ?>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function openUnlinkModal() {
+      var modal = document.getElementById("unlink-modal");
+      if (modal) {
+          modal.classList.add("active");
+          document.body.style.overflow = "hidden";
+      }
+  }
+  function closeUnlinkModal() {
+      var modal = document.getElementById("unlink-modal");
+      if (modal) {
+          modal.classList.remove("active");
+          document.body.style.overflow = "";
+      }
+  }
+  function submitUnlinkForm() {
+      var form = document.getElementById("unlink-form");
+      if (form) {
+          form.submit();
+      }
+  }
+  document.addEventListener("keydown", function(e) {
+      if (e.key === "Escape" || e.keyCode === 27) {
+          closeUnlinkModal();
+      }
+  });
+  </script>
 
 <?php else: ?>
   <div class="stat-grid">
@@ -355,8 +466,8 @@ page_head(tra("Discord Account Linking"));
       <?php echo form_tokens($user->authenticator); ?>
       <input type="hidden" name="action" value="send_code">
       <button type="submit" id="btn-send-code" class="btn-gold" <?php echo ($cooldown_seconds > 0 ? 'disabled' : ''); ?>>
-        <i class="glyphicon glyphicon-envelope"></i>
-        <span><?php echo ($cooldown_seconds > 0 ? sprintf(tra("Resend Code in %ds"), $cooldown_seconds) : tra("Send Verification Code via Email")); ?></span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+        <span id="btn-send-code-text"><?php echo ($cooldown_seconds > 0 ? sprintf(tra("Resend Code in %ds"), $cooldown_seconds) : tra("Send Verification Code via Email")); ?></span>
       </button>
     </form>
 
@@ -365,14 +476,15 @@ page_head(tra("Discord Account Linking"));
     (function() {
         var seconds = <?php echo (int)$cooldown_seconds; ?>;
         var btn = document.getElementById("btn-send-code");
+        var btnText = document.getElementById("btn-send-code-text");
         var timer = setInterval(function() {
             seconds--;
             if (seconds <= 0) {
                 clearInterval(timer);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="glyphicon glyphicon-envelope"></i> <?php echo tra("Send Verification Code via Email"); ?>';
+                if (btn) btn.disabled = false;
+                if (btnText) btnText.textContent = <?php echo json_encode(tra("Send Verification Code via Email")); ?>;
             } else {
-                btn.innerHTML = '<i class="glyphicon glyphicon-envelope"></i> <?php echo tra("Resend Code in"); ?> ' + seconds + 's';
+                if (btnText) btnText.textContent = <?php echo json_encode(tra("Resend Code in")); ?> + " " + seconds + "s";
             }
         }, 1000);
     })();
