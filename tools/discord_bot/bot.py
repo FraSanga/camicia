@@ -225,23 +225,151 @@ async def is_discord_user_linked(discord_id: int) -> Tuple[bool, Optional[int], 
     return False, None, None
 
 
+class LinkHelpView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(
+            discord.ui.Button(
+                label="Open Verification Page",
+                url=getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php"),
+                emoji="🔗",
+                style=discord.ButtonStyle.link,
+            )
+        )
+
+
+def get_link_instructions_embed() -> discord.Embed:
+    base_url = getattr(config, "PROJECT_BASE_URL", f"https://{config.PROJECT_DOMAIN}/camicia")
+    link_url = getattr(config, "PROJECT_LINK_URL", f"{base_url}/discord_link.php")
+    embed = discord.Embed(
+        title="🔗 Link Your Camicia BOINC Account",
+        description=(
+            "Connect your account to earn the **Volunteer** role on Discord "
+            "and unlock **5 daily rolls** on `/lucky` (instead of 3)!\n\n"
+            "**How to link:**\n"
+            f"1️⃣ Log in to your account at [**{config.PROJECT_DOMAIN}**]({base_url})\n"
+            "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account** (or tap the button below)\n"
+            "3️⃣ Click **Send Verification Code via Email** to receive your 6-digit code.\n"
+            "4️⃣ In this DM with CamiciaBot, run:\n"
+            "```\n/link <code>\n```\n"
+            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`)*"
+        ),
+        color=0x1B4332,
+    )
+    embed.set_footer(
+        text="Camicia BOINC Project • Verification codes expire in 15 minutes",
+        icon_url=get_bot_avatar_url(),
+    )
+    return embed
+
+
+def get_already_linked_embed(boinc_uid: int, volunteer_name: Optional[str]) -> discord.Embed:
+    name = volunteer_name or f"Volunteer #{boinc_uid}"
+    embed = discord.Embed(
+        title="🏅 Account Already Linked",
+        description=(
+            f"Your Discord account is already connected to Camicia volunteer **{name}** (BOINC ID: `{boinc_uid}`).\n\n"
+            "• **Server Role**: You have the **Volunteer** role on our Discord server.\n"
+            "• **Mini-Game**: You have **5 daily rolls** unlocked on `/lucky`.\n\n"
+            "To disconnect or switch accounts, run `/unlink` in this DM."
+        ),
+        color=0x2ECC71,
+    )
+    embed.set_footer(
+        text="Camicia BOINC Project • Account Active",
+        icon_url=get_bot_avatar_url(),
+    )
+    return embed
+
+
+def get_unlink_cooldown_embed(remaining_seconds: int, account_type: str = "Discord") -> discord.Embed:
+    link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php")
+    rem_min = max(1, (remaining_seconds + 59) // 60)
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    unfreeze_ts = now_ts + remaining_seconds
+
+    if account_type == "BOINC":
+        subject_desc = "This Camicia BOINC account was unlinked from Discord recently."
+    else:
+        subject_desc = "Your Discord account was unlinked from a Camicia BOINC profile recently."
+
+    embed = discord.Embed(
+        title="⏳ Account Unlink Cooldown Active",
+        description=(
+            f"{subject_desc}\n\n"
+            "To prevent spam and rapid account cycling, a **1-hour cooldown** applies "
+            "before this account can be linked again."
+        ),
+        color=0xE67E22,  # Amber / Warning Orange
+    )
+    embed.add_field(
+        name="⏱️ Cooldown Remaining",
+        value=f"**{rem_min} minute{'s' if rem_min != 1 else ''}** ({remaining_seconds}s) • Unlocks <t:{unfreeze_ts}:R> (<t:{unfreeze_ts}:T>)",
+        inline=False,
+    )
+    embed.add_field(
+        name="🔗 Next Steps",
+        value=(
+            f"Once the cooldown expires, visit the [**Discord Verification Page**]({link_url}) "
+            "to request a new 6-digit verification code."
+        ),
+        inline=False,
+    )
+    embed.set_footer(
+        text=f"Camicia BOINC Project • Anti-Abuse Cooldown",
+        icon_url=get_bot_avatar_url(),
+    )
+    return embed
+
+
+def get_lockout_embed(remaining_seconds: int) -> discord.Embed:
+    link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php")
+    rem_min = max(1, (remaining_seconds + 59) // 60)
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    unlock_ts = now_ts + remaining_seconds
+
+    embed = discord.Embed(
+        title="⛔ Verification Temporarily Locked",
+        description=(
+            "Too many incorrect verification attempts have been submitted from this Discord account.\n\n"
+            "For security reasons, your account has been temporarily locked out from submitting verification codes."
+        ),
+        color=0xE74C3C,  # Crimson Red
+    )
+    embed.add_field(
+        name="⏱️ Lockout Remaining",
+        value=f"**{rem_min} minute{'s' if rem_min != 1 else ''}** ({remaining_seconds}s) • Unlocks <t:{unlock_ts}:R> (<t:{unlock_ts}:T>)",
+        inline=False,
+    )
+    embed.add_field(
+        name="💡 What should I do?",
+        value=(
+            f"Please wait for the lockout to expire, or visit the [**Discord Verification Page**]({link_url}) "
+            "to request a fresh verification code."
+        ),
+        inline=False,
+    )
+    embed.set_footer(
+        text="Camicia BOINC Project • Security Lockout",
+        icon_url=get_bot_avatar_url(),
+    )
+    return embed
+
+
 async def link_discord_user(
     discord_id: int, discord_username: str, pin: str
-) -> Tuple[bool, str, Optional[int], Optional[str]]:
+) -> Tuple[bool, Union[str, discord.Embed], Optional[int], Optional[str]]:
     """
     Validates a 6-digit PIN and links the Discord account to the BOINC account.
     Enforces brute-force lockout (5 attempts -> 15 min) and 1-hour unlink cooldown.
-    Returns: (success, message, boinc_user_id, volunteer_name)
+    Returns: (success, message_or_embed, boinc_user_id, volunteer_name)
     """
     # 0. Check brute-force lockout
     is_locked, remaining_lockout = check_link_lockout(discord_id)
     if is_locked:
-        mins = max(1, (remaining_lockout + 59) // 60)
         return (
             False,
-            f"⛔ **Account Temporarily Locked**: Too many incorrect verification attempts.\n"
-            f"For security, please wait **{mins} minute{'s' if mins != 1 else ''}** ({remaining_lockout}s) before trying again "
-            f"(or request a fresh code on the website).",
+            get_lockout_embed(remaining_lockout),
             None,
             None,
         )
@@ -272,12 +400,9 @@ async def link_discord_user(
                         diff_sec = (now_utc - u_at).total_seconds()
                         if diff_sec < UNLINK_COOLDOWN_SECONDS:
                             rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
-                            rem_min = max(1, (rem_sec + 59) // 60)
                             return (
                                 False,
-                                f"⏳ **Cooldown Active**: Your Discord account was unlinked recently.\n"
-                                f"To prevent spam and abuse, there is a **1-hour cooldown** before linking again.\n"
-                                f"Please wait **{rem_min} minute{'s' if rem_min != 1 else ''}** ({rem_sec}s remaining).",
+                                get_unlink_cooldown_embed(rem_sec, account_type="Discord"),
                                 None,
                                 None,
                             )
@@ -318,7 +443,7 @@ async def link_discord_user(
                     else:
                         return (
                             False,
-                            "⛔ **Too many failed attempts.** For security, your account has been temporarily locked out from verification for 15 minutes.",
+                            get_lockout_embed(LINK_LOCKOUT_DURATION_SECONDS),
                             None,
                             None,
                         )
@@ -342,12 +467,9 @@ async def link_discord_user(
                     diff_sec = (now_utc - unlinked_at).total_seconds()
                     if diff_sec < UNLINK_COOLDOWN_SECONDS:
                         rem_sec = int(UNLINK_COOLDOWN_SECONDS - diff_sec)
-                        rem_min = max(1, (rem_sec + 59) // 60)
                         return (
                             False,
-                            f"⏳ **Cooldown Active**: This BOINC account was unlinked recently.\n"
-                            f"To prevent spam and abuse, there is a **1-hour cooldown** before linking again.\n"
-                            f"Please wait **{rem_min} minute{'s' if rem_min != 1 else ''}** ({rem_sec}s remaining).",
+                            get_unlink_cooldown_embed(rem_sec, account_type="BOINC"),
                             None,
                             None,
                         )
@@ -891,63 +1013,6 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-class LinkHelpView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(
-            discord.ui.Button(
-                label="Open Verification Page",
-                url=getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php"),
-                emoji="🔗",
-                style=discord.ButtonStyle.link,
-            )
-        )
-
-
-def get_link_instructions_embed() -> discord.Embed:
-    base_url = getattr(config, "PROJECT_BASE_URL", f"https://{config.PROJECT_DOMAIN}/camicia")
-    link_url = getattr(config, "PROJECT_LINK_URL", f"{base_url}/discord_link.php")
-    embed = discord.Embed(
-        title="🔗 Link Your Camicia BOINC Account",
-        description=(
-            "Connect your account to earn the **Volunteer** role on Discord "
-            "and unlock **5 daily rolls** on `/lucky` (instead of 3)!\n\n"
-            "**How to link:**\n"
-            f"1️⃣ Log in to your account at [**{config.PROJECT_DOMAIN}**]({base_url})\n"
-            "2️⃣ Go to your **Account** page (`home.php`), look under **Community**, and click **Link Discord account** (or tap the button below)\n"
-            "3️⃣ Click **Send Verification Code via Email** to receive your 6-digit code.\n"
-            "4️⃣ In this DM with CamiciaBot, run:\n"
-            "```\n/link <code>\n```\n"
-            "*(Replace `<code>` with your 6-digit code, e.g. `/link 123456`)*"
-        ),
-        color=0x1B4332,
-    )
-    embed.set_footer(
-        text="Camicia BOINC Project • Verification codes expire in 15 minutes",
-        icon_url=get_bot_avatar_url(),
-    )
-    return embed
-
-
-def get_already_linked_embed(boinc_uid: int, volunteer_name: Optional[str]) -> discord.Embed:
-    name = volunteer_name or f"Volunteer #{boinc_uid}"
-    embed = discord.Embed(
-        title="🏅 Account Already Linked",
-        description=(
-            f"Your Discord account is already connected to Camicia volunteer **{name}** (BOINC ID: `{boinc_uid}`).\n\n"
-            "• **Server Role**: You have the **Volunteer** role on our Discord server.\n"
-            "• **Mini-Game**: You have **5 daily rolls** unlocked on `/lucky`.\n\n"
-            "To disconnect or switch accounts, run `/unlink` in this DM."
-        ),
-        color=0x2ECC71,
-    )
-    embed.set_footer(
-        text="Camicia BOINC Project • Account Active",
-        icon_url=get_bot_avatar_url(),
-    )
-    return embed
-
-
 async def execute_link_flow(
     user: Union[discord.User, discord.Member], code: str
 ) -> Tuple[bool, Union[discord.Embed, str]]:
@@ -1048,13 +1113,8 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
         else:
             cooldown_rem = await get_unlink_cooldown_remaining(interaction.user.id)
             if cooldown_rem > 0:
-                rem_min = max(1, (cooldown_rem + 59) // 60)
-                await interaction.response.send_message(
-                    f"⏳ **Account Unlink Cooldown Active**\n"
-                    f"Your Discord account was unlinked recently. To prevent abuse, a **1-hour cooldown** applies before linking again.\n"
-                    f"You can link your account in **{rem_min} minute{'s' if rem_min != 1 else ''}** ({cooldown_rem}s remaining).\n\n"
-                    f"*(Head to https://{config.PROJECT_DOMAIN}/camicia/discord_link.php once the cooldown expires)*"
-                )
+                embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord")
+                await interaction.response.send_message(embed=embed, view=LinkHelpView())
             else:
                 embed = get_link_instructions_embed()
                 await interaction.response.send_message(embed=embed, view=LinkHelpView())
@@ -1062,8 +1122,12 @@ async def link_cmd(interaction: discord.Interaction, code: Optional[str] = None)
 
     await interaction.response.defer()
     success, result = await execute_link_flow(interaction.user, code)
-    if success:
-        await interaction.followup.send(embed=result)
+    if isinstance(result, discord.Embed):
+        view = LinkHelpView() if not success and "Cooldown" in (result.title or "") else None
+        if view:
+            await interaction.followup.send(embed=result, view=view)
+        else:
+            await interaction.followup.send(embed=result)
     else:
         await interaction.followup.send(result)
 
@@ -1111,8 +1175,12 @@ async def on_message(message: discord.Message):
                 code_arg = parts[1].strip()
                 async with message.channel.typing():
                     success, result = await execute_link_flow(message.author, code_arg)
-                    if success:
-                        await message.channel.send(embed=result)
+                    if isinstance(result, discord.Embed):
+                        view = LinkHelpView() if not success and "Cooldown" in (result.title or "") else None
+                        if view:
+                            await message.channel.send(embed=result, view=view)
+                        else:
+                            await message.channel.send(embed=result)
                     else:
                         await message.channel.send(result)
                 return
@@ -1124,13 +1192,8 @@ async def on_message(message: discord.Message):
                 else:
                     cooldown_rem = await get_unlink_cooldown_remaining(message.author.id)
                     if cooldown_rem > 0:
-                        rem_min = max(1, (cooldown_rem + 59) // 60)
-                        await message.channel.send(
-                            f"⏳ **Account Unlink Cooldown Active**\n"
-                            f"Your Discord account was unlinked recently. To prevent abuse, a **1-hour cooldown** applies before linking again.\n"
-                            f"You can link your account in **{rem_min} minute{'s' if rem_min != 1 else ''}** ({cooldown_rem}s remaining).\n\n"
-                            f"*(Head to https://{config.PROJECT_DOMAIN}/camicia/discord_link.php once the cooldown expires)*"
-                        )
+                        embed = get_unlink_cooldown_embed(cooldown_rem, account_type="Discord")
+                        await message.channel.send(embed=embed, view=LinkHelpView())
                     else:
                         await message.channel.send(embed=get_link_instructions_embed(), view=LinkHelpView())
         # IMPORTANT: If user writes anything not equal to /link, /unlink, or /link <code>,

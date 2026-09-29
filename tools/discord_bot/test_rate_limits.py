@@ -153,6 +153,24 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
     def test_unlink_cooldown_constant(self):
         self.assertEqual(bot.UNLINK_COOLDOWN_SECONDS, 3600)
 
+    def test_unlink_cooldown_embed(self):
+        embed = bot.get_unlink_cooldown_embed(1800, account_type="Discord")
+        self.assertEqual(embed.title, "⏳ Account Unlink Cooldown Active")
+        self.assertEqual(embed.color.value, 0xE67E22)
+        self.assertIn("30 minutes", embed.fields[0].value)
+        self.assertIn("1800s", embed.fields[0].value)
+
+        # Test BOINC account type
+        embed_boinc = bot.get_unlink_cooldown_embed(600, account_type="BOINC")
+        self.assertIn("BOINC account", embed_boinc.description)
+
+    def test_lockout_embed(self):
+        embed = bot.get_lockout_embed(900)
+        self.assertEqual(embed.title, "⛔ Verification Temporarily Locked")
+        self.assertEqual(embed.color.value, 0xE74C3C)
+        self.assertIn("15 minutes", embed.fields[0].value)
+        self.assertIn("900s", embed.fields[0].value)
+
 
 if __name__ == "__main__":
     unittest.main()
