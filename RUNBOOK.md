@@ -61,12 +61,20 @@ to an incident without already holding all the context in their head.
   - [3. Corruption after an unclean shutdown](#3-corruption-after-an-unclean-shutdown)
   - [4. Schema limits](#4-schema-limits)
 - [External service problems](#external-service-problems)
+- [Discord bot operations and troubleshooting](#discord-bot-operations-and-troubleshooting)
+  - [Dual-bot architecture and mutual exclusion](#dual-bot-architecture-and-mutual-exclusion)
+  - [Managing bot lifecycle with `discord_bot_control.sh`](#managing-bot-lifecycle-with-discord_bot_controlsh)
+  - [Database state machine and account unlinking (`PENDING_REVOKE`)](#database-state-machine-and-account-unlinking-pending_revoke)
+  - [Persistent state files (`watcher_state.json` and `lucky_state.json`)](#persistent-state-files-watcher_statejson-and-lucky_statejson)
+  - [Channel restrictions and staging mode](#channel-restrictions-and-staging-mode)
+  - [Troubleshooting common bot issues](#troubleshooting-common-bot-issues)
 - [Rotating/losing a secret or key](#rotatinglosing-a-secret-or-key)
   - [`code_sign_private` (signs every app version clients trust)](#code_sign_private-signs-every-app-version-clients-trust)
   - [`upload_private`](#upload_private)
   - [`OPS_PASS` (the ops panel's HTTP Basic Auth password)](#ops_pass-the-ops-panels-http-basic-auth-password)
   - [Database credentials](#database-credentials)
   - [Google Drive rclone connection (`keys/rclone.conf`)](#google-drive-rclone-connection-keysrcloneconf)
+  - [Discord bot token (`DISCORD_BOT_TOKEN`)](#discord-bot-token-discord_bot_token)
 
 ## Alerts: what to do for each one
 
@@ -199,8 +207,11 @@ tools/backup_env_to_usb.sh /mnt/env_backup
     it at all; regenerate it and resubscribe your phone to the new topic).
   - **Recoverable by logging into the external account that issued it**: `CLOUDFLARE_TUNNEL_TOKEN`
     (Cloudflare dashboard), `SMTP_*` (your SMTP provider), `RECAPTCHA_SITE_KEY`/
-    `RECAPTCHA_SECRET_KEY` (Google reCAPTCHA admin console), and `AKISMET_KEY` (your Akismet
-    account).
+    `RECAPTCHA_SECRET_KEY` (Google reCAPTCHA admin console), `AKISMET_KEY` (your Akismet
+    account), and the Discord bot integration keys: `DISCORD_BOT_TOKEN` (Discord Developer
+    Portal), `DISCORD_GUILD_ID`, `DISCORD_RECORDS_CHANNEL_ID`, `DISCORD_BOT_COMMANDS_CHANNEL_ID`,
+    `DISCORD_VOLUNTEER_ROLE_ID`, and `DISCORD_TESTER_ROLE_ID` (Discord Server Settings with
+    Developer Mode enabled).
   - **`CODE_SIGN_KEY_PASSPHRASE`: leave it blank.** It's a GitHub Actions `production`-Environment
     secret, write-only, confirmed via `gh secret list`, no login anywhere reveals it. Production's
     `.env` was never meant to carry a real value here either way; a non-blank one would actually
@@ -358,6 +369,17 @@ docker exec <SERVER_CONTAINER_NAME> chmod +x <SERVER_VOLUME_PROJECTS_DIR>/camici
 docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c "cd <SERVER_VOLUME_PROJECTS_DIR>/camicia/bin && ./0001_widen_workunit_result_ids.sh"
 ```
 
+Similarly, if restoring an older dump that predated the Discord bot integration, verify whether
+`camicia_discord_links` exists and run `0005_create_camicia_discord_links.sh` if missing (safe to
+re-run; `CREATE TABLE IF NOT EXISTS`):
+
+```bash
+docker cp tools/migrations/0005_create_camicia_discord_links.sh <SERVER_CONTAINER_NAME>:<SERVER_VOLUME_PROJECTS_DIR>/camicia/bin/
+docker exec <SERVER_CONTAINER_NAME> chown <PROJECTS_USER>:<PROJECTS_USER> <SERVER_VOLUME_PROJECTS_DIR>/camicia/bin/0005_create_camicia_discord_links.sh
+docker exec <SERVER_CONTAINER_NAME> chmod +x <SERVER_VOLUME_PROJECTS_DIR>/camicia/bin/0005_create_camicia_discord_links.sh
+docker exec --user <PROJECTS_USER> <SERVER_CONTAINER_NAME> bash -c "cd <SERVER_VOLUME_PROJECTS_DIR>/camicia/bin && ./0005_create_camicia_discord_links.sh --yes"
+```
+
 ### 8. What you do *not* need to do, because the dump already covers it
 
 Unlike a from-scratch reset (a different, deliberately destructive procedure), restoring a real
@@ -407,6 +429,16 @@ docker logs -f linux_user
 
 Confirm the client actually fetches, computes, and reports a workunit successfully, not just that
 it attaches.
+
+If the Discord bot service is enabled (`--profile discord`):
+
+```bash
+bash tools/discord_bot_control.sh status
+docker logs <SERVER_CONTAINER_NAME>_discord_bot --tail 20
+```
+
+Confirm the bot reports `RUNNING (Active)` and logged `Logged in as CamiciaBot` along with successful
+slash command synchronization.
 
 ### 10. Setting up rclone access to Google Drive
 
@@ -1174,6 +1206,184 @@ something depending on one breaks, check that service's own dashboard first, not
 - **Nobody can create an account, or account creation seems to hang rather than fail outright**:
   check the Google reCAPTCHA admin console for the key's status.
 - **Forum or profile spam suddenly increases**: check your Akismet account for the key's status.
+- **Discord bot offline or failing to interact while container is running**: check the
+  [Discord Status page](https://discordstatus.com) for API, Gateway, or Cloudflare upstream outages;
+  or inspect container logs for HTTP 5xx / Cloudflare 520 errors from `discord.com/api`.
+
+## Discord bot operations and troubleshooting
+
+The project runs an automated Discord bot (`CamiciaBot`) that:
+- Monitors `records_longest_history.txt` and `records_loops.txt` for real-time announcements.
+- Handles `/link` and `/unlink` account linking between BOINC users and Discord members.
+- Automatically assigns and revokes the **Volunteer** role on Discord.
+- Provides interactive commands like `/lucky` (simulating pseudo-random deck games) and `/records`.
+
+It runs as a profile-gated container (`discord_bot`, service name in `docker-compose.yml`,
+container name `${SERVER_CONTAINER_NAME}_discord_bot`, e.g. `boinc_server_discord_bot` on production)
+with read-only access to the BOINC project volume and access to MariaDB.
+
+### Dual-bot architecture and mutual exclusion
+
+Production and Staging both define a `discord_bot` service, pointing to the same Discord guild.
+Because Discord registers application slash commands (`/link`, `/unlink`, `/lucky`, etc.)
+globally or per-guild, running both bots concurrently causes duplicate command entries in the
+Discord user interface and competing event handlers.
+
+**Precedence rule: Production ALWAYS takes precedence.**
+- When the Production bot starts, any running Staging bot (`boinc_server_staging_discord_bot`) is
+  automatically shut down.
+- The Staging bot refuses to start if the Production bot is already running.
+- In CI, `deploy.yml` enforces this rule automatically; `deploy-staging.yml` only starts the Staging
+  bot if Production is explicitly OFF.
+
+### Managing bot lifecycle with `discord_bot_control.sh`
+
+Always manage bot state using the host control script rather than ad-hoc Docker commands:
+
+```bash
+# Check the status of both bots
+bash tools/discord_bot_control.sh status
+
+# Start Production bot (automatically stops Staging if running)
+bash tools/discord_bot_control.sh start-production
+
+# Start Production bot and force rebuild Docker image
+bash tools/discord_bot_control.sh start-production --build
+
+# Stop Production bot
+bash tools/discord_bot_control.sh stop-production
+
+# Start Staging bot (only succeeds if Production is stopped)
+bash tools/discord_bot_control.sh start-staging
+
+# Stop Staging bot
+bash tools/discord_bot_control.sh stop-staging
+```
+
+To test or debug the Staging bot without conflicting with Production:
+1. Stop Production: `bash tools/discord_bot_control.sh stop-production`
+2. Start Staging: `bash tools/discord_bot_control.sh start-staging`
+3. Run tests or verify behavior in the test channel.
+4. When finished, switch back: `bash tools/discord_bot_control.sh start-production`
+
+### Database state machine and account unlinking (`PENDING_REVOKE`)
+
+The account linking system uses a Transactional Outbox pattern to completely isolate Discord API
+tokens and outbound network access from the Apache/PHP web container:
+
+1. **Link flow**:
+   - Volunteer requests a 6-digit PIN on `https://<DOMAIN>/camicia/discord_link.php`.
+   - The web server generates a cryptographically secure PIN, stores it in `camicia_discord_links`
+     with a 15-minute TTL (`pin_expires_at`), and emails it to the user's verified address.
+   - The volunteer sends `/link <code>` in Discord (via DM or `#bot-commands`).
+   - The bot queries MariaDB, matches the PIN, sets `discord_id`, `discord_username`, and
+     `linked_at`, clears `pin`, and assigns the Volunteer role (`DISCORD_VOLUNTEER_ROLE_ID`).
+
+2. **Unlink flow (`PENDING_REVOKE`)**:
+   - When a user unlinks on the website, the PHP code sets `pin = 'PENDING_REVOKE'` on the row.
+   - Every 30 seconds, the bot's background worker (`unlink_queue_loop()`) queries:
+     `SELECT id, discord_id, boinc_user_id FROM camicia_discord_links WHERE pin = 'PENDING_REVOKE'`.
+   - For each queued row, the bot:
+     1. Contacts the Discord API and strips the Volunteer role from the guild member.
+     2. Sets `pin = NULL`, `discord_id = NULL`, and `discord_username = NULL`.
+     3. Sets `unlinked_at = NOW()`.
+   - **Anti-abuse cooldown**: The row is preserved with `unlinked_at`. Neither the BOINC account
+     nor the Discord account can link again for 1 hour (`UNLINK_COOLDOWN_SECONDS = 3600`).
+   - If the bot is temporarily offline when unlinking occurs, rows remain in `PENDING_REVOKE`
+     state in MariaDB and are processed immediately once the bot restarts.
+
+To inspect queued unlinks directly in the database:
+
+```bash
+docker exec <DATABASE_CONTAINER_NAME> mariadb -uroot -p<MARIADB_ROOT_PASSWORD> <MARIADB_DATABASE> -e \
+    "SELECT id, boinc_user_id, discord_username, pin, unlinked_at FROM camicia_discord_links WHERE pin = 'PENDING_REVOKE';"
+```
+
+### Persistent state files (`watcher_state.json` and `lucky_state.json`)
+
+Runtime state files are persisted in the named Docker volume `discord_bot_data`, mounted inside the
+container at `/data/state/`:
+
+- **`watcher_state.json`** (`WATCHER_STATE_FILE`):
+  - Records the last processed line indices and file offsets for `records_longest_history.txt` and
+    `records_loops.txt`.
+  - Ensures world records and loops are announced exactly once across container restarts or code
+    rebuilds.
+  - To inspect current file pointers:
+    ```bash
+    docker exec <SERVER_CONTAINER_NAME>_discord_bot cat /data/state/watcher_state.json
+    ```
+  - If it is ever accidentally corrupted or deleted, the bot initializes a fresh state file and
+    resumes watching from the current ends of both record files without backfilling past events.
+
+- **`lucky_state.json`** (`LUCKY_STATE_FILE`):
+  - Tracks daily `/lucky` game rolls per Discord user ID (`YYYY-MM-DD` UTC date keys).
+  - Unlinked users get 3 rolls/day; linked users with the Volunteer role get 5 rolls/day.
+  - Rolls automatically reset at 00:00 UTC.
+  - To inspect today's rolls:
+    ```bash
+    docker exec <SERVER_CONTAINER_NAME>_discord_bot cat /data/state/lucky_state.json
+    ```
+
+### Channel restrictions and staging mode
+
+- **Announcement channel (`DISCORD_RECORDS_CHANNEL_ID`)**:
+  Designated exclusively for automated world record and loop announcements. The bot enforces a clean
+  history; user-triggered `/records` and `/luckyleaderboard` commands have channel-wide cooldowns here.
+- **Bot commands channel (`DISCORD_BOT_COMMANDS_CHANNEL_ID`)**:
+  Designated for volunteer `/lucky` rolls and `/link` interactions.
+- **Staging mode (`STAGING_MODE=true`)**:
+  Automatically active when the container name or domain contains `staging`, or when explicitly
+  set in `.env`. Restricts command execution to guild Administrators and members with the Tester
+  role (`DISCORD_TESTER_ROLE_ID`). Any other user running commands on Staging receives an ephemeral
+  error notice, preventing test runs from interfering with real users.
+
+### Troubleshooting common bot issues
+
+- **Bot container is down or crash-looping**:
+  - *Symptom*: `docker compose ps` shows `discord_bot` restarting or exited; `discord_bot_control.sh status` reports STOPPED.
+  - *Cause*: Invalid or missing `DISCORD_BOT_TOKEN`, non-numeric ID in `.env`, or MariaDB container unreachable.
+  - *Steps*:
+    ```bash
+    docker logs <SERVER_CONTAINER_NAME>_discord_bot --tail 50
+    ```
+    If it reports `DISCORD_BOT_TOKEN is not set`, check `.env`. If it reports `LoginFailure: Improper token has been passed`, see [Discord bot token (`DISCORD_BOT_TOKEN`)](#discord-bot-token-discord_bot_token) below. If MariaDB connection timed out, verify database container health (`docker compose ps`).
+
+- **Role assignment/removal fails with `403 Forbidden: Missing Permissions`**:
+  - *Symptom*: Bot logs `discord.errors.Forbidden: 403 Forbidden (error code: 50013): Missing Permissions` when attempting to add or remove the Volunteer role on `/link` or `PENDING_REVOKE`.
+  - *Cause*: Discord role hierarchy. A Discord bot cannot manage any role positioned higher than, or equal to, its own highest role in the server settings.
+  - *Steps*:
+    1. Open Discord as server administrator.
+    2. Go to **Server Settings > Roles**.
+    3. Drag the `CamiciaBot` role above the `Volunteer` role (and above `Tester` if applicable).
+    4. Save changes. Test role assignment again with a test link or by letting `unlink_queue_loop()` retry.
+
+- **Duplicate slash commands in Discord**:
+  - *Symptom*: Discord client shows duplicate `/link`, `/unlink`, or `/lucky` commands in the command autocomplete picker.
+  - *Cause*: Either both Production and Staging bots were running at the same time, or Discord's desktop/mobile client cached old guild-scoped commands alongside new global commands.
+  - *Steps*:
+    1. Check bot status: `bash tools/discord_bot_control.sh status`. If Staging is running, stop it: `bash tools/discord_bot_control.sh stop-staging`.
+    2. The bot automatically clears legacy guild commands on startup: restart Production bot:
+       ```bash
+       bash tools/discord_bot_control.sh start-production
+       ```
+    3. Hard-refresh or restart the Discord desktop client (`Ctrl+R` or `Cmd+R`) to flush its local slash command cache.
+
+- **Unlinks stuck in `PENDING_REVOKE`**:
+  - *Symptom*: Users unlinked on web, but their Discord role remains and `camicia_discord_links` still shows `pin = 'PENDING_REVOKE'` after several minutes.
+  - *Cause*: Production bot is stopped, unlinking loop encountered an unhandled exception, or Discord API was unreachable.
+  - *Steps*:
+    1. Verify bot is active: `bash tools/discord_bot_control.sh status`.
+    2. Check bot logs for unlink loop errors:
+       ```bash
+       docker logs <SERVER_CONTAINER_NAME>_discord_bot --tail 50 | grep -i unlink
+       ```
+    3. If the user left the Discord server prior to unlinking, the bot catches the `404 Not Found` (Unknown Member) and proceeds to clear the database row automatically. If stuck due to a downtime window, simply starting the bot will process all pending rows within 30 seconds.
+
+- **Rate limiting / Lockout (`429` or command rejection)**:
+  - *Symptom*: Bot reports rate limit warnings or user receives a "Temporarily Locked Out" message.
+  - *Cause*: 5 consecutive incorrect PIN attempts lock out a Discord user for 15 minutes (`LINK_LOCKOUT_MAX_ATTEMPTS`). Spamming `/link` or `/unlink` triggers a sliding-window mute (5 strikes in 5 minutes -> 15-minute ignore).
+  - *Steps*: Lockouts and strikes expire automatically without manual intervention. To clear a user lockout immediately if necessary, restart the bot container (clears in-memory attempt tracking while preserving database state).
 
 ## Rotating/losing a secret or key
 
@@ -1459,3 +1669,30 @@ close the gap, still inside the container:
 ```bash
 bash <SERVER_VOLUME_PROJECTS_DIR>/camicia/bin/backup_offsite_gdrive.sh
 ```
+
+### Discord bot token (`DISCORD_BOT_TOKEN`)
+
+Symptom: Bot fails to log in, logging `discord.errors.LoginFailure: Improper token has been passed`,
+or the token was leaked/compromised.
+
+Rotating the token disconnects both Production and Staging bots until updated. No database or
+BOINC project data is affected.
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Select your `CamiciaBot` application and navigate to the **Bot** tab in the sidebar.
+3. Under the token section, click **Reset Token** and complete any required 2FA confirmation.
+4. Copy the freshly generated token string.
+5. On the host, update `DISCORD_BOT_TOKEN` in `.env`:
+   ```bash
+   # edit .env and update DISCORD_BOT_TOKEN=<new-token>
+   ```
+   (If staging uses a separate bot token in `~/camicia-staging/.env`, update it there as well.)
+6. Restart the bot container to load the new token:
+   ```bash
+   bash tools/discord_bot_control.sh start-production
+   ```
+7. Verify rather than assume:
+   ```bash
+   docker logs <SERVER_CONTAINER_NAME>_discord_bot --tail 20
+   ```
+   Look for `Logged in as CamiciaBot#...` and `Synced <N> global slash command(s)` with no 401 or LoginFailure errors.
