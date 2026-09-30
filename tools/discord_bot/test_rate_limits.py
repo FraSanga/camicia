@@ -550,6 +550,48 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_is_bot_commands_channel_isolation(self):
+        async def run_test():
+            orig_mode = bot.config.STAGING_MODE
+            orig_channel_id = bot.config.DISCORD_BOT_COMMANDS_CHANNEL_ID
+            try:
+                # bot.records_cmd has is_bot_commands_channel check at index 1
+                predicate = bot.records_cmd.checks[1]
+
+                # Set allowed channel to 99999 (e.g. #staging-bot-commands)
+                bot.config.DISCORD_BOT_COMMANDS_CHANNEL_ID = 99999
+
+                # 1. Matching channel passes
+                mock_inter_match = MagicMock()
+                mock_inter_match.channel_id = 99999
+                self.assertTrue(await predicate(mock_inter_match))
+
+                # 2. Non-matching channel fails, even if named "bot-commands"
+                mock_inter_wrong = MagicMock()
+                mock_inter_wrong.channel_id = 11111
+                mock_inter_wrong.channel.name = "bot-commands"
+                mock_inter_wrong.user.guild_permissions.administrator = False
+                with self.assertRaises(app_commands.CheckFailure):
+                    await predicate(mock_inter_wrong)
+
+                # 3. In STAGING_MODE, admin must also use configured channel
+                bot.config.STAGING_MODE = True
+                mock_admin_wrong = MagicMock()
+                mock_admin_wrong.channel_id = 11111
+                mock_admin_wrong.channel.name = "bot-commands"
+                mock_admin_wrong.user.guild_permissions.administrator = True
+                with self.assertRaises(app_commands.CheckFailure):
+                    await predicate(mock_admin_wrong)
+
+                # 4. In PRODUCTION, admin can use any channel
+                bot.config.STAGING_MODE = False
+                self.assertTrue(await predicate(mock_admin_wrong))
+            finally:
+                bot.config.STAGING_MODE = orig_mode
+                bot.config.DISCORD_BOT_COMMANDS_CHANNEL_ID = orig_channel_id
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

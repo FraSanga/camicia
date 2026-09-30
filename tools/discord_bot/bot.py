@@ -891,16 +891,17 @@ bot.tree.interaction_check = staging_interaction_check
 
 
 def is_bot_commands_channel():
-    """Restricts command execution to the #bot-commands channel (administrators can bypass)."""
+    """Restricts command execution to the configured bot-commands channel."""
     async def predicate(interaction: discord.Interaction) -> bool:
-        # Administrators can test anywhere
-        if interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
+        allowed_id = config.DISCORD_BOT_COMMANDS_CHANNEL_ID
+        if allowed_id:
+            if interaction.channel_id == allowed_id:
+                return True
+        elif interaction.channel and getattr(interaction.channel, "name", "") == "bot-commands":
             return True
 
-        allowed_id = config.DISCORD_BOT_COMMANDS_CHANNEL_ID
-        if allowed_id and interaction.channel_id == allowed_id:
-            return True
-        if interaction.channel and getattr(interaction.channel, "name", "") == "bot-commands":
+        # In production, administrators can test anywhere; in staging, strict channel isolation applies
+        if not config.STAGING_MODE and interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
             return True
 
         target_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
