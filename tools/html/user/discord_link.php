@@ -37,7 +37,7 @@ $table_exists = ($table_res && $table_res->num_rows > 0);
 if ($table_res) $table_res->free();
 
 if (!$table_exists) {
-    page_head(tra("Link Discord Account"));
+    page_head(tra("Discord Account Linking"));
     echo '<div class="alert alert-warning">'
         . tra("Discord linking is currently being set up. Please check back shortly!")
         . '</div>';
