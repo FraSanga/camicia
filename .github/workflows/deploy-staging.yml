@@ -10,6 +10,15 @@ on:
     branches:
       - staging
   workflow_dispatch:
+    inputs:
+      deploy_discord_bot:
+        description: 'Start CamiciaBot Staging (only starts if Production bot is OFF)'
+        type: boolean
+        default: false
+      rebuild_discord_bot:
+        description: 'Force rebuild of CamiciaBot Staging Docker image'
+        type: boolean
+        default: false
 
 # Least privilege: this workflow builds/deploys the project but never
 # writes to the repo, a PR, or anything else on GitHub itself.
@@ -146,6 +155,65 @@ jobs:
           chmod +x tools/worker/worker_app_macos
           bash tools/tools.sh
 
+      - name: Manage CamiciaBot Staging
+        run: |
+          cd ~/camicia-staging
+
+          # 1. Inspect current host states
+          WAS_RUNNING=$(docker inspect -f '{{.State.Running}}' boinc_server_staging_discord_bot 2>/dev/null || echo "false")
+          PROD_RUNNING=$(docker inspect -f '{{.State.Running}}' boinc_server_discord_bot 2>/dev/null || echo "false")
+
+          # 2. Check if bot code changed since last deployed commit
+          PREV_SHA=$(cat ~/.camicia_deploy_state_camicia-staging/deployed_sha 2>/dev/null || true)
+          CODE_CHANGED=false
+          if [ -n "$PREV_SHA" ] && git rev-parse --verify "$PREV_SHA" >/dev/null 2>&1; then
+            if ! git diff --quiet "$PREV_SHA" HEAD -- tools/discord_bot/ docker-compose.yml; then
+              CODE_CHANGED=true
+            fi
+          else
+            CODE_CHANGED=true
+          fi
+
+          # 3. Always rebuild if code changed (or manual force requested), keeping Docker cache fresh
+          if [ "$CODE_CHANGED" = "true" ] || [ "${{ inputs.rebuild_discord_bot }}" = "true" ]; then
+            echo "🔨 Rebuilding discord_bot image (changes detected or force rebuild requested)..."
+            docker compose -p camicia-staging build discord_bot
+          else
+            echo "ℹ️  No changes in tools/discord_bot/ or docker-compose.yml. Using cached image."
+          fi
+
+          # 4. Determine target state:
+          # - If manual dispatch: respect deploy_discord_bot input
+          # - If push: keep prior state (if was running -> keep running; if was off -> keep off)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            WANT_RUNNING="${{ inputs.deploy_discord_bot }}"
+          else
+            # Allow setting ENABLE_DISCORD_BOT=true in .env as an override
+            if [ -f .env ] && grep -qiE '^\s*ENABLE_DISCORD_BOT\s*=\s*(true|1)' .env; then
+              WANT_RUNNING="true"
+            else
+              WANT_RUNNING="$WAS_RUNNING"
+            fi
+          fi
+
+          # 5. Apply state with Mutual-Exclusion precedence
+          if [ "$WANT_RUNNING" = "true" ]; then
+            if [ "$PROD_RUNNING" = "true" ]; then
+              echo "⛔ CamiciaBot (Production) is active. CamiciaBot Staging cannot run concurrently."
+              docker stop boinc_server_staging_discord_bot 2>/dev/null || true
+            else
+              echo "🚀 Starting / Restarting CamiciaBot Staging..."
+              docker compose -p camicia-staging --profile discord up -d discord_bot
+            fi
+          else
+            if [ "$WAS_RUNNING" = "true" ]; then
+              echo "🛑 Stopping CamiciaBot Staging..."
+              docker stop boinc_server_staging_discord_bot 2>/dev/null || true
+            else
+              echo "ℹ️  CamiciaBot Staging remains OFF."
+            fi
+          fi
+
       - name: Verify deployment health
         run: |
           cd ~/camicia-staging
@@ -164,6 +232,9 @@ jobs:
 
           echo "--- user site ---"
           docker exec boinc_server_staging curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://localhost/camicia/
+
+          echo "--- discord bot status ---"
+          bash tools/discord_bot_control.sh status
 
           if [ -n "$MISSING" ]; then
             echo "Deploy health check FAILED, daemon(s) not running:$MISSING"

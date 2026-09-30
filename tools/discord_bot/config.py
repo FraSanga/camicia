@@ -34,6 +34,23 @@ DISCORD_VOLUNTEER_ROLE_ID = (
     int(DISCORD_VOLUNTEER_ROLE_ID_RAW) if DISCORD_VOLUNTEER_ROLE_ID_RAW.isdigit() else 0
 )
 
+DISCORD_TESTER_ROLE_ID_RAW = os.getenv("DISCORD_TESTER_ROLE_ID", "").strip()
+DISCORD_TESTER_ROLE_ID = (
+    int(DISCORD_TESTER_ROLE_ID_RAW) if DISCORD_TESTER_ROLE_ID_RAW.isdigit() else None
+)
+
+# Staging mode flag: restricts bot interaction strictly to Administrators and Testers
+staging_env_flag = os.getenv("STAGING_MODE", "").strip().lower()
+if staging_env_flag in ("true", "1", "yes"):
+    STAGING_MODE = True
+elif staging_env_flag in ("false", "0", "no"):
+    STAGING_MODE = False
+else:
+    # Auto-detect if container name or domain contains 'staging'
+    c_name = os.getenv("SERVER_CONTAINER_NAME", "").lower()
+    env_dom = os.getenv("PROJECT_DOMAIN", os.getenv("DOMAIN", "")).lower()
+    STAGING_MODE = "staging" in c_name or "staging" in env_dom
+
 # Project path resolution (where records_longest_history.txt / records_loops.txt reside)
 candidate_paths = [
     os.getenv("CAMICIA_PROJECT_DIR", "").strip(),

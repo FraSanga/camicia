@@ -276,6 +276,27 @@ async def get_guild_member(user_id: int) -> Optional[discord.Member]:
     return member
 
 
+def is_tester_or_admin(member: Optional[discord.Member]) -> bool:
+    """Checks if a guild member has Administrator permissions or the Tester role."""
+    if not member:
+        return False
+    perms = getattr(member, "guild_permissions", None)
+    if perms and getattr(perms, "administrator", False):
+        return True
+
+    roles = getattr(member, "roles", [])
+    if config.DISCORD_TESTER_ROLE_ID:
+        for r in roles:
+            if getattr(r, "id", None) == config.DISCORD_TESTER_ROLE_ID:
+                return True
+
+    for r in roles:
+        if getattr(r, "name", "").lower() == "tester":
+            return True
+
+    return False
+
+
 async def is_discord_user_linked(discord_id: int) -> Tuple[bool, Optional[int], Optional[str]]:
     """Checks if a Discord user is linked to a BOINC account. Returns (is_linked, boinc_uid, volunteer_name)."""
     pool = await get_db_pool()
@@ -834,6 +855,39 @@ async def on_ready():
     logger.info("Project directory: %s", config.CAMICIA_PROJECT_DIR.resolve())
     logger.info("Records channel ID: %s", config.DISCORD_RECORDS_CHANNEL_ID)
     logger.info("Bot commands channel ID: %s", config.DISCORD_BOT_COMMANDS_CHANNEL_ID)
+    if config.STAGING_MODE:
+        logger.info("Running in STAGING MODE (Tester Role ID: %s)", config.DISCORD_TESTER_ROLE_ID)
+        try:
+            await bot.change_presence(
+                activity=discord.Activity(
+                    type=discord.ActivityType.playing,
+                    name="[STAGING] • Testing Mode",
+                )
+            )
+        except Exception as e:
+            logger.warning("Could not set staging presence: %s", e)
+    else:
+        logger.info("Running in PRODUCTION MODE")
+
+
+async def staging_interaction_check(interaction: discord.Interaction) -> bool:
+    """Restricts all interactions to Administrators and Testers when running in STAGING_MODE."""
+    if not config.STAGING_MODE:
+        return True
+
+    member = (
+        interaction.user
+        if isinstance(interaction.user, discord.Member)
+        else await get_guild_member(interaction.user.id)
+    )
+    if not is_tester_or_admin(member):
+        raise app_commands.CheckFailure(
+            "🔒 **Staging Bot Restricted**: This staging bot is currently restricted to Administrators and Testers."
+        )
+    return True
+
+
+bot.tree.interaction_check = staging_interaction_check
 
 
 def is_bot_commands_channel():
@@ -1336,6 +1390,11 @@ async def on_message(message: discord.Message):
 
     # Direct Message interaction
     if message.guild is None:
+        if config.STAGING_MODE:
+            member = await get_guild_member(message.author.id)
+            if not is_tester_or_admin(member):
+                return
+
         is_muted, rem = check_user_muted(message.author.id)
         if is_muted:
             # Completely ignore messages from muted users during 15-minute ignore
@@ -1456,7 +1515,10 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
         await interaction.response.send_message(msg, ephemeral=True)
     elif isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message(str(error), ephemeral=True)
+        if interaction.response.is_done():
+            await interaction.followup.send(str(error), ephemeral=True)
+        else:
+            await interaction.response.send_message(str(error), ephemeral=True)
     else:
         logger.error("Unhandled command error: %s", error, exc_info=True)
         if not interaction.response.is_done():
@@ -1484,15 +1546,6 @@ async def main():
     )
 
     async with bot:
-        # Register server-specific slash commands (excluding DM-only commands)
-        if config.DISCORD_GUILD_ID:
-            guild_obj = discord.Object(id=config.DISCORD_GUILD_ID)
-            dm_commands = {"link", "unlink"}
-            for cmd in bot.tree.get_commands():
-                if cmd.name not in dm_commands:
-                    bot.tree.add_command(cmd, guild=guild_obj, override=True)
-            logger.info("Registered server slash commands for Guild ID %d (excluding DM-only commands)", config.DISCORD_GUILD_ID)
-
         check_records_loop.start()
         unlink_queue_loop.start()
 
@@ -1500,15 +1553,16 @@ async def main():
         async def on_tree_sync():
             await bot.wait_until_ready()
             try:
-                # Sync globally so commands appear in DMs
-                synced_global = await bot.tree.sync()
-                logger.info("Synced %d global slash command(s)", len(synced_global))
-
-                # Also sync to guild for immediate server availability
+                # Clear any lingering guild-scoped commands to eliminate duplicate slash command listings
                 if config.DISCORD_GUILD_ID:
                     guild_obj = discord.Object(id=config.DISCORD_GUILD_ID)
-                    synced_guild = await bot.tree.sync(guild=guild_obj)
-                    logger.info("Synced %d guild slash command(s)", len(synced_guild))
+                    bot.tree.clear_commands(guild=guild_obj)
+                    await bot.tree.sync(guild=guild_obj)
+                    logger.info("Cleared guild-level slash commands for Guild ID %d to eliminate duplicates", config.DISCORD_GUILD_ID)
+
+                # Sync global slash commands
+                synced_global = await bot.tree.sync()
+                logger.info("Synced %d global slash command(s)", len(synced_global))
             except Exception as e:
                 logger.error("Failed to sync slash commands: %s", e)
 

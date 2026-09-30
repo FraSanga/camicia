@@ -422,6 +422,134 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_is_tester_or_admin(self):
+        # 1. None member
+        self.assertFalse(bot.is_tester_or_admin(None))
+
+        # 2. Regular member
+        regular = MagicMock()
+        regular.guild_permissions.administrator = False
+        role1 = MagicMock()
+        role1.id = 12345
+        role1.name = "Member"
+        regular.roles = [role1]
+        self.assertFalse(bot.is_tester_or_admin(regular))
+
+        # 3. Admin member
+        admin = MagicMock()
+        admin.guild_permissions.administrator = True
+        admin.roles = []
+        self.assertTrue(bot.is_tester_or_admin(admin))
+
+        # 4. Tester by configured role ID
+        orig_tester_id = bot.config.DISCORD_TESTER_ROLE_ID
+        try:
+            bot.config.DISCORD_TESTER_ROLE_ID = 998877
+            tester_by_id = MagicMock()
+            tester_by_id.guild_permissions.administrator = False
+            role_tester = MagicMock()
+            role_tester.id = 998877
+            role_tester.name = "CustomRole"
+            tester_by_id.roles = [role_tester]
+            self.assertTrue(bot.is_tester_or_admin(tester_by_id))
+        finally:
+            bot.config.DISCORD_TESTER_ROLE_ID = orig_tester_id
+
+        # 5. Tester by role name "tester" / "Tester"
+        tester_by_name = MagicMock()
+        tester_by_name.guild_permissions.administrator = False
+        role_named = MagicMock()
+        role_named.id = 554433
+        role_named.name = "Tester"
+        tester_by_name.roles = [role_named]
+        self.assertTrue(bot.is_tester_or_admin(tester_by_name))
+
+    def test_staging_interaction_check(self):
+        async def run_test():
+            orig_mode = bot.config.STAGING_MODE
+            orig_get_member = bot.get_guild_member
+            try:
+                # When STAGING_MODE is False, anyone passes
+                bot.config.STAGING_MODE = False
+                mock_inter = MagicMock()
+                mock_inter.user = MagicMock(spec=bot.discord.Member)
+                mock_inter.user.guild_permissions.administrator = False
+                mock_inter.user.roles = []
+                self.assertTrue(await bot.staging_interaction_check(mock_inter))
+
+                # When STAGING_MODE is True
+                bot.config.STAGING_MODE = True
+
+                # Regular user raises CheckFailure
+                with self.assertRaises(app_commands.CheckFailure):
+                    await bot.staging_interaction_check(mock_inter)
+
+                # Admin member passes
+                admin_inter = MagicMock()
+                admin_inter.user = MagicMock(spec=bot.discord.Member)
+                admin_inter.user.guild_permissions.administrator = True
+                admin_inter.user.roles = []
+                self.assertTrue(await bot.staging_interaction_check(admin_inter))
+
+                # Tester member passes
+                tester_inter = MagicMock()
+                tester_inter.user = MagicMock(spec=bot.discord.Member)
+                tester_inter.user.guild_permissions.administrator = False
+                role_tester = MagicMock()
+                role_tester.name = "Tester"
+                tester_inter.user.roles = [role_tester]
+                self.assertTrue(await bot.staging_interaction_check(tester_inter))
+
+                # DM interaction (user is discord.User, not discord.Member)
+                dm_inter = MagicMock()
+                dm_inter.user = MagicMock(spec=bot.discord.User)
+                dm_inter.user.id = 887766
+
+                # DM interaction when guild member is Tester
+                tester_guild_member = MagicMock(spec=bot.discord.Member)
+                tester_guild_member.guild_permissions.administrator = False
+                tester_guild_member.roles = [role_tester]
+                bot.get_guild_member = AsyncMock(return_value=tester_guild_member)
+                self.assertTrue(await bot.staging_interaction_check(dm_inter))
+
+                # DM interaction when user is not a tester/admin
+                bot.get_guild_member = AsyncMock(return_value=None)
+                with self.assertRaises(app_commands.CheckFailure):
+                    await bot.staging_interaction_check(dm_inter)
+            finally:
+                bot.config.STAGING_MODE = orig_mode
+                bot.get_guild_member = orig_get_member
+
+        asyncio.run(run_test())
+
+    def test_on_message_silent_drop_in_staging_for_non_testers(self):
+        async def run_test():
+            orig_mode = bot.config.STAGING_MODE
+            orig_get_member = bot.get_guild_member
+            try:
+                bot.config.STAGING_MODE = True
+
+                # Non-tester member in guild
+                regular_member = MagicMock()
+                regular_member.guild_permissions.administrator = False
+                regular_member.roles = []
+                bot.get_guild_member = AsyncMock(return_value=regular_member)
+
+                mock_msg = MagicMock()
+                mock_msg.author.id = 123456
+                mock_msg.author.bot = False
+                mock_msg.guild = None  # DM
+                mock_msg.content = "/link 123456"
+                mock_msg.channel.send = AsyncMock()
+
+                await bot.on_message(mock_msg)
+                mock_msg.channel.send.assert_not_called()
+            finally:
+                bot.config.STAGING_MODE = orig_mode
+                bot.get_guild_member = orig_get_member
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()
