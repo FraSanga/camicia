@@ -115,6 +115,44 @@ services:
       server:
         condition: service_healthy
 
+  # Camicia Discord Bot: monitors records_longest_history.txt / records_loops.txt
+  # and broadcasts discoveries and world records in real time.
+  # Disabled by default (profile-gated) until DISCORD_BOT_TOKEN is set in .env.
+  # Start with: docker compose --profile discord up -d --build
+  discord_bot:
+    build:
+      context: ./tools/discord_bot
+      dockerfile: Dockerfile
+    container_name: ${SERVER_CONTAINER_NAME}_discord_bot
+    restart: unless-stopped
+    profiles:
+      - discord
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - DISCORD_RECORDS_CHANNEL_ID=${DISCORD_RECORDS_CHANNEL_ID}
+      - DISCORD_BOT_COMMANDS_CHANNEL_ID=${DISCORD_BOT_COMMANDS_CHANNEL_ID}
+      - DISCORD_VOLUNTEER_ROLE_ID=${DISCORD_VOLUNTEER_ROLE_ID}
+      - DISCORD_TESTER_ROLE_ID=${DISCORD_TESTER_ROLE_ID}
+      - STAGING_MODE=${STAGING_MODE}
+      - SERVER_CONTAINER_NAME=${SERVER_CONTAINER_NAME}
+      - CAMICIA_PROJECT_DIR=/data/project
+      - WATCHER_STATE_FILE=/data/state/watcher_state.json
+      - LUCKY_STATE_FILE=/data/state/lucky_state.json
+      - MARIADB_HOST=${DATABASE_CONTAINER_NAME}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ${SERVER_VOLUME_PROJECTS}/camicia:/data/project:ro
+      - discord_bot_data:/data/state
+    networks:
+      - database_network
+    depends_on:
+      server:
+        condition: service_healthy
+
 networks:
   database_network:
     name: ${DATABASE_NETWORK}
@@ -123,3 +161,4 @@ networks:
 volumes:
   database_volume:
     name: ${DATABASE_VOLUME}
+  discord_bot_data:
