@@ -1836,7 +1836,7 @@ async def on_duel_rematch(interaction: discord.Interaction, p1: discord.Member, 
 )
 @app_commands.describe(
     mode="Game mode: Casual (single deal) or Ranked (Best-of-3 series)",
-    opponent="Optional opponent to challenge directly (leave blank for open tavern challenge)",
+    opponent="Opponent to challenge directly (required for Ranked, leave blank for Casual tavern challenge)",
 )
 async def duel_cmd(
     interaction: discord.Interaction,
