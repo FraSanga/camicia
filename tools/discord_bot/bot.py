@@ -14,6 +14,16 @@ import config
 from engine import get_nth_permutation, get_random_deal_index, get_rarity, simulate
 from lucky import LuckyManager
 from watcher import RecordsWatcher
+import duel
+from duel import (
+    CUT_POSITIONS,
+    DeckCutAndCheerView,
+    DuelChallengeView,
+    DuelManager,
+    RematchView,
+    calculate_elo,
+    format_hand_summary,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -247,6 +257,23 @@ async def get_db_pool():
     return db_pool
 
 
+def get_standing_record_cards() -> int:
+    if watcher is not None:
+        return watcher._get_current_longest_cards()
+    return config.REAL_WORLD_RECORD_CARDS
+
+
+duel_mgr = duel.DuelManager(get_db_pool, standing_record_getter=get_standing_record_cards)
+_duel_cooldowns: dict[int, float] = {}
+
+CUT_LABELS = {
+    6: "Card 6 (Top 1/4)",
+    13: "Card 13 (Middle)",
+    20: "Card 20 (Bottom 1/4)",
+    0: "Kept As-Is",
+}
+
+
 async def get_volunteer_role(guild: discord.Guild) -> Optional[discord.Role]:
     """Finds the Volunteer role by ID or by name 'Volunteer'."""
     if config.DISCORD_VOLUNTEER_ROLE_ID:
@@ -318,6 +345,25 @@ async def is_discord_user_linked(discord_id: int) -> Tuple[bool, Optional[int], 
     except Exception as e:
         logger.debug("Error checking discord user link for %s: %s", discord_id, e)
     return False, None, None
+
+
+async def check_is_volunteer(user: Union[discord.User, discord.Member], guild: Optional[discord.Guild] = None) -> bool:
+    """Checks if a user has the Volunteer role or a linked BOINC account."""
+    if isinstance(user, discord.Member):
+        if config.DISCORD_VOLUNTEER_ROLE_ID and any(r.id == config.DISCORD_VOLUNTEER_ROLE_ID for r in user.roles):
+            return True
+        if any(r.name == "Volunteer" for r in user.roles):
+            return True
+    elif guild is not None:
+        member = guild.get_member(user.id)
+        if member:
+            if config.DISCORD_VOLUNTEER_ROLE_ID and any(r.id == config.DISCORD_VOLUNTEER_ROLE_ID for r in member.roles):
+                return True
+            if any(r.name == "Volunteer" for r in member.roles):
+                return True
+
+    is_linked, _, _ = await is_discord_user_linked(user.id)
+    return is_linked
 
 
 class LinkHelpView(discord.ui.View):
@@ -795,6 +841,11 @@ async def unlink_queue_loop():
                             )
 
                     await cur.execute("UPDATE camicia_discord_links SET pin = NULL WHERE id = %s", (row_id,))
+                    if discord_id:
+                        try:
+                            await cur.execute("UPDATE camicia_duel_stats SET boinc_user_id = NULL WHERE discord_id = %s", (discord_id,))
+                        except Exception:
+                            pass
                     logger.info("Unlink worker: processed revoke for record ID %s (BOINC #%s)", row_id, boinc_user_id)
     except Exception as e:
         logger.debug("Error in unlink_queue_loop: %s", e)
@@ -907,6 +958,28 @@ def is_bot_commands_channel():
         target_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
         raise app_commands.CheckFailure(
             f"❌ Bot commands can only be used in {target_mention} to keep discussions clean!"
+        )
+    return app_commands.check(predicate)
+
+
+def is_bot_commands_channel_or_dm():
+    """Allows command execution in Direct Messages (DMs) or the configured bot-commands channel."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if interaction.guild is None:
+            return True
+        allowed_id = config.DISCORD_BOT_COMMANDS_CHANNEL_ID
+        if allowed_id:
+            if interaction.channel_id == allowed_id:
+                return True
+        elif interaction.channel and getattr(interaction.channel, "name", "") == "bot-commands":
+            return True
+
+        if not config.STAGING_MODE and interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
+            return True
+
+        target_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
+        raise app_commands.CheckFailure(
+            f"❌ This command can only be used in {target_mention} or in Direct Messages (DMs) with CamiciaBot!"
         )
     return app_commands.check(predicate)
 
@@ -1239,6 +1312,775 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
+# ==========================================
+# /duel Mini-Game Callbacks & Commands
+# ==========================================
+
+async def can_accept_duel_callback(user: discord.User) -> Tuple[bool, str]:
+    if duel_mgr.is_user_busy(user.id):
+        return False, "You are currently participating in another active duel."
+    guild = bot.get_guild(config.DISCORD_GUILD_ID) if config.DISCORD_GUILD_ID else None
+    is_vol = await check_is_volunteer(user, guild)
+    can_play, reason = await duel_mgr.can_play_casual(user.id, is_vol)
+    if not can_play:
+        return False, reason
+    return True, ""
+
+
+async def on_duel_accept(
+    interaction: discord.Interaction,
+    challenger: discord.Member,
+    accepter: discord.Member,
+    mode: str,
+):
+    try:
+        pool = await get_db_pool()
+        if pool is None:
+            duel_mgr.release_users(challenger.id, accepter.id)
+            if duel_mgr.has_pending_challenge_target(accepter.id):
+                duel_mgr.clear_pending_challenge(accepter.id)
+            await interaction.response.send_message(
+                "⚔️ **Duel Unavailable**: The duel arena is currently undergoing maintenance. Please try again in a few moments!",
+                ephemeral=True,
+            )
+            return
+
+        duel_mgr.lock_users(challenger.id, accepter.id)
+        if duel_mgr.has_pending_challenge_target(accepter.id):
+            duel_mgr.clear_pending_challenge(accepter.id)
+
+        cut_view = DeckCutAndCheerView(
+            duel_mgr,
+            challenger,
+            accepter,
+            timeout=config.DUEL_DECK_CUT_TIMEOUT_SECONDS,
+            on_cuts_complete_callback=on_duel_cuts_complete,
+            mode=mode,
+        )
+
+        mode_title = "Ranked Best-of-3 Series 🏆" if mode == "ranked" else "Casual Single Game 🤺"
+        embed = discord.Embed(
+            title="⚔️ MATCH STARTED: Deck Cut Phase",
+            description=(
+                f"{challenger.mention} 🆚 {accepter.mention}\n\n"
+                f"• **Mode**: **{mode_title}**\n"
+                f"• **Deck Cut Choice**: Alter the dealing sequence by cyclically shifting your 26-card half-deck!\n"
+                f"• **Time Limit**: You have **15 seconds** to choose your cut below.\n\n"
+                f"📣 **Spectators**: Cheer for your favorite duelist using the buttons below!"
+            ),
+            color=0xF1C40F if mode == "ranked" else 0x2ECC71,
+        )
+        embed.set_footer(
+            text="Camicia Beggar-My-Neighbour • Deck Cut Phase",
+            icon_url=get_bot_avatar_url(),
+        )
+
+        cut_view.message = interaction.message
+        await interaction.response.edit_message(content=None, embed=embed, view=cut_view)
+    except Exception as e:
+        logger.error("Error transitioning to duel cut phase: %s", e, exc_info=True)
+        duel_mgr.release_users(challenger.id, accepter.id)
+        if duel_mgr.has_pending_challenge_target(accepter.id):
+            duel_mgr.clear_pending_challenge(accepter.id)
+
+
+async def broadcast_duel_discovery(
+    p1: Union[discord.Member, discord.User],
+    p2: Union[discord.Member, discord.User],
+    mode: str,
+    is_loop: bool,
+    cards: int,
+    tricks: int,
+    deal_index: Optional[int] = None,
+    match_id: Optional[int] = None,
+):
+    """
+    Broadcasts a record-breaking deal or infinite loop discovered during a duel
+    to the configured records channel.
+    """
+    if not config.DISCORD_RECORDS_CHANNEL_ID:
+        return
+
+    records_ch = bot.get_channel(config.DISCORD_RECORDS_CHANNEL_ID)
+    if records_ch is None:
+        try:
+            records_ch = await bot.fetch_channel(config.DISCORD_RECORDS_CHANNEL_ID)
+        except Exception as e:
+            logger.error("Could not fetch records channel for /duel discovery: %s", e)
+            return
+
+    if not records_ch:
+        return
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    time_tag = f"<t:{now_ts}:F> (<t:{now_ts}:R>)"
+    mode_label = "Ranked Best-of-3" if mode == "ranked" else "Casual"
+    deal_index_str = f"{deal_index}" if deal_index is not None else "N/A"
+
+    if is_loop:
+        b_embed = discord.Embed(
+            title="♾️ Infinite Loop Discovered via /duel!",
+            description=(
+                f"A non-terminating Beggar-My-Neighbour deal has just been discovered "
+                f"during a **{mode_label}** duel between {p1.mention} and {p2.mention}!"
+            ),
+            color=0x9B59B6,
+            timestamp=datetime.now(timezone.utc),
+        )
+        b_embed.add_field(name="⚔️ Duelists", value=f"{p1.mention} 🆚 {p2.mention}", inline=True)
+        if deal_index is not None:
+            b_embed.add_field(name="🔢 Deal Index", value=f"`{deal_index_str}`", inline=True)
+        if match_id is not None:
+            b_embed.add_field(name="🎮 Match ID", value=f"`#{match_id}`", inline=True)
+        b_embed.add_field(name="⏱️ Discovered At", value=time_tag, inline=False)
+        b_embed.set_footer(
+            text="Camicia BOINC Project • /duel Discovery",
+            icon_url=get_bot_avatar_url(),
+        )
+        try:
+            await records_ch.send(content=None, embed=b_embed)
+            logger.info("Broadcasted /duel loop discovery to %s", records_ch.name)
+        except Exception as e:
+            logger.error("Failed to broadcast /duel loop discovery to records channel: %s", e)
+    else:
+        standing_rec = config.REAL_WORLD_RECORD_CARDS
+        if duel_mgr.get_standing_record:
+            try:
+                standing_rec = max(standing_rec, duel_mgr.get_standing_record())
+            except Exception:
+                pass
+
+        b_embed = discord.Embed(
+            title="🚨 ALL-TIME WORLD RECORD BROKEN VIA /DUEL! 🏆",
+            description=(
+                f"A new finite Beggar-My-Neighbour deal exceeding the world record "
+                f"({standing_rec:,} cards) has just been played in a **{mode_label}** duel "
+                f"between {p1.mention} and {p2.mention}!"
+            ),
+            color=0xFF0033,
+            timestamp=datetime.now(timezone.utc),
+        )
+        b_embed.add_field(name="🃏 Cards Played", value=f"**{cards:,}** cards", inline=True)
+        b_embed.add_field(name="🔄 Tricks", value=f"**{tricks:,}** tricks", inline=True)
+        b_embed.add_field(name="⚔️ Duelists", value=f"{p1.mention} 🆚 {p2.mention}", inline=True)
+        if deal_index is not None:
+            b_embed.add_field(name="🔢 Deal Index", value=f"`{deal_index_str}`", inline=True)
+        if match_id is not None:
+            b_embed.add_field(name="🎮 Match ID", value=f"`#{match_id}`", inline=True)
+        b_embed.add_field(name="⏱️ Discovered At", value=time_tag, inline=False)
+        b_embed.set_footer(
+            text="Camicia BOINC Project • /duel Record",
+            icon_url=get_bot_avatar_url(),
+        )
+        if watcher:
+            watcher.state["last_best_cards"] = cards
+            watcher._save_state()
+
+        try:
+            await records_ch.send(content="@everyone", embed=b_embed)
+            logger.info("Broadcasted /duel record discovery to %s", records_ch.name)
+        except Exception as e:
+            logger.error("Failed to broadcast /duel record discovery to records channel: %s", e)
+
+
+async def on_duel_cuts_complete(
+    message: discord.Message,
+    p1: discord.Member,
+    p2: discord.Member,
+    cut_a: int,
+    cut_b: int,
+    mode: str,
+):
+    if message is None:
+        duel_mgr.release_users(p1.id, p2.id)
+        return
+
+    # Phase S3: Suspense Animation
+    label_a = CUT_LABELS.get(cut_a, "Kept As-Is")
+    label_b = CUT_LABELS.get(cut_b, "Kept As-Is")
+    mode_label = "Ranked Best-of-3" if mode == "ranked" else "Casual Single Game"
+
+    suspense_embed = discord.Embed(
+        title="🔀 Dealing Hands & Cutting Decks...",
+        description=(
+            f"{p1.mention} 🆚 {p2.mention}\n\n"
+            f"• **{p1.display_name}** cut: **{label_a}**\n"
+            f"• **{p2.display_name}** cut: **{label_b}**\n\n"
+            f"🎴 *Shuffling 52 cards across ~6.5 × 10²⁰ combinations...*\n"
+            f"⚔️ *Simulating {mode_label} clash...*"
+        ),
+        color=0xF39C12,
+    )
+    suspense_embed.set_footer(
+        text="Camicia Beggar-My-Neighbour • Simulating...",
+        icon_url=get_bot_avatar_url(),
+    )
+
+    try:
+        await message.edit(embed=suspense_embed, view=None)
+    except Exception as e:
+        logger.warning("Could not edit message for suspense phase: %s", e)
+
+    # 2s rate-limit safe delay
+    await asyncio.sleep(2.0)
+
+    # Phase S4: Simulation & Boxscore Results
+    try:
+        if mode == "casual":
+            deal_index = get_random_deal_index()
+            sim_res = duel_mgr.simulate_game(deal_index, cut_a, cut_b, p1_starts=True)
+            winner_id = p1.id if sim_res["winner"] == 1 else (p2.id if sim_res["winner"] == 2 else None)
+            series_score = "1-0" if sim_res["winner"] == 1 else ("0-1" if sim_res["winner"] == 2 else "0-0")
+            status = sim_res["status"]
+
+            match_id = await duel_mgr.record_match(
+                mode="casual",
+                p1_id=p1.id,
+                p2_id=p2.id,
+                winner_id=winner_id,
+                cards_played=sim_res["cards"],
+                tricks=sim_res["tricks"],
+                series_score=series_score,
+                status=status,
+            )
+
+            c1, c2 = duel_mgr.get_cheer_counts(message.id, p1.id, p2.id)
+            duel_mgr.clear_cheers(message.id)
+            duel_mgr.release_users(p1.id, p2.id)
+
+            is_loop = sim_res["is_loop"]
+            is_record = sim_res["is_record"]
+            if is_record:
+                title = f"🚨 WORLD RECORD SURPASSED! (Match #{match_id or '?'})"
+                color = 0xE74C3C
+                desc = "Incredible! This duel produced a game length surpassing the standing world record!"
+            elif is_loop:
+                title = f"♾️ COSMIC INFINITE LOOP! (Match #{match_id or '?'})"
+                color = 0x9B59B6
+                desc = "A non-terminating game cycle was discovered in this duel! Neither player loses."
+            else:
+                winner_name = p1.display_name if winner_id == p1.id else p2.display_name
+                title = f"🏆 {winner_name} Wins! (Match #{match_id or '?'})"
+                color = sim_res["color"]
+                desc = f"**{winner_name}** claimed all 52 cards in a fierce Beggar-My-Neighbour battle!"
+
+            embed = discord.Embed(
+                title=title,
+                description=desc,
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(
+                name="🃏 Starting Hands",
+                value=(
+                    f"• {p1.mention}: {format_hand_summary(sim_res['hand_a'])}\n"
+                    f"• {p2.mention}: {format_hand_summary(sim_res['hand_b'])}"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="📊 Match Breakdown",
+                value=(
+                    f"• **Winner**: {('<@' + str(winner_id) + '>') if winner_id else '🤝 Draw / Loop'}\n"
+                    f"• **Game Length**: **{sim_res['cards']:,} cards** ({sim_res['tricks']:,} tricks)\n"
+                    f"• **Rarity Tier**: **{sim_res['tier']}** ({sim_res['rarity_desc']})"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="📣 Spectator Cheers",
+                value=f"• **{p1.display_name}**: {c1} cheer{'s' if c1 != 1 else ''}\n• **{p2.display_name}**: {c2} cheer{'s' if c2 != 1 else ''}",
+                inline=False,
+            )
+            embed.set_footer(
+                text="Camicia Beggar-My-Neighbour • Combinatorial space: ~6.5 × 10²⁰",
+                icon_url=get_bot_avatar_url(),
+            )
+
+            rematch_view = RematchView(duel_mgr, p1, p2, on_rematch_callback=on_duel_rematch)
+            rematch_view.message = message
+            await message.edit(embed=embed, view=rematch_view)
+
+            if is_record or is_loop:
+                asyncio.create_task(
+                    broadcast_duel_discovery(
+                        p1=p1,
+                        p2=p2,
+                        mode="casual",
+                        is_loop=is_loop,
+                        cards=sim_res["cards"],
+                        tricks=sim_res["tricks"],
+                        deal_index=sim_res.get("deal_index"),
+                        match_id=match_id,
+                    )
+                )
+
+        else:  # Ranked Mode
+            b3_res = duel_mgr.simulate_best_of_3(cut_a, cut_b)
+            winner_id = p1.id if b3_res["series_winner"] == 1 else (p2.id if b3_res["series_winner"] == 2 else None)
+            series_score = b3_res["series_score"]
+            status = "record" if b3_res["is_record"] else ("loop" if b3_res["is_loop"] else "completed")
+
+            p1_stats = await duel_mgr.get_duel_stats(p1.id)
+            p2_stats = await duel_mgr.get_duel_stats(p2.id)
+            r1, r2 = p1_stats["elo_rating"], p2_stats["elo_rating"]
+            score_a = 1.0 if b3_res["series_winner"] == 1 else (0.5 if b3_res["series_winner"] == 0 else 0.0)
+            new_r1, new_r2, delta_a, delta_b = calculate_elo(r1, r2, score_a)
+            await duel_mgr.update_elo_ratings(p1.id, p2.id, new_r1, new_r2)
+
+            match_id = await duel_mgr.record_match(
+                mode="ranked",
+                p1_id=p1.id,
+                p2_id=p2.id,
+                winner_id=winner_id,
+                cards_played=b3_res["total_cards"],
+                tricks=b3_res["total_tricks"],
+                series_score=series_score,
+                status=status,
+            )
+
+            c1, c2 = duel_mgr.get_cheer_counts(message.id, p1.id, p2.id)
+            duel_mgr.clear_cheers(message.id)
+            duel_mgr.release_users(p1.id, p2.id)
+
+            if b3_res["is_record"]:
+                title = f"🚨 WORLD RECORD SURPASSED! (Match #{match_id or '?'})"
+                color = 0xE74C3C
+                desc = "Incredible! A game in this ranked series exceeded the standing world record!"
+            elif b3_res["is_loop"]:
+                title = f"♾️ COSMIC INFINITE LOOP! (Match #{match_id or '?'})"
+                color = 0x9B59B6
+                desc = "A non-terminating game cycle occurred during this ranked series!"
+            else:
+                winner_name = p1.display_name if winner_id == p1.id else p2.display_name
+                title = f"🏆 {winner_name} Wins the Series! (Match #{match_id or '?'})"
+                color = 0xF1C40F
+                desc = f"**{winner_name}** conquered the Best-of-3 Ranked series ({series_score})!"
+
+            g1_win = p1.mention if b3_res["g1"]["winner"] == 1 else (p2.mention if b3_res["g1"]["winner"] == 2 else "Loop")
+            g2_win = p1.mention if b3_res["g2"]["winner"] == 1 else (p2.mention if b3_res["g2"]["winner"] == 2 else "Loop")
+            breakdown_lines = [
+                f"• **Series Score**: **{series_score}**",
+                f"• **Game 1** ({p1.display_name} first): {b3_res['g1']['cards']:,} cards ({b3_res['g1']['tricks']:,} tricks) — Winner: {g1_win}",
+                f"• **Game 2** ({p2.display_name} first): {b3_res['g2']['cards']:,} cards ({b3_res['g2']['tricks']:,} tricks) — Winner: {g2_win}",
+            ]
+            if b3_res["g3"]:
+                g3_win = p1.mention if b3_res["g3"]["winner"] == 1 else p2.mention
+                breakdown_lines.append(
+                    f"• **Game 3 (Tiebreak)**: {p1.display_name} ({b3_res['g3']['p1_cards']:,} cards) vs {p2.display_name} ({b3_res['g3']['p2_cards']:,} cards) — Winner: {g3_win}"
+                )
+            breakdown_lines.append(f"• **Total Cards Played**: **{b3_res['total_cards']:,}** cards")
+
+            delta_a_str = f"+{delta_a}" if delta_a >= 0 else f"{delta_a}"
+            delta_b_str = f"+{delta_b}" if delta_b >= 0 else f"{delta_b}"
+            breakdown_lines.append(
+                f"\n**📈 Rating Adjustments**:\n"
+                f"• {p1.mention}: **{r1}** ➔ **{new_r1}** ({delta_a_str})\n"
+                f"• {p2.mention}: **{r2}** ➔ **{new_r2}** ({delta_b_str})"
+            )
+
+            embed = discord.Embed(
+                title=title,
+                description=desc,
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(
+                name="🃏 Starting Hands (Game 1)",
+                value=(
+                    f"• {p1.mention}: {format_hand_summary(b3_res['g1']['hand_a'])}\n"
+                    f"• {p2.mention}: {format_hand_summary(b3_res['g1']['hand_b'])}"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="📊 Series Breakdown",
+                value="\n".join(breakdown_lines),
+                inline=False,
+            )
+            embed.add_field(
+                name="📣 Spectator Cheers",
+                value=f"• **{p1.display_name}**: {c1} cheer{'s' if c1 != 1 else ''}\n• **{p2.display_name}**: {c2} cheer{'s' if c2 != 1 else ''}",
+                inline=False,
+            )
+            embed.set_footer(
+                text="Camicia Beggar-My-Neighbour • Ranked BO3 • ~6.5 × 10²⁰ space",
+                icon_url=get_bot_avatar_url(),
+            )
+            await message.edit(embed=embed, view=None)
+
+            if b3_res["is_loop"]:
+                loop_g = b3_res.get("loop_game") or b3_res["g1"]
+                asyncio.create_task(
+                    broadcast_duel_discovery(
+                        p1=p1,
+                        p2=p2,
+                        mode="ranked",
+                        is_loop=True,
+                        cards=loop_g.get("cards", 0),
+                        tricks=loop_g.get("tricks", 0),
+                        deal_index=loop_g.get("deal_index"),
+                        match_id=match_id,
+                    )
+                )
+            if b3_res["is_record"]:
+                rec_g = b3_res.get("record_game") or b3_res["g1"]
+                asyncio.create_task(
+                    broadcast_duel_discovery(
+                        p1=p1,
+                        p2=p2,
+                        mode="ranked",
+                        is_loop=False,
+                        cards=rec_g.get("cards", 0),
+                        tricks=rec_g.get("tricks", 0),
+                        deal_index=rec_g.get("deal_index"),
+                        match_id=match_id,
+                    )
+                )
+
+    except Exception as e:
+        logger.error("Error executing duel completion: %s", e, exc_info=True)
+        duel_mgr.release_users(p1.id, p2.id)
+        duel_mgr.clear_cheers(message.id)
+
+
+async def on_duel_rematch(interaction: discord.Interaction, p1: discord.Member, p2: discord.Member):
+    pool = await get_db_pool()
+    if pool is None:
+        await interaction.response.send_message(
+            "⚔️ **Rematch Unavailable**: The duel arena is currently undergoing maintenance. Please try again in a few moments!",
+            ephemeral=True,
+        )
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=None)
+            except Exception:
+                pass
+        return
+
+    is_p1_vol = await check_is_volunteer(p1, interaction.guild)
+    is_p2_vol = await check_is_volunteer(p2, interaction.guild)
+
+    can_p1, reason_p1 = await duel_mgr.can_play_casual(p1.id, is_p1_vol)
+    if not can_p1:
+        await interaction.response.send_message(f"Cannot rematch: {reason_p1}", ephemeral=True)
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=None)
+            except Exception:
+                pass
+        return
+
+    can_p2, reason_p2 = await duel_mgr.can_play_casual(p2.id, is_p2_vol)
+    if not can_p2:
+        await interaction.response.send_message(f"Cannot rematch: {reason_p2}", ephemeral=True)
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=None)
+            except Exception:
+                pass
+        return
+
+    if duel_mgr.is_user_busy(p1.id) or duel_mgr.is_user_busy(p2.id):
+        await interaction.response.send_message("One of the players is already participating in another duel.", ephemeral=True)
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=None)
+            except Exception:
+                pass
+        return
+
+    duel_mgr.lock_users(p1.id, p2.id)
+
+    try:
+        cut_view = DeckCutAndCheerView(
+            duel_mgr,
+            p1,
+            p2,
+            timeout=config.DUEL_DECK_CUT_TIMEOUT_SECONDS,
+            on_cuts_complete_callback=on_duel_cuts_complete,
+            mode="casual",
+        )
+
+        embed = discord.Embed(
+            title="⚔️ REMATCH STARTED: Deck Cut Phase",
+            description=(
+                f"{p1.mention} 🆚 {p2.mention}\n\n"
+                f"• **Mode**: **Casual Single Game (Swapped Turns)** 🤺\n"
+                f"• **Deck Cut Choice**: Alter the dealing sequence by cyclically shifting your 26-card half-deck!\n"
+                f"• **Time Limit**: You have **15 seconds** to choose your cut below.\n\n"
+                f"📣 **Spectators**: Cheer for your favorite duelist using the buttons below!"
+            ),
+            color=0x2ECC71,
+        )
+        embed.set_footer(
+            text="Camicia Beggar-My-Neighbour • Rematch Deck Cut Phase",
+            icon_url=get_bot_avatar_url(),
+        )
+
+        await interaction.response.edit_message(content=None, embed=embed, view=cut_view)
+        cut_view.message = interaction.message
+    except Exception as e:
+        logger.error("Error transitioning to rematch cut phase: %s", e, exc_info=True)
+        duel_mgr.release_users(p1.id, p2.id)
+
+
+@bot.tree.command(name="duel", description="Challenge another player or the server to a Beggar-My-Neighbour duel!")
+@app_commands.guild_only()
+@is_bot_commands_channel()
+@app_commands.choices(
+    mode=[
+        app_commands.Choice(name="Casual (Single game, open to all)", value="casual"),
+        app_commands.Choice(name="Ranked (Best-of-3 series, Volunteers only)", value="ranked"),
+    ]
+)
+@app_commands.describe(
+    mode="Game mode: Casual (single deal) or Ranked (Best-of-3 series)",
+    opponent="Optional opponent to challenge directly (leave blank for open tavern challenge)",
+)
+async def duel_cmd(
+    interaction: discord.Interaction,
+    mode: app_commands.Choice[str],
+    opponent: Optional[discord.Member] = None,
+):
+    challenger = interaction.user
+    selected_mode = mode.value
+
+    # Upfront service availability check
+    pool = await get_db_pool()
+    if pool is None:
+        await interaction.response.send_message(
+            "⚔️ **Duels Temporarily Unavailable**: The duel arena is currently undergoing maintenance. Please check back in a few moments!",
+            ephemeral=True,
+        )
+        return
+
+    # Cooldown check
+    now = time.monotonic()
+    is_challenger_vol = await check_is_volunteer(challenger, interaction.guild)
+    cd_time = config.DUEL_VOLUNTEER_COOLDOWN_SECONDS if is_challenger_vol else config.DUEL_GUEST_COOLDOWN_SECONDS
+    last_duel = _duel_cooldowns.get(challenger.id, 0.0)
+    if now - last_duel < cd_time:
+        rem = max(1, int(round(cd_time - (now - last_duel))))
+        await interaction.response.send_message(
+            f"⏳ **Cooldown Active**: Please wait **{rem}s** before initiating another duel.",
+            ephemeral=True,
+        )
+        return
+
+    # Check if challenger has an incoming pending challenge invitation
+    if duel_mgr.has_pending_challenge_target(challenger.id):
+        source_id = duel_mgr._pending_challenges.get(challenger.id)
+        source_mention = f"<@{source_id}>" if source_id else "another player"
+        await interaction.response.send_message(
+            f"⚔️ You have a pending challenge invitation from {source_mention} waiting for your response! Please accept or decline it first.",
+            ephemeral=True,
+        )
+        return
+
+    # Check if challenger already has an outgoing pending challenge
+    if duel_mgr.has_pending_challenge_source(challenger.id):
+        await interaction.response.send_message(
+            "⚔️ You already have a pending challenge waiting for a response! Please wait for it to be accepted, declined, or cancelled.",
+            ephemeral=True,
+        )
+        return
+
+    # Check if challenger is currently in an active duel
+    if duel_mgr.is_user_busy(challenger.id):
+        await interaction.response.send_message(
+            "⚔️ You are already participating in an active duel! Please complete it first.",
+            ephemeral=True,
+        )
+        return
+
+    # Validate based on mode and opponent
+    if selected_mode == "ranked":
+        if opponent is None:
+            await interaction.response.send_message(
+                "⚔️ **Ranked Mode Requires an Opponent**: Ranked matches are Best-of-3 head-to-head battles against a specific opponent. Please choose an `opponent` or select `Casual` mode for an open tavern challenge.",
+                ephemeral=True,
+            )
+            return
+
+        if not is_challenger_vol:
+            await interaction.response.send_message(
+                "⚔️ **Ranked Mode Restricted**: Ranked duels are exclusive to volunteers who have linked their BOINC account (`/link`).",
+                ephemeral=True,
+            )
+            return
+
+        is_opp_vol = await check_is_volunteer(opponent, interaction.guild)
+        if not is_opp_vol:
+            await interaction.response.send_message(
+                f"⚔️ **Opponent Ineligible**: Ranked duels are exclusive to volunteers. {opponent.mention} has not linked their BOINC account yet.",
+                ephemeral=True,
+            )
+            return
+
+    else:  # casual
+        if opponent is not None:
+            if not is_challenger_vol:
+                await interaction.response.send_message(
+                    "⚔️ **Direct Challenges Restricted**: Direct challenges against specific opponents are exclusive to volunteers (`/link`). As a guest, you can still host an **Open Casual Challenge** by leaving the opponent field blank!",
+                    ephemeral=True,
+                )
+                return
+
+            is_opp_vol = await check_is_volunteer(opponent, interaction.guild)
+            if not is_opp_vol:
+                await interaction.response.send_message(
+                    f"⚔️ **Opponent Ineligible**: Direct challenges are exclusive to volunteers. {opponent.mention} has not linked their BOINC account yet.",
+                    ephemeral=True,
+                )
+                return
+        else:
+            can_play, reason = await duel_mgr.can_play_casual(challenger.id, is_challenger_vol)
+            if not can_play:
+                await interaction.response.send_message(f"⏳ **Limit Reached**: {reason}", ephemeral=True)
+                return
+
+    # Opponent validations if specified
+    if opponent is not None:
+        if opponent.bot:
+            await interaction.response.send_message("🤖 You cannot challenge bot accounts to a duel.", ephemeral=True)
+            return
+        if opponent.id == challenger.id:
+            await interaction.response.send_message("🃏 You cannot challenge yourself to a duel!", ephemeral=True)
+            return
+        if duel_mgr.has_pending_challenge_target(opponent.id):
+            await interaction.response.send_message(
+                f"⏳ {opponent.mention} already has a pending challenge invitation. Please try again in a moment.",
+                ephemeral=True,
+            )
+            return
+        if duel_mgr.has_pending_challenge_source(opponent.id):
+            await interaction.response.send_message(
+                f"⏳ {opponent.mention} has already issued a challenge to another player. Please try again once their challenge resolves.",
+                ephemeral=True,
+            )
+            return
+        if duel_mgr.is_user_busy(opponent.id):
+            await interaction.response.send_message(
+                f"⏳ {opponent.mention} is currently in another duel! Please wait until their match completes.",
+                ephemeral=True,
+            )
+            return
+
+        opp_stats = await duel_mgr.get_duel_stats(opponent.id)
+        if not opp_stats["direct_challenges_enabled"]:
+            await interaction.response.send_message(
+                f"🛡️ {opponent.mention} has disabled direct challenge requests via `/duel-settings`.",
+                ephemeral=True,
+            )
+            return
+
+        if selected_mode == "ranked":
+            can_ranked, reason = await duel_mgr.can_play_ranked(challenger.id, opponent.id)
+            if not can_ranked:
+                await interaction.response.send_message(f"⛔ **Ranked Play Unavailable**: {reason}", ephemeral=True)
+                return
+
+    # Record cooldown timestamp
+    _duel_cooldowns[challenger.id] = now
+
+    # Lock users & set pending challenge
+    if opponent is not None:
+        duel_mgr.lock_users(challenger.id, opponent.id)
+        duel_mgr.set_pending_challenge(opponent.id, challenger.id)
+    else:
+        duel_mgr._active_duels.add(challenger.id)
+
+    challenge_timeout = (
+        config.DUEL_DIRECT_TIMEOUT_SECONDS if opponent is not None else config.DUEL_OPEN_TIMEOUT_SECONDS
+    )
+
+    # Build Challenge View
+    view = DuelChallengeView(
+        duel_mgr=duel_mgr,
+        challenger=challenger,
+        opponent=opponent,
+        mode=selected_mode,
+        timeout=challenge_timeout,
+        on_accept_callback=on_duel_accept,
+        can_accept_callback=can_accept_duel_callback,
+    )
+
+    exp_ts = int(time.time() + challenge_timeout)
+    if selected_mode == "ranked":
+        title = "⚔️ RANKED DUEL CHALLENGE"
+        color = 0xF1C40F
+        desc = (
+            f"🏆 {challenger.mention} has challenged {opponent.mention} to a **Ranked Best-of-3 Series**!\n\n"
+            f"• **Format**: Best of 3 Games (Swapped starting turns + tiebreak)\n"
+            f"• **Stakes**: 1 Ranked Ticket each • Elo Rating on the line\n\n"
+            f"Click **Accept Duel** below to battle! *(Expires <t:{exp_ts}:R>)*"
+        )
+    elif opponent is not None:
+        title = "🤺 CASUAL DUEL CHALLENGE"
+        color = 0x3498DB
+        desc = (
+            f"⚔️ {challenger.mention} has challenged {opponent.mention} to a **Casual Single-Deal Duel**!\n\n"
+            f"• **Format**: Single Game (52 cards)\n"
+            f"• **Stakes**: Friendly Match (No Elo rating)\n\n"
+            f"Click **Accept Duel** below to battle! *(Expires <t:{exp_ts}:R>)*"
+        )
+    else:
+        title = "🍻 OPEN TAVERN DUEL CHALLENGE"
+        color = 0x3498DB
+        desc = (
+            f"⚔️ {challenger.mention} has thrown down the gauntlet in the tavern!\n\n"
+            f"• **Format**: Casual Single Game (52 cards)\n"
+            f"• **Open To**: Anyone in the server\n\n"
+            f"Click **Accept Duel** below to accept the challenge! *(Expires <t:{exp_ts}:R>)*"
+        )
+
+    embed = discord.Embed(
+        title=title,
+        description=desc,
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(
+        text="Camicia Beggar-My-Neighbour • Waiting for response...",
+        icon_url=get_bot_avatar_url(),
+    )
+
+    content = opponent.mention if opponent is not None else None
+    try:
+        await interaction.response.send_message(content=content, embed=embed, view=view)
+        view.message = await interaction.original_response()
+    except Exception as e:
+        logger.error("Failed to send duel challenge message: %s", e)
+        if opponent is not None:
+            duel_mgr.clear_pending_challenge(opponent.id)
+            duel_mgr.release_users(challenger.id, opponent.id)
+        else:
+            duel_mgr._active_duels.discard(challenger.id)
+        raise
+
+
+@bot.tree.command(name="duel-settings", description="Configure your /duel preferences (e.g. direct challenge requests)")
+@is_bot_commands_channel_or_dm()
+@app_commands.describe(direct_challenges="Allow or disallow direct challenge requests from other players")
+async def duel_settings_cmd(interaction: discord.Interaction, direct_challenges: bool):
+    pool = await get_db_pool()
+    if pool is None:
+        await interaction.response.send_message(
+            "⚙️ **Settings Temporarily Unavailable**: Settings cannot be updated at the moment. Please try again in a few moments!",
+            ephemeral=True,
+        )
+        return
+
+    await duel_mgr.update_direct_challenges_setting(interaction.user.id, direct_challenges)
+    status_str = "**enabled** ✅" if direct_challenges else "**disabled** ❌"
+    await interaction.response.send_message(
+        f"⚙️ Direct challenge requests have been {status_str}.\n"
+        f"*(When disabled, other players cannot challenge you directly; you can still participate in open tavern matches.)*",
+        ephemeral=True,
+    )
+
+
 async def execute_link_flow(
     user: Union[discord.User, discord.Member], code: str
 ) -> Tuple[bool, Union[discord.Embed, str]]:
@@ -1264,6 +2106,19 @@ async def execute_link_flow(
                 role_status = "⚠️ Linked, but could not assign role (bot lacks Manage Roles permission)"
         else:
             role_status = "⚠️ Linked, but 'Volunteer' role was not found on server"
+
+    # Sync boinc_user_id in camicia_duel_stats if exists
+    pool = await get_db_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE camicia_duel_stats SET boinc_user_id = %s WHERE discord_id = %s",
+                        (boinc_uid, user.id),
+                    )
+        except Exception as e:
+            logger.debug("Could not sync boinc_user_id in camicia_duel_stats for %s: %s", user.id, e)
 
     embed = discord.Embed(
         title="🎉 Account Linked Successfully!",
@@ -1302,6 +2157,19 @@ async def execute_unlink_flow(
                 await member.remove_roles(volunteer_role, reason="Unlinked Camicia BOINC account")
             except Exception as e:
                 logger.warning("Could not remove Volunteer role from %s: %s", member, e)
+
+    # Clear boinc_user_id in camicia_duel_stats if exists
+    pool = await get_db_pool()
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE camicia_duel_stats SET boinc_user_id = NULL WHERE discord_id = %s",
+                        (user.id,),
+                    )
+        except Exception as e:
+            logger.debug("Could not clear boinc_user_id in camicia_duel_stats for %s: %s", user.id, e)
 
     link_url = getattr(config, "PROJECT_LINK_URL", f"https://{config.PROJECT_DOMAIN}/camicia/discord_link.php")
     embed = discord.Embed(
