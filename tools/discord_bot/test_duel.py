@@ -926,6 +926,202 @@ class TestDuelBotCommands(unittest.IsolatedAsyncioTestCase):
             call_text = interaction.response.send_message.call_args[0][0]
             self.assertIn("already issued a challenge to another player", call_text)
 
+    async def test_get_duel_leaderboard(self):
+        # Pool is None
+        mgr_none = duel.DuelManager(db_pool_getter=AsyncMock(return_value=None))
+        self.assertEqual(await mgr_none.get_duel_leaderboard(), [])
+
+        # Pool with records
+        mock_conn = AsyncMock()
+        mock_cur = AsyncMock()
+        mock_cur.fetchall = AsyncMock(return_value=[
+            (101, 1250, 10, 2, 0),
+            (102, 1100, 5, 5, 0),
+        ])
+        mock_conn.cursor = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_cur), __aexit__=AsyncMock()))
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock()))
+
+        mgr = duel.DuelManager(db_pool_getter=AsyncMock(return_value=mock_pool))
+        lb = await mgr.get_duel_leaderboard(limit=10)
+        self.assertEqual(len(lb), 2)
+        self.assertEqual(lb[0]["discord_id"], 101)
+        self.assertEqual(lb[0]["elo_rating"], 1250)
+        self.assertEqual(lb[0]["total_games"], 12)
+        self.assertAlmostEqual(lb[0]["win_rate"], 83.333333, places=2)
+
+    async def test_get_user_rank(self):
+        # Pool is None
+        mgr_none = duel.DuelManager(db_pool_getter=AsyncMock(return_value=None))
+        self.assertIsNone(await mgr_none.get_user_rank(101))
+
+        # Unranked user
+        mock_conn = AsyncMock()
+        mock_cur = AsyncMock()
+        mock_cur.fetchone = AsyncMock(side_effect=[
+            (1000, 0),  # User row: 0 games played
+        ])
+        mock_conn.cursor = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_cur), __aexit__=AsyncMock()))
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock()))
+
+        mgr = duel.DuelManager(db_pool_getter=AsyncMock(return_value=mock_pool))
+        self.assertIsNone(await mgr.get_user_rank(101))
+
+        # Ranked user (rank 3)
+        mock_cur.fetchone = AsyncMock(side_effect=[
+            (1150, 10),  # User row: elo 1150, 10 games
+            (2,),        # Count of users ranked higher -> 2
+        ])
+        self.assertEqual(await mgr.get_user_rank(101), 3)
+
+    async def test_get_user_recent_matches(self):
+        # Pool is None
+        mgr_none = duel.DuelManager(db_pool_getter=AsyncMock(return_value=None))
+        self.assertEqual(await mgr_none.get_user_recent_matches(101), [])
+
+        # Pool with matches
+        mock_conn = AsyncMock()
+        mock_cur = AsyncMock()
+        mock_cur.fetchall = AsyncMock(return_value=[
+            (1, "ranked", 101, 102, 101, 240, 32, "2-1", "completed", "2026-10-08"),  # win
+            (2, "casual", 103, 101, 103, 110, 14, "1-0", "completed", "2026-10-08"),  # loss
+            (3, "ranked", 101, 104, None, 300, 40, "1-1", "loop", "2026-10-08"),       # tie/loop
+        ])
+        mock_conn.cursor = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_cur), __aexit__=AsyncMock()))
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_conn), __aexit__=AsyncMock()))
+
+        mgr = duel.DuelManager(db_pool_getter=AsyncMock(return_value=mock_pool))
+        matches = await mgr.get_user_recent_matches(101, limit=3)
+        self.assertEqual(len(matches), 3)
+        self.assertEqual(matches[0]["outcome"], "win")
+        self.assertEqual(matches[0]["opponent_id"], 102)
+        self.assertEqual(matches[1]["outcome"], "loss")
+        self.assertEqual(matches[1]["opponent_id"], 103)
+        self.assertEqual(matches[2]["outcome"], "tie")
+        self.assertEqual(matches[2]["opponent_id"], 104)
+
+    async def test_duel_leaderboard_cmd(self):
+        interaction = AsyncMock()
+        interaction.user.id = 101
+        interaction.user.mention = "<@101>"
+
+        # 1. DB pool is None
+        with patch.object(self.bot_mod, "get_db_pool", AsyncMock(return_value=None)):
+            await self.bot_mod.duel_leaderboard_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            self.assertIn("Leaderboard Temporarily Unavailable", interaction.response.send_message.call_args[0][0])
+
+        # 2. Empty leaderboard
+        interaction.response.send_message.reset_mock()
+        with patch.object(self.bot_mod.duel_mgr, "get_duel_leaderboard", AsyncMock(return_value=[])), \
+             patch.object(self.bot_mod.duel_mgr, "get_user_rank", AsyncMock(return_value=None)), \
+             patch.object(self.bot_mod.duel_mgr, "get_duel_stats", AsyncMock(return_value={"wins": 0, "losses": 0, "ties": 0, "elo_rating": 1000})):
+            await self.bot_mod.duel_leaderboard_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            self.assertIn("No ranked duels recorded yet", embed.description)
+
+        # 3. Populated leaderboard with caller outside top 10
+        interaction.response.send_message.reset_mock()
+        fake_lb = [
+            {"discord_id": 999, "elo_rating": 1400, "wins": 20, "losses": 1, "ties": 0, "total_games": 21, "win_rate": 95.2}
+        ]
+        with patch.object(self.bot_mod.duel_mgr, "get_duel_leaderboard", AsyncMock(return_value=fake_lb)), \
+             patch.object(self.bot_mod.duel_mgr, "get_user_rank", AsyncMock(return_value=12)), \
+             patch.object(self.bot_mod.duel_mgr, "get_duel_stats", AsyncMock(return_value={"wins": 5, "losses": 5, "ties": 0, "elo_rating": 1000})):
+            await self.bot_mod.duel_leaderboard_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            field_names = [f.name for f in embed.fields]
+            self.assertIn("Your Standing", field_names)
+
+    async def test_duel_stats_cmd_dm_restriction(self):
+        interaction = AsyncMock()
+        interaction.guild = None  # In DM
+        interaction.user.id = 101
+
+        other_user = MagicMock(id=102)
+
+        # Inspecting another user in DM -> blocked
+        await self.bot_mod.duel_stats_cmd.callback(interaction, user=other_user)
+        interaction.response.send_message.assert_called_once()
+        call_text = interaction.response.send_message.call_args[0][0]
+        self.assertIn("In Direct Messages, you can only view your own duel stats", call_text)
+
+    async def test_duel_stats_cmd_success(self):
+        interaction = AsyncMock()
+        interaction.guild = MagicMock()
+        interaction.user.id = 101
+        interaction.user.display_name = "PlayerOne"
+        interaction.user.display_avatar.url = "https://example.com/avatar.png"
+
+        fake_stats = {
+            "elo_rating": 1150,
+            "wins": 6,
+            "losses": 2,
+            "ties": 1,
+            "daily_casual_count": 1,
+            "daily_ranked_count": 2,
+            "direct_challenges_enabled": True,
+        }
+        fake_matches = [
+            {
+                "match_id": 1,
+                "mode": "ranked",
+                "opponent_id": 102,
+                "outcome": "win",
+                "series_score": "2-1",
+                "cards_played": 312,
+                "tricks": 40,
+                "status": "completed",
+                "played_date": "2026-10-08",
+            }
+        ]
+
+        with patch.object(self.bot_mod.duel_mgr, "get_duel_stats", AsyncMock(return_value=fake_stats)), \
+             patch.object(self.bot_mod.duel_mgr, "get_user_rank", AsyncMock(return_value=2)), \
+             patch.object(self.bot_mod.duel_mgr, "get_user_recent_matches", AsyncMock(return_value=fake_matches)), \
+             patch.object(self.bot_mod, "check_is_volunteer", AsyncMock(return_value=True)):
+            await self.bot_mod.duel_stats_cmd.callback(interaction, user=None)
+            interaction.response.send_message.assert_called_once()
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            self.assertIn("PlayerOne", embed.title)
+            self.assertIn("1,150", embed.fields[0].value)
+            self.assertIn("#2", embed.fields[0].value)
+            self.assertIn("3 / 5", embed.fields[1].value)  # 5 - 2 = 3 tickets left
+            self.assertIn("WIN", embed.fields[2].value)
+
+    async def test_on_duel_cuts_complete_suspense_delay_3s(self):
+        msg = AsyncMock()
+        p1 = MagicMock(id=101, display_name="P1")
+        p2 = MagicMock(id=102, display_name="P2")
+        p1.mention = "<@101>"
+        p2.mention = "<@102>"
+
+        fake_sim = {
+            "winner": 1,
+            "status": "completed",
+            "cards": 100,
+            "tricks": 10,
+            "is_loop": False,
+            "is_record": False,
+            "tier": "Common",
+            "rarity_desc": "Common",
+            "color": 0x3498DB,
+            "hand_a": "A" * 26,
+            "hand_b": "K" * 26,
+            "deal_index": 1,
+        }
+        with patch("asyncio.sleep", AsyncMock()) as mock_sleep, \
+             patch.object(self.bot_mod.duel_mgr, "simulate_game", return_value=fake_sim), \
+             patch.object(self.bot_mod.duel_mgr, "record_match", AsyncMock(return_value=1)), \
+             patch.object(self.bot_mod.duel_mgr, "release_users"):
+            await self.bot_mod.on_duel_cuts_complete(msg, p1, p2, cut_a=0, cut_b=0, mode="casual")
+            mock_sleep.assert_called_once_with(3.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

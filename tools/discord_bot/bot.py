@@ -1277,11 +1277,11 @@ async def lucky_cmd(interaction: discord.Interaction):
                 logger.error("Failed to broadcast /lucky discovery to records channel: %s", e)
 
 
-@bot.tree.command(name="luckyleaderboard", description="View today's top /lucky rolls on the server")
+@bot.tree.command(name="lucky-leaderboard", description="View today's top /lucky rolls on the server")
 @app_commands.guild_only()
 @is_bot_commands_channel()
 @app_commands.checks.cooldown(1, 15.0, key=lambda i: i.channel_id)
-async def luckyleaderboard_cmd(interaction: discord.Interaction):
+async def lucky_leaderboard_cmd(interaction: discord.Interaction):
     lb = lucky_mgr.get_leaderboard()
     next_ts = lucky_mgr.next_midnight_timestamp()
 
@@ -1306,10 +1306,12 @@ async def luckyleaderboard_cmd(interaction: discord.Interaction):
         embed.add_field(name="Top Rolls Today", value="\n".join(lines), inline=False)
 
     embed.set_footer(
-        text="Camicia BOINC Project • /lucky",
+        text="Camicia BOINC Project • /lucky-leaderboard",
         icon_url=get_bot_avatar_url(),
     )
     await interaction.response.send_message(embed=embed)
+
+
 
 
 # ==========================================
@@ -1521,8 +1523,8 @@ async def on_duel_cuts_complete(
     except Exception as e:
         logger.warning("Could not edit message for suspense phase: %s", e)
 
-    # 2s rate-limit safe delay
-    await asyncio.sleep(2.0)
+    # 3s rate-limit safe delay to build suspense
+    await asyncio.sleep(3.0)
 
     # Phase S4: Simulation & Boxscore Results
     try:
@@ -2081,6 +2083,176 @@ async def duel_settings_cmd(interaction: discord.Interaction, direct_challenges:
     )
 
 
+@bot.tree.command(name="duel-leaderboard", description="View the server's top-ranked Camicia duel champions (Elo)")
+@app_commands.guild_only()
+@is_bot_commands_channel()
+@app_commands.checks.cooldown(1, 15.0, key=lambda i: i.channel_id)
+async def duel_leaderboard_cmd(interaction: discord.Interaction):
+    pool = await get_db_pool()
+    if pool is None:
+        await interaction.response.send_message(
+            "⚔️ **Leaderboard Temporarily Unavailable**: The duel arena is currently undergoing maintenance. Please check back in a few moments!",
+            ephemeral=True,
+        )
+        return
+
+    lb = await duel_mgr.get_duel_leaderboard(limit=10)
+    caller_rank = await duel_mgr.get_user_rank(interaction.user.id)
+    caller_stats = await duel_mgr.get_duel_stats(interaction.user.id)
+
+    embed = discord.Embed(
+        title="⚔️ Camicia Duel Leaderboard (Top 10 Elo)",
+        description="Ranked Elo ratings update after every Best-of-3 series.\n",
+        color=0xF1C40F,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    if not lb:
+        embed.description += "\n*No ranked duels recorded yet! Use `/duel mode:ranked opponent:@User` to claim the #1 spot.*"
+    else:
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+        lines = []
+        caller_in_top10 = False
+        for i, entry in enumerate(lb, start=1):
+            if entry["discord_id"] == interaction.user.id:
+                caller_in_top10 = True
+            medal = medals.get(i, f"`#{i}`")
+            lines.append(
+                f"{medal} <@{entry['discord_id']}>: **{entry['elo_rating']:,} Elo** • "
+                f"{entry['wins']}W - {entry['losses']}L - {entry['ties']}T ({entry['win_rate']:.1f}%)"
+            )
+        embed.add_field(name="Top Duelists", value="\n".join(lines), inline=False)
+
+        if caller_rank is not None and not caller_in_top10:
+            total_caller = caller_stats["wins"] + caller_stats["losses"] + caller_stats["ties"]
+            caller_wr = (caller_stats["wins"] / total_caller * 100.0) if total_caller > 0 else 0.0
+            embed.add_field(
+                name="Your Standing",
+                value=(
+                    f"`#{caller_rank}` {interaction.user.mention}: **{caller_stats['elo_rating']:,} Elo** • "
+                    f"{caller_stats['wins']}W - {caller_stats['losses']}L - {caller_stats['ties']}T ({caller_wr:.1f}%)"
+                ),
+                inline=False,
+            )
+
+    embed.set_footer(
+        text="Camicia Beggar-My-Neighbour • /duel-leaderboard",
+        icon_url=get_bot_avatar_url(),
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="duel-stats", description="View your or another player's Camicia duel record, Elo, and tickets")
+@is_bot_commands_channel_or_dm()
+@app_commands.describe(user="Optional player to inspect (leave blank for your own stats; in DMs only your own stats)")
+async def duel_stats_cmd(
+    interaction: discord.Interaction,
+    user: Optional[Union[discord.Member, discord.User]] = None,
+):
+    # If in Direct Message, only allow inspecting oneself
+    if interaction.guild is None and user is not None and user.id != interaction.user.id:
+        await interaction.response.send_message(
+            "🔒 In Direct Messages, you can only view your own duel stats. "
+            "To view another player's stats, run `/duel-stats @user` in the server's #bot-commands channel.",
+            ephemeral=True,
+        )
+        return
+
+    target = user if user is not None else interaction.user
+
+    pool = await get_db_pool()
+    if pool is None:
+        await interaction.response.send_message(
+            "⚔️ **Stats Temporarily Unavailable**: The duel arena is currently undergoing maintenance. Please check back in a few moments!",
+            ephemeral=True,
+        )
+        return
+
+    stats = await duel_mgr.get_duel_stats(target.id)
+    rank = await duel_mgr.get_user_rank(target.id)
+    recent_matches = await duel_mgr.get_user_recent_matches(target.id, limit=3)
+    is_vol = await check_is_volunteer(target, interaction.guild)
+
+    total_ranked = stats["wins"] + stats["losses"] + stats["ties"]
+    win_rate = (stats["wins"] / total_ranked * 100.0) if total_ranked > 0 else 0.0
+
+    rem_ranked = max(0, config.MAX_VOLUNTEER_DAILY_RANKED_DUELS - stats["daily_ranked_count"])
+    rem_casual = max(0, config.MAX_GUEST_DAILY_CASUAL_DUELS - stats["daily_casual_count"])
+
+    rank_str = f"**#{rank}**" if rank is not None else "*Unranked*"
+    direct_str = "Enabled ✅" if stats["direct_challenges_enabled"] else "Disabled ❌"
+    vol_badge = "Volunteer 🏅" if is_vol else "Guest 👤"
+
+    color = 0x2ECC71 if stats["wins"] > stats["losses"] else (0xE74C3C if stats["losses"] > stats["wins"] else 0x3498DB)
+
+    embed = discord.Embed(
+        title=f"⚔️ Camicia Duel Profile: {target.display_name}",
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    if hasattr(target, "display_avatar") and target.display_avatar:
+        embed.set_thumbnail(url=target.display_avatar.url)
+
+    embed.add_field(
+        name="🏆 Ranked Standing",
+        value=(
+            f"• **Elo Rating**: **{stats['elo_rating']:,}** ({rank_str})\n"
+            f"• **Record**: **{stats['wins']}W** - **{stats['losses']}L** - **{stats['ties']}T**\n"
+            f"• **Win Rate**: **{win_rate:.1f}%** ({total_ranked} ranked series)"
+        ),
+        inline=False,
+    )
+
+    if is_vol:
+        tickets_val = f"**{rem_ranked} / {config.MAX_VOLUNTEER_DAILY_RANKED_DUELS}** tickets left"
+        casual_val = "Unlimited 🏅"
+    else:
+        tickets_val = "*Exclusive to linked volunteers* (`/link`)"
+        casual_val = f"**{rem_casual} / {config.MAX_GUEST_DAILY_CASUAL_DUELS}** games left"
+
+    embed.add_field(
+        name="🎟️ Daily Quotas (UTC)",
+        value=(
+            f"• **Ranked Tickets**: {tickets_val}\n"
+            f"• **Casual Quota**: {casual_val}\n"
+            f"• **Status**: {vol_badge} • Direct Challenges: {direct_str}"
+        ),
+        inline=False,
+    )
+
+    if recent_matches:
+        match_lines = []
+        for m in recent_matches:
+            mode_label = "Ranked BO3" if m["mode"] == "ranked" else "Casual"
+            if m["outcome"] == "win":
+                icon = "🟢 **WIN**"
+            elif m["outcome"] == "loss":
+                icon = "🔴 **LOSS**"
+            else:
+                icon = "⚪ **TIE**"
+            score_info = f" ({m['series_score']})" if m["series_score"] else ""
+            match_lines.append(
+                f"• {icon} vs <@{m['opponent_id']}> — *{mode_label}*{score_info} • {m['cards_played']:,} cards"
+            )
+        embed.add_field(
+            name="📜 Recent Matches",
+            value="\n".join(match_lines),
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="📜 Recent Matches",
+            value="*No matches recorded yet.*",
+            inline=False,
+        )
+
+    embed.set_footer(
+        text=f"Camicia Beggar-My-Neighbour • User ID: {target.id}",
+        icon_url=get_bot_avatar_url(),
+    )
+    await interaction.response.send_message(embed=embed)
+
+
 async def execute_link_flow(
     user: Union[discord.User, discord.Member], code: str
 ) -> Tuple[bool, Union[discord.Embed, str]]:
@@ -2372,9 +2544,9 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 f"⏳ **Recent Request**: The records were just posted in this channel! "
                 f"To keep the channel clean, please check the message above or try again in **{retry_seconds}s**."
             )
-        elif cmd_name == "luckyleaderboard":
+        elif cmd_name in ("lucky-leaderboard", "luckyleaderboard", "duel-leaderboard"):
             msg = (
-                f"⏳ **Recent Request**: Today's leaderboard was just posted in this channel! "
+                f"⏳ **Recent Request**: The leaderboard was just posted in this channel! "
                 f"To keep the channel clean, please check the message above or try again in **{retry_seconds}s**."
             )
         elif cmd_name == "lucky":

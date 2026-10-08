@@ -338,6 +338,102 @@ class DuelManager:
                     (new_r2, p2_id),
                 )
 
+    async def get_duel_leaderboard(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Returns top players by Elo rating who have played at least one match."""
+        pool = await self.get_db_pool()
+        if pool is None:
+            return []
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT discord_id, elo_rating, wins, losses, ties "
+                    "FROM camicia_duel_stats "
+                    "WHERE (wins + losses + ties) > 0 "
+                    "ORDER BY elo_rating DESC, wins DESC, discord_id ASC "
+                    "LIMIT %s",
+                    (limit,),
+                )
+                rows = await cur.fetchall()
+                leaderboard = []
+                for row in rows:
+                    total_games = row[2] + row[3] + row[4]
+                    win_rate = (row[2] / total_games * 100.0) if total_games > 0 else 0.0
+                    leaderboard.append({
+                        "discord_id": row[0],
+                        "elo_rating": row[1],
+                        "wins": row[2],
+                        "losses": row[3],
+                        "ties": row[4],
+                        "total_games": total_games,
+                        "win_rate": win_rate,
+                    })
+                return leaderboard
+
+    async def get_user_rank(self, discord_id: int) -> Optional[int]:
+        """Returns the 1-based server Elo rank of a player, or None if unranked."""
+        pool = await self.get_db_pool()
+        if pool is None:
+            return None
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT elo_rating, (wins + losses + ties) "
+                    "FROM camicia_duel_stats WHERE discord_id = %s",
+                    (discord_id,),
+                )
+                user_row = await cur.fetchone()
+                if not user_row or user_row[1] == 0:
+                    return None  # Unranked
+                user_elo = user_row[0]
+                await cur.execute(
+                    "SELECT COUNT(*) FROM camicia_duel_stats "
+                    "WHERE (wins + losses + ties) > 0 AND ("
+                    "elo_rating > %s OR (elo_rating = %s AND discord_id < %s))",
+                    (user_elo, user_elo, discord_id),
+                )
+                rank_row = await cur.fetchone()
+                return (rank_row[0] + 1) if rank_row else 1
+
+    async def get_user_recent_matches(self, discord_id: int, limit: int = 3) -> List[Dict[str, Any]]:
+        """Returns the most recent matches for a player."""
+        pool = await self.get_db_pool()
+        if pool is None:
+            return []
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id, mode, player1_id, player2_id, winner_id, cards_played, tricks, series_score, status, played_date "
+                    "FROM camicia_duel_matches "
+                    "WHERE player1_id = %s OR player2_id = %s "
+                    "ORDER BY id DESC "
+                    "LIMIT %s",
+                    (discord_id, discord_id, limit),
+                )
+                rows = await cur.fetchall()
+                matches = []
+                for row in rows:
+                    p1_id, p2_id, winner_id = row[2], row[3], row[4]
+                    opp_id = p2_id if p1_id == discord_id else p1_id
+                    if winner_id == discord_id:
+                        outcome = "win"
+                    elif winner_id is not None and winner_id != discord_id:
+                        outcome = "loss"
+                    else:
+                        outcome = "tie"
+                    matches.append({
+                        "match_id": row[0],
+                        "mode": row[1],
+                        "opponent_id": opp_id,
+                        "winner_id": winner_id,
+                        "outcome": outcome,
+                        "cards_played": row[5],
+                        "tricks": row[6],
+                        "series_score": row[7],
+                        "status": row[8],
+                        "played_date": row[9],
+                    })
+                return matches
+
     def simulate_game(self, deal_index: int, cut_a: int, cut_b: int, p1_starts: bool = True) -> Dict[str, Any]:
         """Simulates one Camicia game with deck cuts and starting turn."""
         deck_str = engine.get_nth_permutation(deal_index)

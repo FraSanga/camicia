@@ -81,10 +81,10 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
 
         asyncio.run(run_test())
 
-    def test_luckyleaderboard_channel_cooldown(self):
+    def test_lucky_leaderboard_channel_cooldown(self):
         async def run_test():
-            # luckyleaderboard_cmd first check is cooldown
-            check = bot.luckyleaderboard_cmd.checks[0]
+            # lucky_leaderboard_cmd first check is cooldown
+            check = bot.lucky_leaderboard_cmd.checks[0]
             mock1 = MagicMock()
             mock1.created_at = datetime.now(timezone.utc)
             mock1.channel_id = 7788
@@ -125,16 +125,16 @@ class TestRateLimitsAndAntiAbuse(unittest.TestCase):
             self.assertIn("12s", call_args[0][0])
             self.assertTrue(call_args[1].get("ephemeral"))
 
-            # Test /luckyleaderboard error message
+            # Test /lucky-leaderboard error message
             mock_interaction.reset_mock()
-            mock_interaction.command.name = "luckyleaderboard"
+            mock_interaction.command.name = "lucky-leaderboard"
             mock_interaction.response.send_message = AsyncMock()
             cooldown_err = app_commands.CommandOnCooldown(mock_cooldown, retry_after=8.1)
 
             await bot.on_app_command_error(mock_interaction, cooldown_err)
             mock_interaction.response.send_message.assert_called_once()
             call_args = mock_interaction.response.send_message.call_args
-            self.assertIn("Today's leaderboard was just posted in this channel", call_args[0][0])
+            self.assertIn("The leaderboard was just posted in this channel", call_args[0][0])
             self.assertIn("8s", call_args[0][0])
             self.assertTrue(call_args[1].get("ephemeral"))
 

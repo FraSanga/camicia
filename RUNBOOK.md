@@ -1329,7 +1329,7 @@ container at `/data/state/`:
 
 - **Announcement channel (`DISCORD_RECORDS_CHANNEL_ID`)**:
   Designated exclusively for automated world record and loop announcements. The bot enforces a clean
-  history; user-triggered `/records` and `/luckyleaderboard` commands have channel-wide cooldowns here.
+  history; user-triggered `/records`, `/lucky-leaderboard`, and `/duel-leaderboard` commands have channel-wide cooldowns here.
 - **Bot commands channel (`DISCORD_BOT_COMMANDS_CHANNEL_ID`)**:
   Designated for volunteer `/lucky` rolls and `/link` interactions.
 - **Staging mode (`STAGING_MODE=true`)**:
