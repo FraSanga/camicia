@@ -995,6 +995,160 @@ def is_dm_only():
     return app_commands.check(predicate)
 
 
+@bot.tree.command(name="help", description="View CamiciaBot commands, quotas, and volunteer perks")
+async def help_cmd(interaction: discord.Interaction):
+    is_dm = (interaction.guild is None)
+
+    guild = interaction.guild or (bot.get_guild(config.DISCORD_GUILD_ID) if config.DISCORD_GUILD_ID else None)
+    is_admin = False
+    if interaction.guild is not None:
+        member = interaction.user if isinstance(interaction.user, discord.Member) else (
+            interaction.guild.get_member(interaction.user.id) if hasattr(interaction.guild, "get_member") else None
+        )
+        if member and hasattr(member, "guild_permissions") and hasattr(member.guild_permissions, "administrator"):
+            is_admin = bool(member.guild_permissions.administrator)
+
+    is_vol = await check_is_volunteer(interaction.user, guild)
+
+    # Determine location context
+    allowed_id = config.DISCORD_BOT_COMMANDS_CHANNEL_ID
+    bot_channel_mention = f"<#{allowed_id}>" if allowed_id else "#bot-commands"
+
+    if is_dm:
+        location_desc = "Direct Messages (Private) 📬"
+        is_bot_channel = False
+    else:
+        is_bot_channel = (interaction.channel_id == allowed_id) or (
+            getattr(interaction.channel, "name", "") == "bot-commands"
+        )
+        ch_name = getattr(interaction.channel, "name", "channel")
+        location_desc = f"{bot_channel_mention} (Interactive Arena)" if is_bot_channel else f"#{ch_name} (Channel)"
+
+    if is_admin:
+        role_desc = "Server Administrator 👑"
+        color = 0x9B59B6  # Purple
+    elif is_vol:
+        role_desc = "Linked Volunteer 🏅"
+        color = 0xF1C40F  # Gold
+    else:
+        role_desc = "Guest (Unlinked) 👤"
+        color = 0x3498DB  # Blue
+
+    embed = discord.Embed(
+        title="📖 CamiciaBot Command Guide",
+        description=(
+            f"• **Role**: **{role_desc}**\n"
+            f"• **Location**: {location_desc}\n"
+        ),
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    # 1. Gameplay & Mini-Games
+    if is_bot_channel:
+        embed.add_field(
+            name="⚔️ Multiplayer Duels (Beggar-My-Neighbour)",
+            value=(
+                "• `/duel mode:casual`: Open tavern challenge or friendly direct duel *(Single game)*\n"
+                "• `/duel mode:ranked opponent:@User`: Best-of-3 Elo series *(Volunteers only)*\n"
+                "• `/duel-leaderboard`: View top 10 Elo champions and your standing\n"
+                "• `/duel-stats [user]`: View your or another player's duel profile\n"
+                "• `/duel-settings direct_challenges:<true|false>`: Enable or disable challenge invites"
+            ),
+            inline=False,
+        )
+        lucky_quota = "5 rolls/day 🏅" if is_vol else "3 rolls/day (Link for 5)"
+        embed.add_field(
+            name="🍀 Lucky Permutations",
+            value=(
+                f"• `/lucky`: Draw a random deal from ~6.5 × 10²⁰ space *({lucky_quota})*\n"
+                "• `/lucky-leaderboard`: View today's top lucky rolls on the server"
+            ),
+            inline=False,
+        )
+    elif is_dm:
+        embed.add_field(
+            name="⚙️ Private Duel Settings",
+            value=(
+                "• `/duel-stats`: View your personal duel profile and remaining tickets in private\n"
+                "• `/duel-settings direct_challenges:<true|false>`: Manage challenge privacy\n\n"
+                f"💡 *Interactive games (`/duel`, `/lucky`) are played in the server's {bot_channel_mention} channel.*"
+            ),
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="⚔️ Interactive Games & Arena",
+            value=(
+                f"💡 *To keep discussion clean, mini-games (`/duel`, `/lucky`, `/duel-leaderboard`, `/lucky-leaderboard`) are played exclusively in {bot_channel_mention}.*"
+            ),
+            inline=False,
+        )
+
+    # 2. Account Linking & Volunteer Perks
+    if is_vol:
+        unlink_info = (
+            "• `/unlink`: Disconnect your BOINC account *(DM only)*\n"
+            if is_dm
+            else "• `/unlink`: Disconnect your BOINC account *(Run in DMs with CamiciaBot)*\n"
+        )
+        embed.add_field(
+            name="🏅 BOINC Volunteer Account",
+            value=(
+                "✅ **Account Linked**: You have unlocked all volunteer perks!\n"
+                "• **Active Perks**: Unlimited casual duels, 5 ranked tickets/day, direct challenges, 5 `/lucky` rolls/day.\n"
+                f"{unlink_info}"
+            ),
+            inline=False,
+        )
+    else:
+        link_info = (
+            "• `/link <code>`: Link your BOINC account\n"
+            if is_dm
+            else "• `/link <code>`: Link your BOINC account *(Send code in DMs with CamiciaBot)*\n"
+        )
+        embed.add_field(
+            name="🔐 Link BOINC Account (Unlock Volunteer Perks)",
+            value=(
+                f"{link_info}"
+                f"• **Get your code**: [{config.PROJECT_LINK_URL}]({config.PROJECT_LINK_URL})\n\n"
+                "🌟 **Perks Unlocked Upon Linking**:\n"
+                "• 🏅 **@Volunteer** server role badge\n"
+                "• ⚔️ **Ranked Best-of-3** matches & server Elo ladder\n"
+                "• 🎯 **Direct challenges** against specific friends\n"
+                "• ♾️ **Unlimited** casual duels *(guests capped at 3/day)*\n"
+                "• 🍀 **5 daily rolls** in `/lucky` *(guests capped at 3/day)*"
+            ),
+            inline=False,
+        )
+
+    # 3. Project Science & Records
+    embed.add_field(
+        name="📊 Project Records & Research",
+        value=(
+            "• `/records`: View the standing world record game length and total infinite loops discovered across the project\n"
+            f"• **Project Web**: [{config.PROJECT_BASE_URL}]({config.PROJECT_BASE_URL})"
+        ),
+        inline=False,
+    )
+
+    # 4. Administrator Diagnostics (Admins only!)
+    if is_admin:
+        embed.add_field(
+            name="🔧 Administrator Tools",
+            value=(
+                "• `/ping`: Diagnostic latency, MariaDB pool status, disk storage, and process memory *(Admin only)*"
+            ),
+            inline=False,
+        )
+
+    embed.set_footer(
+        text="Camicia Beggar-My-Neighbour • ~6.5 × 10²⁰ space",
+        icon_url=get_bot_avatar_url(),
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(name="ping", description="Check bot latency, database status, and project storage (Admin only)")
 @app_commands.default_permissions(administrator=True)
 @app_commands.guild_only()

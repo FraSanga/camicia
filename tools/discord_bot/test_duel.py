@@ -1121,6 +1121,62 @@ class TestDuelBotCommands(unittest.IsolatedAsyncioTestCase):
             await self.bot_mod.on_duel_cuts_complete(msg, p1, p2, cut_a=0, cut_b=0, mode="casual")
             mock_sleep.assert_called_once_with(3.0)
 
+    async def test_help_cmd_in_dm_guest(self):
+        interaction = AsyncMock()
+        interaction.guild = None
+        interaction.user = MagicMock(id=101)
+
+        with patch.object(self.bot_mod, "check_is_volunteer", AsyncMock(return_value=False)):
+            await self.bot_mod.help_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            self.assertTrue(interaction.response.send_message.call_args[1].get("ephemeral"))
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            self.assertIn("Guest (Unlinked)", embed.description)
+            self.assertIn("Direct Messages", embed.description)
+            field_names = [f.name for f in embed.fields]
+            self.assertIn("⚙️ Private Duel Settings", field_names)
+            self.assertIn("🔐 Link BOINC Account (Unlock Volunteer Perks)", field_names)
+            self.assertNotIn("🔧 Administrator Tools", field_names)
+
+    async def test_help_cmd_in_bot_commands_volunteer(self):
+        interaction = AsyncMock()
+        interaction.guild = MagicMock()
+        interaction.channel_id = self.bot_mod.config.DISCORD_BOT_COMMANDS_CHANNEL_ID or 999
+        interaction.channel.name = "bot-commands"
+        user = MagicMock(id=102)
+        user.guild_permissions.administrator = False
+        interaction.user = user
+        interaction.guild.get_member = MagicMock(return_value=user)
+
+        with patch.object(self.bot_mod, "check_is_volunteer", AsyncMock(return_value=True)):
+            await self.bot_mod.help_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            self.assertTrue(interaction.response.send_message.call_args[1].get("ephemeral"))
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            self.assertIn("Linked Volunteer", embed.description)
+            field_names = [f.name for f in embed.fields]
+            self.assertIn("⚔️ Multiplayer Duels (Beggar-My-Neighbour)", field_names)
+            self.assertIn("🍀 Lucky Permutations", field_names)
+            self.assertIn("🏅 BOINC Volunteer Account", field_names)
+            self.assertNotIn("🔧 Administrator Tools", field_names)
+
+    async def test_help_cmd_admin_tools(self):
+        interaction = AsyncMock()
+        interaction.guild = MagicMock()
+        interaction.channel_id = 999
+        interaction.channel.name = "bot-commands"
+        user = MagicMock(id=103)
+        user.guild_permissions.administrator = True
+        interaction.user = user
+
+        with patch.object(self.bot_mod, "check_is_volunteer", AsyncMock(return_value=True)):
+            await self.bot_mod.help_cmd.callback(interaction)
+            interaction.response.send_message.assert_called_once()
+            embed = interaction.response.send_message.call_args[1]["embed"]
+            self.assertIn("Server Administrator", embed.description)
+            field_names = [f.name for f in embed.fields]
+            self.assertIn("🔧 Administrator Tools", field_names)
+
 
 if __name__ == "__main__":
     unittest.main()

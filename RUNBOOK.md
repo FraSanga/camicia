@@ -1225,7 +1225,7 @@ with read-only access to the BOINC project volume and access to MariaDB.
 ### Dual-bot architecture and mutual exclusion
 
 Production and Staging both define a `discord_bot` service, pointing to the same Discord guild.
-Because Discord registers application slash commands (`/link`, `/unlink`, `/lucky`, etc.)
+Because Discord registers application slash commands (`/help`, `/duel`, `/lucky`, `/link`, etc.)
 globally or per-guild, running both bots concurrently causes duplicate command entries in the
 Discord user interface and competing event handlers.
 
