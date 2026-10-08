@@ -1111,7 +1111,7 @@ async def help_cmd(interaction: discord.Interaction):
             name="🔐 Link BOINC Account (Unlock Volunteer Perks)",
             value=(
                 f"{link_info}"
-                f"• **Get your code**: [{config.PROJECT_LINK_URL}]({config.PROJECT_LINK_URL})\n\n"
+                f"• **Get your code**: [**Get Verification Code**]({config.PROJECT_LINK_URL})\n\n"
                 "🌟 **Perks Unlocked Upon Linking**:\n"
                 "• 🏅 **@Volunteer** server role badge\n"
                 "• ⚔️ **Ranked Best-of-3** matches & server Elo ladder\n"
@@ -1127,7 +1127,7 @@ async def help_cmd(interaction: discord.Interaction):
         name="📊 Project Records & Research",
         value=(
             "• `/records`: View the standing world record game length and total infinite loops discovered across the project\n"
-            f"• **Project Web**: [{config.PROJECT_BASE_URL}]({config.PROJECT_BASE_URL})"
+            f"• **Project Web**: [**{config.PROJECT_DOMAIN}**]({config.PROJECT_BASE_URL})"
         ),
         inline=False,
     )
